@@ -4,6 +4,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
+#include <vector>
+#include <cstring>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -20,6 +22,44 @@ public:
 private:
     GLFWwindow* window;
     VkInstance instance;
+    uint32_t extensionCount = 0;
+    std::vector<VkExtensionProperties> extensions;
+
+    void getSupportedExtensions() {
+        vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+        extensions = std::vector<VkExtensionProperties>(extensionCount);
+        vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
+
+        std::cout << "Available extensions:\n";
+
+        for (const VkExtensionProperties& extension : extensions) {
+            std::cout << '\t' << extension.extensionName << '\n';
+        }
+    }
+
+    // Should change signature here to use STL 
+    void checkRequiredExtensions(const char** requiredExtensionNames, uint32_t requiredExtensionsCount) {
+        std::cout << "Checking for unsupported extensions:\n";
+        bool bExistsUnsupportedExtension = false;
+        for (uint32_t i = 0; i < requiredExtensionsCount; i++) {
+            const char* extensionName = *(requiredExtensionNames + i);
+            bool bFoundExtension = false;
+            std::cout << '\t' << extensionName;
+            for (const VkExtensionProperties& extension : extensions) {
+                bFoundExtension |= strcmp(extension.extensionName, extensionName) == 0;
+            }
+            if (!bFoundExtension) {
+                std::cout << " NOT";
+            }
+            std ::  cout << " found!\n";
+            // Just for clarity 
+            bExistsUnsupportedExtension |= !bFoundExtension;
+        }
+
+        if (bExistsUnsupportedExtension) {
+            throw std::runtime_error("Unsupported extensions found");
+        }
+    }
 
     void createInstance() {
         // Need to make this library agnostic with a windowing library translator
@@ -37,9 +77,13 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
+        getSupportedExtensions();
+
         uint32_t glfwExtensionCount = 0;
         const char** glfwExtensions;
         glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+        checkRequiredExtensions(glfwExtensions, glfwExtensionCount);
 
         createInfo.enabledExtensionCount = glfwExtensionCount;
         createInfo.ppEnabledExtensionNames = glfwExtensions;
