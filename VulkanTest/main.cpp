@@ -10,6 +10,16 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
+std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation"
+};
+
+#ifdef NDEBUG
+    const bool bEnableValidationLayers = false;
+#else
+    const bool bEnableValidationLayers = true;
+#endif
+
 class HelloTriangleApplication {
 public:
     void run() {
@@ -24,44 +34,91 @@ private:
     VkInstance instance;
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
+    uint32_t layerCount = 0;
+    std::vector<VkLayerProperties> layers;
+
+    void getSupportedValidationLayers() {
+        vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+        layers = std::vector<VkLayerProperties>(layerCount);
+        vkEnumerateInstanceLayerProperties(&layerCount, layers.data());
+
+        #ifdef NDEBUG
+        #else
+            std::cout << "Available layers:\n";
+
+            for (const VkLayerProperties& layer : layers) {
+                std::cout << '\t' << layer.layerName << '\n';
+            }
+        #endif
+    }
 
     void getSupportedExtensions() {
         vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+
         extensions = std::vector<VkExtensionProperties>(extensionCount);
         vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
 
-        std::cout << "Available extensions:\n";
+        #ifdef NDEBUG
+        #else
+            std::cout << "Available extensions:\n";
 
-        for (const VkExtensionProperties& extension : extensions) {
-            std::cout << '\t' << extension.extensionName << '\n';
-        }
+            for (const VkExtensionProperties& extension : extensions) {
+                std::cout << '\t' << extension.extensionName << '\n';
+            }
+        #endif
     }
 
-    // Should change signature here to use STL 
-    void checkRequiredExtensions(const char** requiredExtensionNames, uint32_t requiredExtensionsCount) {
-        std::cout << "Checking for unsupported extensions:\n";
-        bool bExistsUnsupportedExtension = false;
-        for (uint32_t i = 0; i < requiredExtensionsCount; i++) {
-            const char* extensionName = *(requiredExtensionNames + i);
-            bool bFoundExtension = false;
-            std::cout << '\t' << extensionName;
-            for (const VkExtensionProperties& extension : extensions) {
-                bFoundExtension |= strcmp(extension.extensionName, extensionName) == 0;
-            }
-            if (!bFoundExtension) {
-                std::cout << " NOT";
-            }
-            std ::  cout << " found!\n";
-            // Just for clarity 
-            bExistsUnsupportedExtension |= !bFoundExtension;
-        }
+    bool checkStringSubset(const char** superSet, uint32_t superSetCount, const char** subSet, uint32_t subSetCount) {
+        bool bFoundAll = true;
+        for (int i = 0; i < subSetCount; i++) {
+            const char* subElement = *(subSet + i);
+            bool bElementFound = false;
 
-        if (bExistsUnsupportedExtension) {
-            throw std::runtime_error("Unsupported extensions found");
+            for (int j = 0; j < superSetCount; j++) {
+                const char* superElement = *(superSet + j);
+
+                if (strcmp(subElement, superElement) == 0) {
+                    bElementFound = true;
+                    break;
+                }
+            }
+
+            #ifdef NDEBUG 
+                if (!bElementFound) {
+                    std::cout << "\tNot found: " << subElement << '\n'; 
+                }
+            #else
+            #endif
+            
+            bFoundAll &= bElementFound;
         }
+        return bFoundAll;
+    }
+
+    bool checkRequiredExtensions(const char** requiredExtensionNames, uint32_t requiredExtensionsCount) {
+        getSupportedExtensions();
+        std::vector<const char*> supportedExtensionNames(extensionCount);
+        for (int i = 0; i < extensionCount; i++) {
+            supportedExtensionNames[i] = extensions[i].extensionName;
+        }
+        return checkStringSubset(supportedExtensionNames.data(), extensionCount, requiredExtensionNames, requiredExtensionsCount);
+    }
+
+    bool checkRequiredLayers() {
+        getSupportedValidationLayers();
+        std::vector<const char*> supportedLayerNames(layerCount);
+        for (int i = 0; i < layerCount; i++) {
+            supportedLayerNames[i] = layers[i].layerName;
+        }
+        return checkStringSubset(supportedLayerNames.data(), layerCount, validationLayers.data(), validationLayers.size());
     }
 
     void createInstance() {
+        if (bEnableValidationLayers && !checkRequiredLayers()) {
+            throw std::runtime_error("Validation layers requested, but not available.");
+        }
+
         // Need to make this library agnostic with a windowing library translator
         // eg, in the future get this running on closed platforms as well. 
         // decouple even API from windowing?
@@ -77,13 +134,20 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
-        getSupportedExtensions();
+        if (bEnableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+            createInfo.ppEnabledLayerNames = validationLayers.data();
+        } else {
+            createInfo.enabledLayerCount = 0;
+        }
 
         uint32_t glfwExtensionCount = 0;
         const char** glfwExtensions;
         glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-        checkRequiredExtensions(glfwExtensions, glfwExtensionCount);
+        if(!checkRequiredExtensions(glfwExtensions, glfwExtensionCount)) {
+            throw std::runtime_error("Could not find required extensions.");
+        }
 
         createInfo.enabledExtensionCount = glfwExtensionCount;
         createInfo.ppEnabledExtensionNames = glfwExtensions;
@@ -112,6 +176,8 @@ private:
     } 
 
     void cleanup() {
+        vkDestroyInstance(instance, nullptr);
+
         glfwDestroyWindow(window);
 
         glfwTerminate();
