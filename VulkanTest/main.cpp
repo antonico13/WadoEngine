@@ -33,6 +33,7 @@ private:
     GLFWwindow* window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
     uint32_t layerCount = 0;
@@ -182,11 +183,17 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+
         if (bEnableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
+
+            populateDebugMessengerCreateInfo(debugCreateInfo);
+            //createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
         } else {
             createInfo.enabledLayerCount = 0;
+            createInfo.pNext = nullptr;
         }
 
         std::vector<const char*> requiredExtensions = getRequiredExtensions();
@@ -205,12 +212,8 @@ private:
 
     }
 
-    void setupDebugMessenger() {
-        if (!bEnableValidationLayers) {
-            return;
-        }
-
-        VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
+        createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
                                      VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -221,6 +224,16 @@ private:
                                  VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
         createInfo.pfnUserCallback = debugCallback;
         createInfo.pUserData = nullptr;
+
+    }
+
+    void setupDebugMessenger() {
+        if (!bEnableValidationLayers) {
+            return;
+        }
+
+        VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+        populateDebugMessengerCreateInfo(createInfo);
 
         if (CreateDebugUitlsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
             throw std::runtime_error("Failed to set up debug messenger");
@@ -233,10 +246,38 @@ private:
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
     }
+
     void initVulkan() {
         createInstance();
         setupDebugMessenger();
-    }   
+        pickPhysicalDevice();
+    }
+
+    bool isDeviceSuitable(VkPhysicalDevice device) {
+        return true;
+    }
+
+    void pickPhysicalDevice() {
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+        if (deviceCount == 0) {
+            throw std::runtime_error("Failed to find any GPU with Vulkan support.");
+        }
+
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        for (const VkPhysicalDevice& device: devices) {
+            if (isDeviceSuitable(device)) {
+                physicalDevice = device;
+                break;
+            } 
+        }
+
+        if (physicalDevice == VK_NULL_HANDLE) {
+            throw std::runtime_error("Could not find a suitable GPU");
+        }
+    }
 
     void mainLoop() {
         while ((!glfwWindowShouldClose(window))) {
