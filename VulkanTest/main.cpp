@@ -36,6 +36,8 @@ private:
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
+    VkQueue graphicsQueue;
+
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
     uint32_t layerCount = 0;
@@ -288,6 +290,8 @@ private:
         if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
             throw std::runtime_error("Could not create logical Vulkan device");
         }
+
+        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     }
 
     struct QueueFamilyIndices {
