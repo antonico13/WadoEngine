@@ -430,6 +430,15 @@ private:
         return availableFormats[0];
     }
 
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+        for (const VkPresentModeKHR& availablePresentMode : availablePresentModes) {
+            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                return availablePresentMode;
+            }
+        }
+        return VK_PRESENT_MODE_FIFO_KHR;
+    }
+
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
         SwapChainSupportDetails details;
 
