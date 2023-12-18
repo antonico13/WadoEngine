@@ -245,7 +245,7 @@ private:
 
             populateDebugMessengerCreateInfo(debugCreateInfo);
             // Debug broken on dzn
-            //createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+            createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
         } else {
             createInfo.enabledLayerCount = 0;
             createInfo.pNext = nullptr;
@@ -491,12 +491,14 @@ private:
         vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
         vertShaderStageInfo.module = vertShaderModule;
         vertShaderStageInfo.pName = "main";
+        vertShaderStageInfo.pNext = nullptr;
 
         VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vertShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        vertShaderStageInfo.module = fragShaderModule;
-        vertShaderStageInfo.pName = "main";
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main";
+        fragShaderStageInfo.pNext = nullptr;
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             vertShaderStageInfo, fragShaderStageInfo
@@ -621,12 +623,12 @@ private:
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-        pipelineInfo.basePipelineIndex = -1;
+        //pipelineInfo.basePipelineIndex = -1;
 
         if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create graphics pipeline");
         }
-
+        
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
     }
@@ -824,6 +826,11 @@ private:
     bool isDeviceSuitable(VkPhysicalDevice device) {
         VkPhysicalDeviceProperties deviceProperties;
         vkGetPhysicalDeviceProperties(device, &deviceProperties);
+        
+        #ifdef NDEBUG
+        #else
+            std::cout << deviceProperties.deviceName << std::endl;
+        #endif
 
         VkPhysicalDeviceFeatures deviceFeatures;
         vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
@@ -871,6 +878,13 @@ private:
                 break;
             } 
         }
+
+        #ifdef NDEBUG
+        #else
+            VkPhysicalDeviceProperties deviceProperties;
+            vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+            std::cout << "Chosen device " << deviceProperties.deviceName << std::endl;
+        #endif
 
         if (physicalDevice == VK_NULL_HANDLE) {
             throw std::runtime_error("Could not find a suitable GPU");
