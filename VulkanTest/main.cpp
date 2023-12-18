@@ -705,6 +705,16 @@ private:
     }
 
     void recreateSwapChain() {
+        int width = 0;
+        int height = 0;
+
+        glfwGetFramebufferSize(window, &width, &height);
+
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
+
         vkDeviceWaitIdle(device);
 
         cleanupSwapChain();
@@ -1023,8 +1033,8 @@ private:
         VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
             imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || bFramebufferResized) {
-            bFramebufferResized = false;
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {// || bFramebufferResized) {
+            //bFramebufferResized = false;
             recreateSwapChain();
             return;
         } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
