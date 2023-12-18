@@ -72,6 +72,7 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
 
+    bool bFramebufferResized = false;
     uint32_t currentFrame = 0;
 
     uint32_t extensionCount = 0;
@@ -299,11 +300,18 @@ private:
         }
     }
 
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+        HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->bFramebufferResized = true;
+    }
+
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     }
 
     void initVulkan() {
@@ -1015,7 +1023,8 @@ private:
         VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
             imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || bFramebufferResized) {
+            bFramebufferResized = false;
             recreateSwapChain();
             return;
         } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -1061,7 +1070,8 @@ private:
 
         result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || bFramebufferResized) {
+            bFramebufferResized = false;
             recreateSwapChain();
         } else if (result != VK_SUCCESS) {
             throw std::runtime_error("Failed to present swap chain image!");
