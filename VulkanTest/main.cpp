@@ -684,6 +684,28 @@ private:
         }
     }
 
+    void cleanupSwapChain() {
+        for (const VkFramebuffer framebuffer : swapChainFramebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+
+        for (const VkImageView imageView : swapChainImageViews) {
+            vkDestroyImageView(device, imageView, nullptr);
+        }
+
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+
+    void recreateSwapChain() {
+        vkDeviceWaitIdle(device);
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createFramebuffers();
+    }
+
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
         
@@ -991,8 +1013,15 @@ private:
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
         uint32_t imageIndex;
-        vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
+        VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
             imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
+            return;
+        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("Failed to acquire swap chain image!");
+        }
 
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -1028,12 +1057,20 @@ private:
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
 
-        vkQueuePresentKHR(presentQueue, &presentInfo);
+        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            recreateSwapChain();
+        } else if (result != VK_SUCCESS) {
+            throw std::runtime_error("Failed to present swap chain image!");
+        }
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     } 
 
     void cleanup() {
+        cleanupSwapChain();
+
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
             vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -1041,18 +1078,10 @@ private:
         }
         vkDestroyCommandPool(device, commandPool,  nullptr);
 
-        for (const VkFramebuffer framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-        }
+
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
-
-        for (const VkImageView imageView : swapChainImageViews) {
-            vkDestroyImageView(device, imageView, nullptr);
-        }
-
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
 
         vkDestroyDevice(device, nullptr);
 
