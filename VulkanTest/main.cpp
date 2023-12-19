@@ -419,12 +419,54 @@ private:
 
     void createVertexBuffer() {
         VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
-        createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertexBuffer, vertexBufferMemory);
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+
+        // only used by transfer queue
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, stagingBuffer, stagingBufferMemory);
 
         void* data;
-        vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data);
+        vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
         memcpy(data, vertices.data(), (size_t) bufferSize);
-        vkUnmapMemory(device, vertexBufferMemory);
+        vkUnmapMemory(device, stagingBufferMemory);
+
+        // used by transfer and graphics queue
+        createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_CONCURRENT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    }
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = transferPool;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer transferBuffer;
+        vkAllocateCommandBuffers(device, &allocInfo, &transferBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(transferBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = 0;
+        copyRegion.size = size;
+
+        vkCmdCopyBuffer(transferBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+        vkEndCommandBuffer(transferBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &transferBuffer;
+
+        vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(transferQueue); // in case of multiple transfers could use a Fence here.
+        vkFreeCommandBuffers(device, transferPool, 1, &transferBuffer);
     }
 
     void createSyncObjects() {
@@ -537,7 +579,7 @@ private:
 
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         poolInfo.queueFamilyIndex = queueFamilyIndices.transferFamily.value();
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &transferPool) != VK_SUCCESS) {
