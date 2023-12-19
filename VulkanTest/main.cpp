@@ -937,9 +937,10 @@ private:
     struct QueueFamilyIndices {
         std::optional<uint32_t> graphicsFamily;
         std::optional<uint32_t> presentFamily;
+        std::optional<uint32_t> transferFamily;
 
         bool isComplete() {
-            return graphicsFamily.has_value() && presentFamily.has_value();
+            return graphicsFamily.has_value() && presentFamily.has_value() && transferFamily.has_value();
         }
     };
 
@@ -954,6 +955,9 @@ private:
         for (const VkQueueFamilyProperties& familyProperties : queueFamilyProperties) {
             if (familyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 indices.graphicsFamily = i;
+                // look specifically for a non-graphics transfer queue.
+            } else if (familyProperties.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+                indices.transferFamily = i;
             }
 
             VkBool32 presentSupport = false;
