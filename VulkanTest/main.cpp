@@ -393,7 +393,7 @@ private:
         // why not sizeof Vertex???
         bufferInfo.size = sizeof(Vertex) * vertices.size();
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
         bufferInfo.flags = 0;
 
         if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
