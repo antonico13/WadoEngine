@@ -11,6 +11,12 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <glm/glm.hpp>
+
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+};
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
