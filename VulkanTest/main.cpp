@@ -106,6 +106,8 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
 
+    VkBuffer vertexBuffer;
+
     bool bFramebufferResized = false;
     uint32_t currentFrame = 0;
 
@@ -360,8 +362,23 @@ private:
         createGraphicsPipeline();
         createFramebuffers();
         createCommandPool();
+        createVertexBuffer();
         createCommandBuffers();
         createSyncObjects();
+    }
+
+    void createVertexBuffer() {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        // why not sizeof Vertex???
+        bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.flags = 0;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create vertex buffer!");
+        }
     }
 
     void createSyncObjects() {
@@ -1130,6 +1147,8 @@ private:
 
     void cleanup() {
         cleanupSwapChain();
+
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
