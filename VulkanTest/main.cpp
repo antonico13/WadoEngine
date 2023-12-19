@@ -107,6 +107,7 @@ private:
     std::vector<VkFence> inFlightFences;
 
     VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
 
     bool bFramebufferResized = false;
     uint32_t currentFrame = 0;
@@ -397,6 +398,17 @@ private:
 
         VkMemoryRequirements memRequirements;
         vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, 
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate vertex buffer memory!");
+        }
     }
 
     void createSyncObjects() {
