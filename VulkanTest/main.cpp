@@ -19,6 +19,9 @@
 #include <array>
 #include <glm/glm.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -394,6 +397,7 @@ private:
         createFramebuffers();
         createCommandPool();
         createTransferPool();
+        createTextureImage();
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -401,6 +405,18 @@ private:
         createDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
+    }
+
+    void createTextureImage() {
+        int texWidth;
+        int texHeight;
+        int texChannels;
+        stbi_uc* pixels = stbi_load("Textures/wario.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        VkDeviceSize imageSize = texWidth * texHeight * 4;
+
+        if (!pixels) {
+            throw std::runtime_error("Failed to load texture image!");
+        }
     }
 
     void createDescriptorSets() {
@@ -1482,4 +1498,4 @@ int main() {
     }
 
     return EXIT_SUCCESS;
-}
+}   
