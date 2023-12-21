@@ -1,0 +1,1 @@
+#[[add_library(STB_IMAGE stb_image.h)]]
