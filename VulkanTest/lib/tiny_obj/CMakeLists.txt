@@ -1,0 +1,1 @@
+#[[add_library(TINY_OBJ tiny_obj_loader.h)]]

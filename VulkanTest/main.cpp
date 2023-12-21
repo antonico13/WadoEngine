@@ -30,6 +30,8 @@
 
 #include <unordered_map>
 
+#include "WadoVersion.h"
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -723,6 +725,7 @@ private:
         int texWidth;
         int texHeight;
         int texChannels;
+        #ifdef USE_STB
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -760,6 +763,9 @@ private:
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
+        #else 
+        throw std::runtime_error("Non STB loader currently not implemented");
+        #endif
     }
 
     void generateMipmaps(VkImage image, VkFormat imageFormat, uint32_t texWidth, uint32_t texHeight, uint32_t mipLevels) {
@@ -2008,6 +2014,9 @@ private:
 };
 
 int main() {
+
+    std::cout << "Wado Engine version " << WADO_VERSION_MAJOR << "." << WADO_VERSION_MINOR << std::endl;
+
     HelloTriangleApplication app;
 
     try {
