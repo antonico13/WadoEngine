@@ -576,7 +576,7 @@ private:
         VkFormat colorFormat = swapChainImageFormat;
 
         create2DImage(swapChainExtent.width, swapChainExtent.height, 1, 
-                    msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_SHARING_MODE_EXCLUSIVE,
+                    msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_SHARING_MODE_CONCURRENT,
                     VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage, colorImageMemory);
         colorImageView = create2DColorImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
@@ -1277,9 +1277,9 @@ private:
 
         for (size_t i = 0; i < swapChainImageViews.size(); i++) {
             std::array<VkImageView, 3> attachments = {
-                swapChainImageViews[i],
+                colorImageView,
                 depthImageView,
-                colorImageView
+                swapChainImageViews[i]
             };
 
             VkFramebufferCreateInfo framebufferInfo{};
