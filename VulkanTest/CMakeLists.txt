@@ -16,8 +16,8 @@ if (USE_STB)
 endif()
 
 add_subdirectory(lib)
-find_package(Vulkan REQUIRED FATAL_ERROR)
-find_package(glfw3 REQUIRED FATAL_ERROR)
+find_package(Vulkan REQUIRED)
+find_package(glfw3 REQUIRED)
 #[[find_package(GLM REQUIRED)]]
 target_link_libraries(WadoEngine PUBLIC Vulkan::Vulkan glfw)
 target_include_directories(WadoEngine PUBLIC "${PROJECT_BINARY_DIR}" "${PROJECT_SOURCE_DIR}/lib/include")

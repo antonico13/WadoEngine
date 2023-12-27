@@ -20,7 +20,6 @@
 #include <set>
 #include <fstream>
 #include <array>
-#include <glm/glm.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -100,14 +99,15 @@ const std::vector<uint16_t> indices = {
     0, 1, 2, 2, 3, 0, 
     4, 5, 6, 6, 7, 4
 }; */
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+const uint32_t WIDTH = 1280;
+const uint32_t HEIGHT = 720;
 
 const std::string MODEL_PATH = "Models/viking_room.obj";
 const std::string TEXTURE_PATH = "Textures/viking_room.png";
 
 std::vector<const char*> validationLayers = {
-    "VK_LAYER_KHRONOS_validation"
+    "VK_LAYER_KHRONOS_validation",
+    "VK_LAYER_LUNARG_monitor"
 };
 
 std::vector<const char*> deviceExtensions = {
@@ -190,6 +190,8 @@ private:
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
+
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     bool bFramebufferResized = false;
     uint32_t currentFrame = 0;
@@ -352,10 +354,10 @@ private:
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "Hello Triangle";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
         appInfo.pEngineName = "No Engine";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+        appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
+        appInfo.apiVersion = VK_API_VERSION_1_3;
 
         VkInstanceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -427,7 +429,7 @@ private:
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
@@ -499,6 +501,35 @@ private:
                 indices.push_back(uniqueVertices[vertex]);
             }
         }
+    }
+
+    VkSampleCountFlagBits getMaxUsableSampleCount() {
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+        VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts &
+                                    physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+
+        if (counts & VK_SAMPLE_COUNT_64_BIT) {
+            return VK_SAMPLE_COUNT_64_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_32_BIT) {
+            return VK_SAMPLE_COUNT_32_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_16_BIT) {
+            return VK_SAMPLE_COUNT_16_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_8_BIT) {
+            return VK_SAMPLE_COUNT_8_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_4_BIT) {
+            return VK_SAMPLE_COUNT_4_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_2_BIT) {
+            return VK_SAMPLE_COUNT_2_BIT;
+        }
+
+        return VK_SAMPLE_COUNT_1_BIT;
     }
 
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
@@ -1749,6 +1780,7 @@ private:
         for (const VkPhysicalDevice& device: devices) {
             if (isDeviceSuitable(device)) {
                 physicalDevice = device;
+                msaaSamples = getMaxUsableSampleCount();
                 break;
             } 
         }
