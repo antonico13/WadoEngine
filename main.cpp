@@ -145,6 +145,8 @@ std::vector<const char*> deviceExtensions = {
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 const int PARTICLE_COUNT = 100;
+const double MAX_VELOCITY = 0.5f;
+const double SCALING_FACTOR = 100.0f;
 
 class HelloTriangleApplication {
 public:
@@ -236,6 +238,13 @@ private:
 
     bool bFramebufferResized = false;
     uint32_t currentFrame = 0;
+
+    double currentMouseX;
+    double currentMouseY;
+    double deltaMouseX;
+    double deltaMouseY;
+
+    glm::mat4 previousModel = glm::mat4(1.0f);
 
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
@@ -467,13 +476,31 @@ private:
         app->bFramebufferResized = true;
     }
 
+    void updateMouseDelta(double newXpos, double newYpos) {
+        deltaMouseX = newXpos - currentMouseX;
+        deltaMouseY = newYpos - currentMouseY;
+        currentMouseX = newXpos;
+        currentMouseY = newYpos;
+    }
+
+    static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
+        HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->updateMouseDelta(xpos, ypos);
+    }
+
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        if (glfwRawMouseMotionSupported()) {
+            glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        }
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+        glfwSetCursorPosCallback(window, cursorPositionCallback);
+        glfwGetCursorPos(window, &currentMouseX, &currentMouseY);
     }
 
     void initVulkan() {
@@ -2147,6 +2174,8 @@ private:
         while ((!glfwWindowShouldClose(window))) {
             glfwPollEvents();
             drawFrame();
+            glfwGetCursorPos(window, &currentMouseX, &currentMouseY);
+            updateMouseDelta(currentMouseX, currentMouseY);
         }
 
         vkDeviceWaitIdle(device);
@@ -2279,14 +2308,21 @@ private:
     } 
 
     void updateUniformBuffer(uint32_t currentFrame) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
+        //static auto startTime = std::chrono::high_resolution_clock::now();
 
-        auto currentTime = std::chrono::high_resolution_clock::now();
+        //glm::vec2 deltaPos = glm::normalize(glm::vec2(deltaMouseX, deltaMouseY));
 
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        //auto currentTime = std::chrono::high_resolution_clock::now();
+
+        //float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        float velocityX = std::clamp(deltaMouseX / SCALING_FACTOR, -MAX_VELOCITY, MAX_VELOCITY);
+        float velocityY = std::clamp(deltaMouseY / SCALING_FACTOR, -MAX_VELOCITY, MAX_VELOCITY);
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        previousModel = ubo.model;
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
 
