@@ -54,6 +54,12 @@ struct Particle {
     }
 };
 
+struct PointLight {
+    glm::vec3 lightPos; // assume this is given in cam space
+    glm::vec3 lightColor;
+    float lightPower; 
+};
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -61,9 +67,10 @@ struct UniformBufferObject {
 };
 
 struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-    glm::vec2 texCoord;
+    alignas(16) glm::vec3 pos;
+    alignas(16) glm::vec3 color;
+    alignas(8)  glm::vec2 texCoord;
+    alignas(16) glm::vec3 normal;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -73,8 +80,8 @@ struct Vertex {
         return bindingDescription;
     };
 
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+    static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
         attributeDescriptions[0].binding= 0;
         attributeDescriptions[0].location = 0;
         attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -87,12 +94,16 @@ struct Vertex {
         attributeDescriptions[2].location = 2;
         attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
         attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[3].binding= 0;
+        attributeDescriptions[3].location = 3;
+        attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[3].offset = offsetof(Vertex, normal);
        
         return attributeDescriptions;
     };
 
     bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+        return pos == other.pos && color == other.color && texCoord == other.texCoord && normal == other.normal;
     }
 };
 
@@ -227,6 +238,16 @@ private:
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
+
+    // would only need 1 buffer if we did calculations in vertex and passed this instead
+    // to next stage... maybe should do like that
+    std::vector<VkBuffer> lightBuffers;
+    std::vector<VkDeviceMemory> lightBuffersMemory;
+    std::vector<void*> lightBuffersMapped;
+
+    glm::vec3 lightPos = glm::vec3(0.0, 0.0, 0.0);
+    glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
+    float lightPower = 40.0;
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
@@ -405,7 +426,7 @@ private:
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "Hello Triangle";
         appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-        appInfo.pEngineName = "No Engine";
+        appInfo.pEngineName = "Wado Engine";
         appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
         appInfo.apiVersion = VK_API_VERSION_1_3;
 
@@ -488,6 +509,28 @@ private:
         app->updateMouseDelta(xpos, ypos);
     }
 
+    static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+        HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        if (key == GLFW_KEY_E && action == GLFW_PRESS) {
+            app->lightPos.x += 5.0f;
+        }
+        if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
+            app->lightPos.x -= 5.0f;
+        }
+        if (key == GLFW_KEY_W && action == GLFW_PRESS) {
+            app->lightPos.y -= 5.0f;
+        }
+        if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+            app->lightPos.y += 5.0f;
+        }
+        if (key == GLFW_KEY_A && action == GLFW_PRESS) {
+            app->lightPower += 5.0f;
+        }
+        if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
+            app->lightPower -= 5.0f;
+        }
+    }
+
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -500,6 +543,7 @@ private:
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
         glfwSetCursorPosCallback(window, cursorPositionCallback);
+        glfwSetKeyCallback(window, keyCallback);
         glfwGetCursorPos(window, &currentMouseX, &currentMouseY);
     }
 
@@ -526,8 +570,10 @@ private:
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
+        createLightBuffers();
         createDescriptorPool();
         createDescriptorSets();
+        std::cout << "Finished making descriptor sets";
         createCommandBuffers();
         createSyncObjects();
     }
@@ -560,6 +606,12 @@ private:
                 };
 
                 vertex.color = {1.0f, 1.0f, 1.0f};
+
+                vertex.normal = {
+                    attrib.normals[3 * index.normal_index+ 0],
+                    attrib.normals[3 * index.normal_index+ 1],
+                    attrib.normals[3 * index.normal_index+ 2]
+                };
 
                 if (uniqueVertices.count(vertex) == 0) {
                     uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
@@ -1060,7 +1112,12 @@ private:
             imageInfo.imageView = textureImageView;
             imageInfo.sampler = textureSampler;
 
-            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+            VkDescriptorBufferInfo lightBufferInfo{};
+            lightBufferInfo.buffer = lightBuffers[i];
+            lightBufferInfo.offset = 0;
+            lightBufferInfo.range = sizeof(PointLight);
+
+            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i];
             descriptorWrites[0].dstBinding = 0;
@@ -1080,6 +1137,16 @@ private:
             descriptorWrites[1].pBufferInfo = nullptr;
             descriptorWrites[1].pImageInfo = &imageInfo;
             descriptorWrites[1].pTexelBufferView = nullptr;
+
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].dstArrayElement = 0;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pBufferInfo = &lightBufferInfo;
+            descriptorWrites[2].pImageInfo = nullptr;
+            descriptorWrites[2].pTexelBufferView = nullptr;
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1109,7 +1176,7 @@ private:
     void createDescriptorPool() {
         std::array<VkDescriptorPoolSize, 2> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2; // is it in total or at the same time?
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         
@@ -1171,7 +1238,14 @@ private:
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         samplerLayoutBinding.pImmutableSamplers = nullptr;
 
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
+        VkDescriptorSetLayoutBinding lightLayoutBinding{};
+        lightLayoutBinding.binding = 2;
+        lightLayoutBinding.descriptorCount = 1;
+        lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        lightLayoutBinding.pImmutableSamplers = nullptr;
+
+        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {uboLayoutBinding, samplerLayoutBinding, lightLayoutBinding};
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1240,6 +1314,21 @@ private:
             vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
         }
     }
+
+    void createLightBuffers() {
+        VkDeviceSize bufferSize = sizeof(PointLight);
+
+        lightBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        lightBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+        lightBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, lightBuffers[i], lightBuffersMemory[i]);
+        
+            vkMapMemory(device, lightBuffersMemory[i], 0, bufferSize, 0, &lightBuffersMapped[i]);
+        }
+    }
+
 
     // should abstract to "stageToBuffer"
 
@@ -2193,6 +2282,8 @@ private:
     }*/
 
     void drawFrame() {
+
+        //std::cout << "Drawing frame" << std::endl;
         
         // Wait until compute step is done
         /*vkWaitForFences(device, 1, &computeInFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
@@ -2326,9 +2417,24 @@ private:
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
 
+        if (ubo.proj == glm::mat4(0.0f)) {
+            std::cout << "Empty projection" << std::endl;
+        }
+
+        if (ubo.view == glm::mat4(0.0f)) {
+            std::cout << "Empty view" << std::endl;
+        }
+
         ubo.proj[1][1] *= -1;
 
         memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+
+        PointLight light{};
+        light.lightPower = lightPower;
+        light.lightPos = glm::vec3(ubo.view * ubo.model * glm::vec4(lightPos, 1.0));
+        light.lightColor = lightColor;
+
+        memcpy(lightBuffersMapped[currentFrame], &light, sizeof(light)); 
     }
 
     void cleanup() {
