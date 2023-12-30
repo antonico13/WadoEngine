@@ -55,9 +55,12 @@ struct Particle {
 };
 
 struct PointLight {
-    glm::vec3 lightPos; // assume this is given in cam space
-    glm::vec3 lightColor;
-    float lightPower; 
+    alignas(16) glm::vec3 lightPos; // assume this is given in cam space
+    alignas(16) glm::vec3 lightColor;
+    alignas(4) float lightPower; 
+    alignas(4) bool enableDiffuse;
+    alignas(4) bool enableSpecular;
+    alignas(4) bool enableAmbient;
 };
 
 struct UniformBufferObject {
@@ -247,7 +250,10 @@ private:
 
     glm::vec3 lightPos = glm::vec3(0.0, 0.0, 0.0);
     glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
-    float lightPower = 40.0;
+    float lightPower = 40.0f;
+    bool enableAmbient = true;
+    bool enableDiffuse = true;
+    bool enableSpecular = true;
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
@@ -512,22 +518,31 @@ private:
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
         HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
         if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-            app->lightPos.x += 5.0f;
+            app->lightPos.x += 1.0f;
         }
         if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
-            app->lightPos.x -= 5.0f;
+            app->lightPos.x -= 1.0f;
         }
         if (key == GLFW_KEY_W && action == GLFW_PRESS) {
-            app->lightPos.y -= 5.0f;
+            app->lightPos.y -= 1.0f;
         }
         if (key == GLFW_KEY_S && action == GLFW_PRESS) {
-            app->lightPos.y += 5.0f;
+            app->lightPos.y += 1.0f;
         }
         if (key == GLFW_KEY_A && action == GLFW_PRESS) {
             app->lightPower += 5.0f;
         }
         if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
             app->lightPower -= 5.0f;
+        }
+        if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
+            app->enableDiffuse = !app->enableDiffuse;
+        }
+        if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
+            app->enableSpecular = !app->enableSpecular;
+        }
+        if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
+            app->enableAmbient = !app->enableAmbient;
         }
     }
 
@@ -2433,6 +2448,9 @@ private:
         light.lightPower = lightPower;
         light.lightPos = glm::vec3(ubo.view * ubo.model * glm::vec4(lightPos, 1.0));
         light.lightColor = lightColor;
+        light.enableDiffuse = enableDiffuse;
+        light.enableSpecular = enableSpecular;
+        light.enableAmbient = enableAmbient;
 
         memcpy(lightBuffersMapped[currentFrame], &light, sizeof(light)); 
     }

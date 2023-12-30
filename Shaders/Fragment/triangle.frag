@@ -1,7 +1,7 @@
 #version 450
 
 #define MAX_LIGHTS 128
-#define SHININESS 16
+#define SHININESS 50
 
 /*struct PointLight {
     vec3 lightPos;
@@ -21,12 +21,15 @@ layout (binding = 2) uniform PointLight {
                         vec3 lightPos; // assume this is given in cam space
                         vec3 lightColor;
                         float lightPower; 
+                        bool enableDiffuse;
+                        bool enableSpecular;
+                        bool enableAmbient;
                     } light;
 
 void main() {
-    vec3 diffuseColor = texture(texSampler, fragTexCoord).xyz;
-    vec3 ambientColor = vec3(0.1, 0.0, 0.0);
-    vec3 specularColor = vec3(1.0, 1.0, 1.0);
+    vec3 diffuseColor = light.enableDiffuse ? texture(texSampler, fragTexCoord).xyz : vec3(0.0, 0.0, 0.0);
+    vec3 ambientColor = light.enableAmbient ? vec3(0.1, 0.0, 0.0) : vec3(0.0, 0.0, 0.0);
+    vec3 specularColor = light.enableSpecular ? vec3(1.0, 1.0, 1.0) : vec3(0.0, 0.0, 0.0);
 
     vec3 normal = normalize(normalCamspace);
     vec3 lightDir = light.lightPos - posCamspace;
@@ -39,6 +42,6 @@ void main() {
     float specularAngle = max(dot(halfwayDir, normal), 0.0);
     float specularCoefficient = pow(specularAngle, SHININESS);
     
-    vec3 color = ambientColor + ((diffuseColor * diffuseCoefficient * + specularColor * specularCoefficient) * light.lightColor * light.lightPower) / (lightDistance * lightDistance);
+    vec3 color = ambientColor + ((diffuseColor * diffuseCoefficient + specularColor * specularCoefficient) * light.lightColor * light.lightPower) / (lightDistance * lightDistance);
     outColor = vec4(color, 1.0); 
 }
