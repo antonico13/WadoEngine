@@ -139,7 +139,7 @@ const std::vector<uint16_t> indices = {
 const uint32_t WIDTH = 1280;
 const uint32_t HEIGHT = 720;
 
-const std::string MODEL_PATH = "Models/viking_room.obj";
+const std::string MODEL_PATH = "quaxly/pm1016_00_00.obj";
 const std::string TEXTURE_PATH = "Textures/viking_room.png";
 
 std::vector<const char*> validationLayers = {
@@ -270,6 +270,8 @@ private:
     double currentMouseY;
     double deltaMouseX;
     double deltaMouseY;
+
+    glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
 
     glm::mat4 previousModel = glm::mat4(1.0f);
 
@@ -546,6 +548,11 @@ private:
         }
     }
 
+    static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+        HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->cameraPos.y += yoffset;
+    }
+
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -559,6 +566,7 @@ private:
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
         glfwSetCursorPosCallback(window, cursorPositionCallback);
         glfwSetKeyCallback(window, keyCallback);
+        glfwSetScrollCallback(window, scrollCallback);
         glfwGetCursorPos(window, &currentMouseX, &currentMouseY);
     }
 
@@ -2429,8 +2437,8 @@ private:
         ubo.model = glm::rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         previousModel = ubo.model;
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+        ubo.view = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 1000.0f);
 
         if (ubo.proj == glm::mat4(0.0f)) {
             std::cout << "Empty projection" << std::endl;
