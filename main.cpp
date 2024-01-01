@@ -248,6 +248,11 @@ private:
     std::vector<VkDeviceMemory> lightBuffersMemory;
     std::vector<void*> lightBuffersMapped;
 
+
+    // Deferred stuff;
+    VkRenderPass gbufferPass;
+    VkRenderPass deferredPass;
+
     glm::vec3 lightPos = glm::vec3(0.0, 0.0, 0.0);
     glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
     float lightPower = 40.0f;
@@ -633,6 +638,51 @@ private:
         createDeferredSyncObjects();
     }
 
+    void createDeferredRenderPass() {
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
+        // so I don't have to add layout transitions for presenting just yet
+        // no need for MSAAs 
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // need to use it later 
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference colorAttachmentRef{};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+        
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = 1;
+        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &deferredPass) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create rendering deferred render pass");
+        }
+    }
+
     void createGBufferPass() {
         VkAttachmentDescription diffuseAttachment{};
         diffuseAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
@@ -740,7 +790,7 @@ private:
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &gbufferPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create base deferred render pass");
         }
     }
