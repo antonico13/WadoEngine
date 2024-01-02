@@ -684,9 +684,11 @@ private:
     }
 
     void createGBufferPass() {
+
+        // First sub-pass, g-buffer 
         VkAttachmentDescription diffuseAttachment{};
-        diffuseAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
-        // so I don't have to add layout transitions for presenting just yet
+        diffuseAttachment.format = swapChainImageFormat; //i think a simpler lower bandwidth format is 
+        // probably better here, shouldn't use swapchain format for G-Buffers but using for now
         // no need for MSAAs 
         diffuseAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
         diffuseAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -694,15 +696,14 @@ private:
         diffuseAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         diffuseAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         diffuseAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        diffuseAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // idk if there's a better layout.
+        diffuseAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // idk if there's a better layout.
 
         VkAttachmentReference diffuseAttachmentRef{};
         diffuseAttachmentRef.attachment = 0;
         diffuseAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription specularAttachment{};
-        specularAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
-        // so I don't have to add layout transitions for presenting just yet
+        specularAttachment.format = swapChainImageFormat; 
         // no need for MSAAs 
         specularAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
         specularAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -710,15 +711,14 @@ private:
         specularAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         specularAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         specularAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        specularAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // idk if there's a better layout.
+        specularAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // idk if there's a better layout.
 
         VkAttachmentReference specularAttachmentRef{};
         specularAttachmentRef.attachment = 1;
         specularAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription meshAttachment{};
-        meshAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
-        // so I don't have to add layout transitions for presenting just yet
+        meshAttachment.format = swapChainImageFormat; 
         // no need for MSAAs 
         meshAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
         meshAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -726,15 +726,14 @@ private:
         meshAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         meshAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         meshAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        meshAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // idk if there's a better layout.
+        meshAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // idk if there's a better layout.
 
         VkAttachmentReference meshAttachmentRef{};
         meshAttachmentRef.attachment = 2;
         meshAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription positionAttachment{};
-        positionAttachment.format = swapChainImageFormat; // idk if should use swapchain format for G-Buffers but using for now 
-        // so I don't have to add layout transitions for presenting just yet
+        positionAttachment.format = swapChainImageFormat; 
         // no need for MSAAs 
         positionAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
         positionAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -742,7 +741,7 @@ private:
         positionAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         positionAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         positionAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        positionAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // idk if there's a better layout.
+        positionAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // idk if there's a better layout.
 
         VkAttachmentReference positionAttachmentRef{};
         positionAttachmentRef.attachment = 3;
@@ -758,39 +757,74 @@ private:
         depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-        std::array<VkAttachmentReference, 4> colorAttachments = {diffuseAttachmentRef, specularAttachmentRef, meshAttachmentRef, positionAttachmentRef};
+        std::array<VkAttachmentReference, 4> colorAttachmentsGBuffer = {diffuseAttachmentRef, specularAttachmentRef, meshAttachmentRef, positionAttachmentRef};
 
         VkAttachmentReference depthAttachmentRef{};
         depthAttachmentRef.attachment = 4;
         depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
-        subpass.pColorAttachments = colorAttachments.data();
-        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+        VkSubpassDescription subpassGBuffer{};
+        subpassGBuffer.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpassGBuffer.colorAttachmentCount = static_cast<uint32_t>(colorAttachmentsGBuffer.size());
+        subpassGBuffer.pColorAttachments = colorAttachmentsGBuffer.data();
+        subpassGBuffer.pDepthStencilAttachment = &depthAttachmentRef;
+
+        VkAttachmentDescription deferredColorAttachment{};
+        deferredColorAttachment.format = swapChainImageFormat;
+        // no need for MSAAs 
+        deferredColorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
+        deferredColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        deferredColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // need to use it later 
+        deferredColorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        deferredColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        deferredColorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        deferredColorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference deferredColorAttachmentRef{};
+        deferredColorAttachmentRef.attachment = 0;
+        deferredColorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpassDeferred{};
+        subpassDeferred.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpassDeferred.colorAttachmentCount = 1;
+        subpassDeferred.pColorAttachments = &deferredColorAttachmentRef;
+        subpassDeferred.inputAttachmentCount = static_cast<uint32_t>(colorAttachmentsGBuffer.size());
+        subpassDeferred.pInputAttachments = colorAttachmentsGBuffer.data();
         
-        VkSubpassDependency dependency{};
+        VkSubpassDependency dependencyGBuffer{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
         dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        // we need to wait for the second fragment pass to finish reading. 
         dependency.srcAccessMask = 0;
 
         dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        
+        VkSubpassDependency dependencyDeferred{};
+        dependency.srcSubpass = 0; // wait for G-Buffer 
+        dependency.dstSubpass = 1; // we are subpass 1 
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT; 
+        dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; // wait for previous subpass to finish first 
 
-        std::array<VkAttachmentDescription, 5> attachments = {diffuseAttachment, specularAttachment, meshAttachment, positionAttachment, depthAttachment};
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        std::array<VkSubpassDescription, 2> subpasses = {subpassGBuffer, subpassDeferred};
+        std::array<VkSubpassDependency, 2> dependencies = {dependencyGBuffer, dependencyDeferred};
+
+        std::array<VkAttachmentDescription, 6> attachments = {diffuseAttachment, specularAttachment, meshAttachment, positionAttachment, depthAttachment, deferredColorAttachment};
 
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         renderPassInfo.pAttachments = attachments.data();
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
+        renderPassInfo.subpassCount = static_cast<uint32_t>(subpasses.size());
+        renderPassInfo.pSubpasses = subpasses.data();
+        renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.data());
+        renderPassInfo.pDependencies = dependencies.data();
 
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &gbufferPass) != VK_SUCCESS) {
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &deferredRenderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create base deferred render pass");
         }
     }
@@ -1836,80 +1870,58 @@ private:
         }
     }
 
-    void createDeferredRenderPass() {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapChainImageFormat;
-        colorAttachment.samples = msaaSamples;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    void createGBufferDescriptorSetLayout() {
+        VkDescriptorSetLayoutBinding uboLayoutBinding{};
+        uboLayoutBinding.binding = 0;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        uboLayoutBinding.pImmutableSamplers = nullptr;
 
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+        samplerLayoutBinding.binding = 1;
+        samplerLayoutBinding.descriptorCount = 5;
+        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        samplerLayoutBinding.pImmutableSamplers = nullptr;
 
-        VkAttachmentDescription depthAttachment{};
-        depthAttachment.format = findDepthFormat();
-        depthAttachment.samples = msaaSamples;
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
 
-        VkAttachmentReference depthAttachmentRef{};
-        depthAttachmentRef.attachment = 1;
-        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
 
-        VkAttachmentDescription colorAttachmentResolve{};
-        colorAttachmentResolve.format = swapChainImageFormat;
-        colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentReference colorAttachmentResolveRef{};
-        colorAttachmentResolveRef.attachment = 2;
-        colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-        subpass.pDepthStencilAttachment = &depthAttachmentRef;
-        subpass.pResolveAttachments = &colorAttachmentResolveRef;
-
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.srcAccessMask = 0;
-
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-        std::array<VkAttachmentDescription, 3> attachments = {colorAttachment, depthAttachment, colorAttachmentResolve};
-
-        VkRenderPassCreateInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        renderPassInfo.pAttachments = attachments.data();
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
-
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create render pass");
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &gBufferDescriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor set layout!");
         }
+    }
 
+    void createDeferredDescriptorSetLayout() {
+        VkDescriptorSetLayoutBinding materialLayoutBinding{};
+        materialLayoutBinding.binding = 0;
+        materialLayoutBinding.descriptorCount = 4;
+        materialLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        materialLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        materialLayoutBinding.pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutBinding lightLayoutBinding{};
+        lightLayoutBinding.binding = 1;
+        lightLayoutBinding.descriptorCount = 1;
+        lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        lightLayoutBinding.pImmutableSamplers = nullptr;
+
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {materialLayoutBinding, lightLayoutBinding};
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &deferredDescriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor set layout!");
+        }
     }
 
     void createRenderPass() {
