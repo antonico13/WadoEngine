@@ -289,6 +289,9 @@ private:
     std::vector<VkDeviceMemory> body_b_memories;
     std::vector<VkImageView> body_a_views;
     std::vector<VkImageView> body_b_views;
+
+    std::vector<VkDescriptorSet> gBufferDescriptorSets;
+    std::vector<VkDescriptorSet> deferredDescriptorSets;
         
 
     glm::vec3 lightPos = glm::vec3(0.0, 0.0, 0.0);
@@ -673,6 +676,7 @@ private:
         createLightBuffers();
         createDeferredDescriptorPool();
         createDeferredDescriptorSets();
+        createGBufferDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
     }
@@ -2377,7 +2381,56 @@ private:
     }
 
     void createGBufferDescriptorSets() {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, gBufferDescriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = deferredDescriptorPool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        allocInfo.pSetLayouts = layouts.data();
 
+        gBufferDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &allocInfo, gBufferDescriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate descriptor sets!");
+        }
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            std::array<VkDescriptorImageInfo, 5> imageInfos{};
+            for (int j = 0; j < 5; j++) {
+                imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfos[j].imageView = body_a_views[j]; // this is wrong 
+                imageInfos[j].sampler = textureSampler; 
+            }
+
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = uniformBuffers[i];
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(UniformBufferObject);
+
+            std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
+            for (int j = 0; j < 5; j++) {
+                descriptorWrites[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrites[j].dstSet = gBufferDescriptorSets[i];
+                descriptorWrites[j].dstBinding = j;
+                descriptorWrites[j].dstArrayElement = 0;
+                descriptorWrites[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;;
+                descriptorWrites[j].descriptorCount = 1;
+                descriptorWrites[j].pBufferInfo = nullptr;
+                descriptorWrites[j].pImageInfo = &imageInfos[j];
+                descriptorWrites[j].pTexelBufferView = nullptr; 
+            }
+
+            descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[5].dstSet = gBufferDescriptorSets[i];
+            descriptorWrites[5].dstBinding = 5;
+            descriptorWrites[5].dstArrayElement = 0;
+            descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[5].descriptorCount = 1;
+            descriptorWrites[5].pBufferInfo = &bufferInfo;
+            descriptorWrites[5].pImageInfo = nullptr;
+            descriptorWrites[5].pTexelBufferView = nullptr;
+
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr); 
+        }
     }
 
     void createDeferredDescriptorSets() {
@@ -2397,7 +2450,7 @@ private:
             std::array<VkDescriptorImageInfo, 4> imageInfos{};
             for (int j = 0; j < 4; j++) {
                 imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos[j].imageView = deferredAttachmentImages[j]; // this is wrong 
+                imageInfos[j].imageView = deferredAttachmentViews[j]; // this is wrong 
                 imageInfos[j].sampler = nullptr; 
             }
 
