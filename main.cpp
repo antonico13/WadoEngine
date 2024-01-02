@@ -621,7 +621,7 @@ private:
         createDeferredGraphicsPipeline();
         createCommandPool();
         createTransferPool();
-        createColorResources();
+        createDeferredColorResources();
         createDepthResources();
         createDeferredFramebuffers();
         createTextureImage();
@@ -1822,6 +1822,18 @@ private:
             if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create framebuffers");
             }
+        }
+    }
+
+    void createDeferredColorResources() {
+        VkFormat colorFormat = swapChainImageFormat;
+        // deferred image, specular image, mesh image, position image 
+        for (int i = 0; i < 4; i++) {
+            create2DImage(swapChainExtent.width, swapChainExtent.height, 1, 
+                    1, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_SHARING_MODE_EXCLUSIVE,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, deferredAttachmentImages[i], deferredAttachmentsMemory[i]);
+            defferedAttachmentViews[i] = create2DColorImageView(deferredAttachmentImages[i], colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1); 
         }
     }
 
