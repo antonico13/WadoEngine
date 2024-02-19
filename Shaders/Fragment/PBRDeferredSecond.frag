@@ -13,17 +13,17 @@ layout (location = 0) in vec2 fragTexCoord; // all maps have the same size (?), 
 
 // xyz = base diffuse color, w = roughness 
 //layout (binding = 0) uniform sampler2D materialSamplers[4]; // I'm sampling from images here in the framebuffer, not textures...
-layout (input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput diffuseInput;
-layout (input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput specularInput;
-layout (input_attachment_index = 2, set = 1, binding = 2) uniform subpassInput meshInput;
-layout (input_attachment_index = 3, set = 1, binding = 3) uniform subpassInput positionInput;
+layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput diffuseInput;
+layout (input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput specularInput; 
+layout (input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput meshInput; 
+layout (input_attachment_index = 3, set = 0, binding = 3) uniform subpassInput positionInput; 
 
 // xyz = normal, w = reflectance 
 /*layout (binding = 1) uniform sampler2D specularSampler; 
 // x = ambient occlusion, y = metallic properties, zw = other flags 
 layout (binding = 2) uniform sampler2D meshSampler; 
 layout (binding = 3) uniform sampler2D positionSampler;*/
-layout (set = 1, binding = 4) uniform PointLight {
+layout (binding = 4) uniform PointLight {
                         vec3 lightPos; // assume this is given in cam space
                         vec3 lightColor;
                         float lightPower; 
@@ -108,7 +108,7 @@ void main() {
     float specularFactor = 4 * ni * no;
     specularFactor = specularFactor > 0.0 ? (1.0 / specularFactor) : 0.0;
 
-    vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor;
+    vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
 
-    outColor = ao * vec4(lightContribution * ni * (roughness * lambertContribution + metallic * ggxContribution), 1.0);
+    outColor = vec4(1.0, 0.0, 0.0, 0.0);//vec4(diffuseProperties.xyz, 1.0); //ao * vec4(lightContribution * ni * (roughness * lambertContribution + metallic * ggxContribution), 1.0);
 }
