@@ -676,11 +676,11 @@ private:
         //std::cout << "Created deferred render pass" << std::endl;
         createGBufferDescriptorSetLayout();
         //std::cout << "Created G-Buffer descriptor set layouts" << std::endl;
-        //createDeferredDescriptorSetLayout();
+        createDeferredDescriptorSetLayout();
         //std::cout << "Created deferred descriptor set layouts" << std::endl;
         createGBufferPipeline();
         //std::cout << "Created GBuffer pipeline" << std::endl;
-        //createDeferredGraphicsPipeline();
+        createDeferredGraphicsPipeline();
         //std::cout << "Created deferred pipeline" << std::endl;
         createCommandPool();
         //std::cout << "Created command pool" << std::endl;
@@ -712,7 +712,7 @@ private:
         //std::cout << "Created deferred descriptor pool" << std::endl;
         createGBufferDescriptorSets();
         //std::cout << "Created G Buffer descriptor sets" << std::endl;
-        //createDeferredDescriptorSets();
+        createDeferredDescriptorSets();
         //std::cout << "Created deferred descriptor sets" << std::endl;
         createCommandBuffers();
         //std::cout << "Created command buffers" << std::endl;
@@ -735,8 +735,7 @@ private:
         diffuseAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         diffuseAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         diffuseAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        /// !!!!! made the first ATTACHMENT PRESENT 
-        diffuseAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // need to transfer to shader read only at some point, with subpass 
+        diffuseAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // need to transfer to shader read only at some point, with subpass 
 
         VkAttachmentReference diffuseAttachmentRef{};
         diffuseAttachmentRef.attachment = 0;
@@ -755,7 +754,7 @@ private:
         specularAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         specularAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         specularAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        specularAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        specularAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference specularAttachmentRef{};
         specularAttachmentRef.attachment = 1;
@@ -774,7 +773,7 @@ private:
         meshAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         meshAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         meshAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        meshAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        meshAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference meshAttachmentRef{};
         meshAttachmentRef.attachment = 2;
@@ -793,7 +792,7 @@ private:
         positionAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         positionAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         positionAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        positionAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // should this be shader read only?
+        positionAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // should this be shader read only?
 
         VkAttachmentReference positionAttachmentRef{};
         positionAttachmentRef.attachment = 3;
@@ -819,7 +818,7 @@ private:
 
         std::array<VkAttachmentReference, 4> colorAttachmentsGBuffer = {diffuseAttachmentRef, specularAttachmentRef, meshAttachmentRef, positionAttachmentRef};
         
-        //std::array<VkAttachmentReference, 4> inputAttachmentsDeferred = {diffuseInputAttachmentRef, specularInputAttachmentRef, meshInputAttachmentRef, positionInputAttachmentRef};
+        std::array<VkAttachmentReference, 4> inputAttachmentsDeferred = {diffuseInputAttachmentRef, specularInputAttachmentRef, meshInputAttachmentRef, positionInputAttachmentRef};
 
         VkSubpassDescription subpassGBuffer{};
         subpassGBuffer.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -827,7 +826,7 @@ private:
         subpassGBuffer.pColorAttachments = colorAttachmentsGBuffer.data();
         subpassGBuffer.pDepthStencilAttachment = &depthAttachmentRef;
 
-        /*VkAttachmentDescription deferredColorAttachment{};
+        VkAttachmentDescription deferredColorAttachment{};
         deferredColorAttachment.format = swapChainImageFormat;
         // no need for MSAAs 
         deferredColorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;//msaaSamples;
@@ -847,81 +846,40 @@ private:
         subpassDeferred.colorAttachmentCount = 1;
         subpassDeferred.pColorAttachments = &deferredColorAttachmentRef;    
         subpassDeferred.inputAttachmentCount = static_cast<uint32_t>(inputAttachmentsDeferred.size());
-        subpassDeferred.pInputAttachments = inputAttachmentsDeferred.data(); */
+        subpassDeferred.pInputAttachments = inputAttachmentsDeferred.data();
         
         VkSubpassDependency dependencyGBuffer{};
         dependencyGBuffer.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependencyGBuffer.dstSubpass = 0;
-        dependencyGBuffer.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencyGBuffer.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         // we need to wait for the second fragment pass to finish reading. 
-        dependencyGBuffer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        dependencyGBuffer.srcAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 
         dependencyGBuffer.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependencyGBuffer.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        /*VkSubpassDependency dependencyDeferred{};
+        VkSubpassDependency dependencyDeferred{};
         dependencyDeferred.srcSubpass = 0; // wait for G-Buffer 
         dependencyDeferred.dstSubpass = 1;
-        dependencyDeferred.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependencyDeferred.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; 
+        dependencyDeferred.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencyDeferred.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; 
 
         dependencyDeferred.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        dependencyDeferred.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT; */
+        dependencyDeferred.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT; 
 
-        /*VkSubpassDependency firstDep{};
-        firstDep.srcSubpass = VK_SUBPASS_EXTERNAL;
-        firstDep.dstSubpass = 0;
+        std::array<VkSubpassDescription, 2> subpasses = {subpassGBuffer, subpassDeferred};
+        std::array<VkSubpassDependency, 2> dependencies = {dependencyGBuffer, dependencyDeferred};
 
-        firstDep.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        firstDep.srcAccessMask = 0;
-
-        firstDep.dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        firstDep.dstAccessMask = 0;
-
-        VkSubpassDependency secondDep{};
-        secondDep.srcSubpass = 0;
-        secondDep.dstSubpass = 1;
-
-        secondDep.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        secondDep.srcAccessMask = 0;
-
-        secondDep.dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        secondDep.dstAccessMask = 0;
-
-        VkSubpassDependency thirdDep{};
-        thirdDep.srcSubpass = 1;
-        thirdDep.dstSubpass = VK_SUBPASS_EXTERNAL;
-
-        thirdDep.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        thirdDep.srcAccessMask = 0;
-
-        thirdDep.dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        thirdDep.dstAccessMask = 0; */
-
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.srcAccessMask = 0;
-
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-        //std::array<VkSubpassDescription, 2> subpasses = {subpassGBuffer, subpassDeferred};
-        //std::array<VkSubpassDependency, 3> dependencies = {firstDep, secondDep, thirdDep};
-
-        std::array<VkAttachmentDescription, 5> attachments = {diffuseAttachment, specularAttachment, meshAttachment, positionAttachment, depthAttachment}; //, deferredColorAttachment};
-
-        //std::array<VkAttachmentDescription, 3> attachments = {diffuseAttachment, specularAttachment, depthAttachment }; //meshAttachment, positionAttachment, depthAttachment};
+        std::array<VkAttachmentDescription, 6> attachments = {diffuseAttachment, specularAttachment, meshAttachment, positionAttachment, depthAttachment, deferredColorAttachment};
 
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         renderPassInfo.pAttachments = attachments.data();
-        renderPassInfo.subpassCount = 1; //static_cast<uint32_t>(subpasses.size());
-        renderPassInfo.pSubpasses = &subpassGBuffer;//subpasses.data();
-        renderPassInfo.dependencyCount = 1; //static_cast<uint32_t>(dependencies.size());
-        renderPassInfo.pDependencies = &dependencyGBuffer; //dependencies.data();
+        renderPassInfo.subpassCount = static_cast<uint32_t>(subpasses.size());
+        renderPassInfo.pSubpasses = subpasses.data();
+        renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        renderPassInfo.pDependencies = dependencies.data();
 
         if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &deferredRenderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create base deferred render pass");
@@ -2093,12 +2051,13 @@ private:
         renderPassInfo.renderArea.offset = {0, 0};
         renderPassInfo.renderArea.extent = swapChainExtent;
 
-        std::array<VkClearValue, 5> clearValues{};
+        std::array<VkClearValue, 6> clearValues{};
         clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[1].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[2].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[3].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[4].depthStencil = {1.0f, 0};
+        clearValues[5].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
 
@@ -2145,7 +2104,7 @@ private:
         //std::cout << "Called draw index" << std::endl;
 
          //Next subpass 
-        /*vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE); 
+        vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE); 
 
         //std::cout << "Started deferred subpass" << std::endl;
 
@@ -2159,7 +2118,7 @@ private:
 
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
-        //std::cout << "Called draw screen triangle" << std::endl; */
+        //std::cout << "Called draw screen triangle" << std::endl; 
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -2230,12 +2189,13 @@ private:
 
         for (size_t i = 0; i < swapChainImageViews.size(); i++) {
 
-            std::array<VkImageView, 5> attachments = {
-                swapChainImageViews[i],//deferredAttachmentViews[0], // should these be double/2D? 
+            std::array<VkImageView, 6> attachments = {
+                deferredAttachmentViews[0], // should these be double/2D? 
                 deferredAttachmentViews[1],
                 deferredAttachmentViews[2],
                 deferredAttachmentViews[3],
-                depthImageView
+                depthImageView,
+                swapChainImageViews[i]
             };
 
             VkFramebufferCreateInfo framebufferInfo{};
