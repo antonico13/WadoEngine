@@ -110,5 +110,5 @@ void main() {
 
     vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
 
-    outColor = vec4(1.0, 0.0, 0.0, 0.0);//vec4(diffuseProperties.xyz, 1.0); //ao * vec4(lightContribution * ni * (roughness * lambertContribution + metallic * ggxContribution), 1.0);
+    outColor = ao * vec4(lightContribution * ni * (roughness * lambertContribution + metallic * ggxContribution), 1.0);
 }
