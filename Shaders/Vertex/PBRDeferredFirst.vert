@@ -19,7 +19,7 @@ layout (binding = 0) uniform UniformBufferObject {
 
 void main() {
     fragTexCoord = inTexCoord;
-    outBaseFresnel = 0.6f;
+    outBaseFresnel = 0.05;
     postionCamspace = (ubo.view * ubo.model * vec4(inPosition, 1.0)).xyz;
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
 }

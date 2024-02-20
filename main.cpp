@@ -321,7 +321,8 @@ private:
     double deltaMouseX;
     double deltaMouseY;
 
-    glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 center = glm::vec3(0.0f, 5.0f, 0.0f);
 
     glm::mat4 previousModel = glm::mat4(1.0f);
 
@@ -612,7 +613,7 @@ private:
 
     static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
         HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-        app->cameraPos.y += yoffset;
+        //app->cameraPos.y += yoffset;
     }
 
     void initWindow() {
@@ -3682,20 +3683,18 @@ private:
         float velocityY = std::clamp(deltaMouseY / SCALING_FACTOR, -MAX_VELOCITY, MAX_VELOCITY);
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        previousModel = ubo.model;
-        ubo.view = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::mat4(1.0);// rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        //ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        //previousModel = ubo.model;
+
+        glm::mat4 XRotation = glm::rotate(glm::mat4(1.0f), velocityX * glm::radians(10.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+        glm::mat4 YRotation = glm::rotate(glm::mat4(1.0f), velocityY * glm::radians(10.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+
+        center = glm::vec3((YRotation * XRotation * glm::vec4(center, 0.0)));
+        
+        ubo.view = glm::lookAt(cameraPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 1000.0f);
 
-        if (ubo.proj == glm::mat4(0.0f)) {
-            //std::cout << "Empty projection" << std::endl;
-        }
-
-        if (ubo.view == glm::mat4(0.0f)) {
-            //std::cout << "Empty view" << std::endl;
-        }
- 
         ubo.proj[1][1] *= -1;
 
         memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
@@ -3767,8 +3766,6 @@ private:
 };
 
 int main() {
-
-    //std::cout << "Wado Engine version " << WADO_VERSION_MAJOR << "." << WADO_VERSION_MINOR << std::endl;
 
     HelloTriangleApplication app;
 

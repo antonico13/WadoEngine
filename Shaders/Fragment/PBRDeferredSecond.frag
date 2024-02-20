@@ -3,7 +3,7 @@
 #define MAX_LIGHTS 128
 #define PI 3.1415926538
 
-const float alphaG = 1.5;
+const float alphaG = 0.394;
 
 layout (location = 0) out vec4 outColor;
 
@@ -33,30 +33,23 @@ layout (binding = 4) uniform PointLight {
                     } light;
 
 
-// calculate the tan square of an angle given its cosine
-float tanSquared(float cosine) {
-    return 1.0 / (cosine * cosine) - 1.0;
-}
-
-// definition from Walter et al 
+// definition from Brian Karis Epic Games 
 // Pre - v, m and n are normalized 
-float shadowMaskGGX(vec3 v, vec3 m, vec3 n, float alphaG) {
-    float cosvn = dot(n, v); // maybe should make sure this > 0.0 at all times?
-    float cosvm = dot(m, v);
-    float maskFilter = max(cosvm / cosvn, 0.0);
-    // tan^2 of theta v, where theta v is the angle between n and v 
-    return (maskFilter * 2.0) / (1.0 + sqrt(1.0 + alphaG * alphaG * tanSquared(cosvn)));
+float shadowMaskGGX(vec3 v, vec3 n, float k) {
+    float cosvn = max(dot(n, v), 0.0); 
+    return cosvn / (cosvn * (1.0 - k) + 1.0);
 }
 
-// calculate 
-float micronormalDistributionGGX(vec3 m, vec3 n, float alphaG) {
-    float cosmn = dot(m, n);
-    float distFilter = max(cosmn, 0.0);
-    return (alphaG * alphaG * distFilter) / (PI * pow(cosmn, 4.0) * (alphaG * alphaG + tanSquared(cosmn)));
+// calculate micronormal distribution 
+// GGX, adapted by Brian Karis, Epic Games 
+float micronormalDistributionGGX(vec3 h, vec3 n, float alphaG) {
+    float alphaSq = alphaG * alphaG;
+    return alphaSq / pow(PI * (pow( max(dot(n, h), 0.0), 2.0) * (alphaSq - 1.0) + 1.0), 2.0);
 }
 
+// From Schlick 93 
 float fresnelCoefficientSchlick(vec3 i, vec3 m, float f) {
-    float u = dot(i, m);
+    float u = max(dot(i, m), 0.0);
     return f + (1.0 - f) * pow(1.0 - u, 5.0);
 }
 
@@ -68,47 +61,48 @@ void main() {
     vec4 meshProperties = subpassLoad(meshInput);
 
     vec3 baseColor = diffuseProperties.xyz; // diffuse color
-    float roughness = diffuseProperties.w; // this is diffuseContribution 
-    vec3 normal = specularProperties.xyz; // chill 
-    float reflectance = specularProperties.w; // i think this is fresnel 
-    float ao = meshProperties.x; // ambient occlusion, i'm guessing multiply everything by this to get shaded parts 
-    float metallic = meshProperties.y; // this is shininess i think 
+    float roughness = diffuseProperties.w;
+    vec3 normal = normalize(specularProperties.xyz); 
+    float reflectance = specularProperties.w; // base fresnel 
+    float ao = meshProperties.x; // ambient occlusion
+    float metallic = meshProperties.y; // this is shininess (?)
     vec3 posCamspace = subpassLoad(positionInput).xyz;
     //vec3 emissive; // this would be ambient, since it always emits something. 
 
     vec3 diffuseColor = light.enableDiffuse ? baseColor : vec3(0.0, 0.0, 0.0);
     //vec3 ambientColor = light.enableAmbient ? vec3(0.1, 0.0, 0.0) : vec3(0.0, 0.0, 0.0);
-    // not sure what to do here 
+    // right now light is white, only one per scene. This would need to be the color from the light itself 
     vec3 specularColor = light.enableSpecular ? vec3(1.0, 1.0, 1.0) : vec3(0.0, 0.0, 0.0);
 
     // Use Lambert diffuse, GGX specular 
     
-    vec3 lightDir = light.lightPos - posCamspace; // this is i 
+    vec3 lightDir = light.lightPos - posCamspace; // this is l
     float lightDistance = length(lightDir);
     lightDir = normalize(lightDir);
-    vec3 viewDir = normalize(-posCamspace); // this is o
-    vec3 halfwayDir = normalize(lightDir + viewDir); // hr
+    vec3 viewDir = normalize(-posCamspace); // this is v
+    vec3 halfwayDir = sign(dot(normal, lightDir)) * normalize(lightDir + viewDir); // h
 
     // contribution of the light 
     vec3 lightContribution = light.lightColor * light.lightPower / (lightDistance * lightDistance);
 
-    vec3 lambertContribution = diffuseColor;
+    vec3 lambertContribution = diffuseColor / PI; // Brian Karis, Epic Games 
 
     
     // calculate specular contributions now 
-    // GGX shadow mask, distribution, Schlick fresnel 
-    float shadowMask = shadowMaskGGX(lightDir, halfwayDir, normal, alphaG) * shadowMaskGGX(viewDir, halfwayDir, normal, alphaG);
-    float distribution = micronormalDistributionGGX(halfwayDir, normal, alphaG);
-    float fresnel = fresnelCoefficientSchlick(lightDir, halfwayDir, reflectance);
+    // GGX shadow mask, microfacet distribution, Schlick fresnel 
+    float shadowMaskK =  (roughness + 1.0) * (roughness + 1.0) / 8.0;
+    float shadowMask = shadowMaskGGX(lightDir, normal, shadowMaskK) * shadowMaskGGX(viewDir, normal, shadowMaskK);
+    float distribution = micronormalDistributionGGX(halfwayDir, normal, roughness * roughness);
+    float fresnel = fresnelCoefficientSchlick(lightDir, halfwayDir, reflectance); // should this be the view vector instead here?
 
-    float ni = max(dot(normal, lightDir), 0.0);
-    float no = max(dot(normal, viewDir), 0.0);
+    float cosnl = abs(dot(normal, lightDir));
+    float cosnv = abs(dot(normal, viewDir));
 
     // make sure we never divide by 0 
-    float specularFactor = 4 * ni * no;
+    float specularFactor = 4 * cosnl * cosnv;
     specularFactor = specularFactor > 0.0 ? (1.0 / specularFactor) : 0.0;
 
     vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
 
-    outColor = ao * vec4(lightContribution * ni * (roughness * lambertContribution + metallic * ggxContribution), 1.0);
+    outColor = vec4(lambertContribution, 1.0);
 }
