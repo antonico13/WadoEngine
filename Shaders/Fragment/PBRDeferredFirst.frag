@@ -9,7 +9,7 @@ layout (location = 2) out vec4 meshProperties;
 layout (location = 3) out vec4 positionProperties; 
 
 layout (location = 0) in vec2 fragTexCoord;
-layout (location = 1) in vec3 posCamspace;  
+layout (location = 1) in vec3 posWorldSpace;  
 layout (location = 2) in float baseFresnel; // reflectance? 
 
 // at some point could probably combine some of these to save even more space?
@@ -34,6 +34,6 @@ void main() {
     // Nothing yet. 
     meshProperties.zw = vec2(1.0, 1.0);
 
-    positionProperties.xyz = posCamspace;
+    positionProperties.xyz = posWorldSpace;
     positionProperties.w = 1.0;
 }

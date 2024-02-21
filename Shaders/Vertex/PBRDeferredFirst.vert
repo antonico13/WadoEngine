@@ -8,7 +8,7 @@ layout (location = 2) in vec2 inTexCoord;
 layout (location = 3) in vec3 inNormal;
 
 layout (location = 0) out vec2 fragTexCoord;
-layout (location = 1) out vec3 postionCamspace;
+layout (location = 1) out vec3 posWorldSpace;
 layout (location = 2) out float outBaseFresnel;
 
 layout (binding = 0) uniform UniformBufferObject {
@@ -20,6 +20,6 @@ layout (binding = 0) uniform UniformBufferObject {
 void main() {
     fragTexCoord = inTexCoord;
     outBaseFresnel = 0.05;
-    postionCamspace = (ubo.view * ubo.model * vec4(inPosition, 1.0)).xyz;
+    posWorldSpace = inPosition; // (ubo.view * ubo.model * vec4(inPosition, 1.0)).xyz;
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
 }

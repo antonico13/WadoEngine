@@ -55,7 +55,7 @@ struct Particle {
 };
 
 struct PointLight {
-    alignas(16) glm::vec3 lightPos; // assume this is given in cam space
+    alignas(16) glm::vec3 lightPos; // all calculations in world space 
     alignas(16) glm::vec3 lightColor;
     alignas(4) float lightPower; 
     alignas(4) bool enableDiffuse;
@@ -67,6 +67,10 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+};
+
+struct CameraProperties {
+    alignas(16) glm::vec3 cameraPos; // in world space 
 };
 
 struct Vertex {
@@ -263,7 +267,11 @@ private:
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
 
-    // would only need 1 buffer if we did calculations in vertex and passed this instead
+    std::vector<VkBuffer> cameraPropertyBuffers;
+    std::vector<VkDeviceMemory> cameraPropertyBuffersMemory;
+    std::vector<void*> cameraPropertyBuffersMapped;
+
+    // would only need 1 buffer if i did calculations in vertex and passed this instead
     // to next stage... maybe should do like that
     std::vector<VkBuffer> lightBuffers;
     std::vector<VkDeviceMemory> lightBuffersMemory;
@@ -741,6 +749,8 @@ private:
         //std::cout << "Created uniform buffer" << std::endl;
         createLightBuffers();
         //std::cout << "Created light buffers buffer" << std::endl;
+        createCameraBuffers();
+        //std::cout << "Created camera buffers" << std::endl;
         createDeferredDescriptorPool();
         //std::cout << "Created deferred descriptor pool" << std::endl;
         createGBufferDescriptorSets();
@@ -1826,6 +1836,21 @@ private:
         }
     }
 
+    void createCameraBuffers() {
+        VkDeviceSize bufferSize = sizeof(CameraProperties);
+
+        cameraPropertyBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraPropertyBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraPropertyBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, cameraPropertyBuffers[i], cameraPropertyBuffersMemory[i]);
+        
+            vkMapMemory(device, cameraPropertyBuffersMemory[i], 0, bufferSize, 0, &cameraPropertyBuffersMapped[i]);
+        }
+    }
+
+
 
     // should abstract to "stageToBuffer"
 
@@ -2712,7 +2737,12 @@ private:
             lightBufferInfo.offset = 0;
             lightBufferInfo.range = sizeof(PointLight);
 
-            std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
+            VkDescriptorBufferInfo cameraBufferInfo{};
+            cameraBufferInfo.buffer = cameraPropertyBuffers[i];
+            cameraBufferInfo.offset = 0;
+            cameraBufferInfo.range = sizeof(CameraProperties);
+
+            std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
             for (int j = 0 ; j < 4; j++) {
                 descriptorWrites[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 descriptorWrites[j].dstSet = deferredDescriptorSets[i];
@@ -2734,6 +2764,16 @@ private:
             descriptorWrites[4].pBufferInfo = &lightBufferInfo;
             descriptorWrites[4].pImageInfo = nullptr; 
             descriptorWrites[4].pTexelBufferView = nullptr;
+
+            descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[5].dstSet = deferredDescriptorSets[i];
+            descriptorWrites[5].dstBinding = 5;
+            descriptorWrites[5].dstArrayElement = 0;
+            descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[5].descriptorCount = 1;
+            descriptorWrites[5].pBufferInfo = &cameraBufferInfo;
+            descriptorWrites[5].pImageInfo = nullptr; 
+            descriptorWrites[5].pTexelBufferView = nullptr;
             
             ////std::cout << "About to update deferred descriptor sets" << std::endl;
 
@@ -2796,7 +2836,7 @@ private:
 
 
     void createDeferredDescriptorSetLayout() {
-        std::array<VkDescriptorSetLayoutBinding, 5> bindings;
+        std::array<VkDescriptorSetLayoutBinding, 6> bindings;
 
         for (int i = 0; i < 4; i++) {
             bindings[i].binding = i;
@@ -2812,6 +2852,13 @@ private:
         bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         bindings[4].pImmutableSamplers = nullptr;
+
+        // camera binding
+        bindings[5].binding = 5;
+        bindings[5].descriptorCount = 1;
+        bindings[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[5].pImmutableSamplers = nullptr;
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -3764,13 +3811,19 @@ private:
 
         PointLight light{};
         light.lightPower = lightPower;
-        light.lightPos = glm::vec3(ubo.view * ubo.model * glm::vec4(lightPos, 1.0));
+        // headlight 
+        light.lightPos = cameraPos;
         light.lightColor = lightColor;
         light.enableDiffuse = enableDiffuse;
         light.enableSpecular = enableSpecular;
         light.enableAmbient = enableAmbient;
 
         memcpy(lightBuffersMapped[currentFrame], &light, sizeof(light)); 
+
+        CameraProperties camera{};
+        camera.cameraPos = cameraPos;
+
+        memcpy(cameraPropertyBuffersMapped[currentFrame], &camera, sizeof(camera)); 
     }
 
     void cleanup() {

@@ -3,8 +3,6 @@
 #define MAX_LIGHTS 128
 #define PI 3.1415926538
 
-const float alphaG = 0.394;
-
 layout (location = 0) out vec4 outColor;
 
 layout (location = 0) in vec2 fragTexCoord; // all maps have the same size (?), use one texture coordinate for everything 
@@ -24,7 +22,7 @@ layout (input_attachment_index = 3, set = 0, binding = 3) uniform subpassInput p
 layout (binding = 2) uniform sampler2D meshSampler; 
 layout (binding = 3) uniform sampler2D positionSampler;*/
 layout (binding = 4) uniform PointLight {
-                        vec3 lightPos; // assume this is given in cam space
+                        vec3 lightPos; // this is in world space 
                         vec3 lightColor;
                         float lightPower; 
                         bool enableDiffuse;
@@ -32,6 +30,9 @@ layout (binding = 4) uniform PointLight {
                         bool enableAmbient;
                     } light;
 
+layout (binding = 5) uniform CameraProperties {
+                        vec3 cameraPos;
+                    } camera;
 
 // definition from Brian Karis Epic Games 
 // Pre - v, m and n are normalized 
@@ -44,13 +45,17 @@ float shadowMaskGGX(vec3 v, vec3 n, float k) {
 // GGX, adapted by Brian Karis, Epic Games 
 float micronormalDistributionGGX(vec3 h, vec3 n, float alphaG) {
     float alphaSq = alphaG * alphaG;
-    return alphaSq / pow(PI * (pow( max(dot(n, h), 0.0), 2.0) * (alphaSq - 1.0) + 1.0), 2.0);
+    return alphaSq / pow(PI * (pow( max(dot(n, h), 0.0),  2.0) * (alphaSq - 1.0) + 1.0), 2.0);
 }
 
 // From Schlick 93 
 float fresnelCoefficientSchlick(vec3 i, vec3 m, float f) {
     float u = max(dot(i, m), 0.0);
     return f + (1.0 - f) * pow(1.0 - u, 5.0);
+}
+
+vec3 shiftNormal(vec3 normal) {
+    return 0.5 * normal + 0.5;
 }
 
 
@@ -62,11 +67,11 @@ void main() {
 
     vec3 baseColor = diffuseProperties.xyz; // diffuse color
     float roughness = diffuseProperties.w;
-    vec3 normal = normalize(specularProperties.xyz); 
+    vec3 normal = normalize(shiftNormal(specularProperties.xyz)); 
     float reflectance = specularProperties.w; // base fresnel 
     float ao = meshProperties.x; // ambient occlusion
     float metallic = meshProperties.y; // this is shininess (?)
-    vec3 posCamspace = subpassLoad(positionInput).xyz;
+    vec3 position = subpassLoad(positionInput).xyz;
     //vec3 emissive; // this would be ambient, since it always emits something. 
 
     vec3 diffuseColor = light.enableDiffuse ? baseColor : vec3(0.0, 0.0, 0.0);
@@ -76,10 +81,10 @@ void main() {
 
     // Use Lambert diffuse, GGX specular 
     
-    vec3 lightDir = light.lightPos - posCamspace; // this is l
+    vec3 lightDir = light.lightPos - position; // this is l
     float lightDistance = length(lightDir);
     lightDir = normalize(lightDir);
-    vec3 viewDir = normalize(-posCamspace); // this is v
+    vec3 viewDir = normalize(camera.cameraPos - position); // this is v
     vec3 halfwayDir = sign(dot(normal, lightDir)) * normalize(lightDir + viewDir); // h
 
     // contribution of the light 
@@ -95,8 +100,8 @@ void main() {
     float distribution = micronormalDistributionGGX(halfwayDir, normal, roughness * roughness);
     float fresnel = fresnelCoefficientSchlick(lightDir, halfwayDir, reflectance); // should this be the view vector instead here?
 
-    float cosnl = abs(dot(normal, lightDir));
-    float cosnv = abs(dot(normal, viewDir));
+    float cosnl = max(dot(normal, lightDir), 0.0);
+    float cosnv = max(dot(normal, viewDir), 0.0);
 
     // make sure we never divide by 0 
     float specularFactor = 4 * cosnl * cosnv;
@@ -104,5 +109,5 @@ void main() {
 
     vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
 
-    outColor = vec4(lambertContribution, 1.0);
+    outColor = vec4(cosnl, 0.0, 0.0, 1.0);
 }
