@@ -321,10 +321,18 @@ private:
     double deltaMouseX;
     double deltaMouseY;
 
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::vec3 center = glm::vec3(0.0f, 5.0f, 0.0f);
+    bool heldW = false;
+    bool heldS = false;
+    bool heldA = false;
+    bool heldD = false;
+    double moveDeltaX = 0.0;
+    double moveDeltaY = 0.0;
 
-    glm::mat4 previousModel = glm::mat4(1.0f);
+    glm::vec3 cameraPos = glm::vec3(0.0f, 20.0f, -50.0f);
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    glm::vec3 lookingDirection = glm::vec3(0.0f, 0.0f, 1.0f);
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + lookingDirection, glm::vec3(0.0f, 0.0f, 1.0f));
 
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
@@ -608,6 +616,30 @@ private:
         }
         if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
             app->enableAmbient = !app->enableAmbient;
+        }
+        if (key == GLFW_KEY_W && action == GLFW_PRESS) {
+            app->heldW = true;
+        }
+        if (key == GLFW_KEY_W && action == GLFW_RELEASE) {
+            app->heldW = false;
+        }
+        if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+            app->heldS = true;
+        }
+        if (key == GLFW_KEY_S && action == GLFW_RELEASE) {
+            app->heldS = false;
+        }
+        if (key == GLFW_KEY_A && action == GLFW_PRESS) {
+            app->heldA = true;
+        }
+        if (key == GLFW_KEY_A && action == GLFW_RELEASE) {
+            app->heldA = false;
+        }
+        if (key == GLFW_KEY_D && action == GLFW_PRESS) {
+            app->heldD = true;
+        }
+        if (key == GLFW_KEY_D && action == GLFW_RELEASE) {
+            app->heldD = false;
         }
     }
 
@@ -3679,20 +3711,55 @@ private:
 
         //float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        float velocityX = std::clamp(deltaMouseX / SCALING_FACTOR, -MAX_VELOCITY, MAX_VELOCITY);
-        float velocityY = std::clamp(deltaMouseY / SCALING_FACTOR, -MAX_VELOCITY, MAX_VELOCITY);
+        float velocityX = std::clamp(deltaMouseX, -MAX_VELOCITY, MAX_VELOCITY);
+        float velocityY = std::clamp(deltaMouseY, -MAX_VELOCITY, MAX_VELOCITY);
+
+        float moveVelocityX = 0.0f;
+        float moveVelocityZ = 0.0f;
+
+        if (heldA) {
+            moveVelocityX +=0.2f;
+        }
+
+        
+        if (heldD) {
+            moveVelocityX -=0.2f;
+        }
+
+        
+        if (heldW) {
+            moveVelocityZ +=0.2f;
+        }
+
+        
+        if (heldS) {
+            moveVelocityZ -=0.2f;
+        }
+
+        pitch += velocityY;
+        yaw += velocityX;
 
         UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0);// rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0), glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f));// rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         //ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         //previousModel = ubo.model;
 
-        glm::mat4 XRotation = glm::rotate(glm::mat4(1.0f), velocityX * glm::radians(10.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        glm::mat4 YRotation = glm::rotate(glm::mat4(1.0f), velocityY * glm::radians(10.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+        glm::vec3 moveVector = glm::vec3(1.0f, 0.0f, 0.0f) * moveVelocityX + glm::vec3(0.0f, 0.0f, 1.0f) * moveVelocityZ;
 
-        center = glm::vec3((YRotation * XRotation * glm::vec4(center, 0.0)));
-        
-        ubo.view = glm::lookAt(cameraPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
+        cameraPos += moveVector;
+        //center += moveVector;
+
+
+        glm::mat4 sceneRotation = glm::rotate(glm::mat4(1.0f), glm::radians(yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+        sceneRotation = glm::rotate(sceneRotation, glm::radians(pitch), glm::vec3(1.0f, 0.0f, 0.0f));
+
+        //lookingDirection = glm::vec3(sceneRotation * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+
+        std::cout << pitch << std::endl;
+        std::cout << yaw << std::endl;
+
+        view = glm::lookAt(cameraPos, cameraPos + lookingDirection, glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.view = view;
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 1000.0f);
 
         ubo.proj[1][1] *= -1;
