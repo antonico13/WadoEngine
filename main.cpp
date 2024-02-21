@@ -332,7 +332,7 @@ private:
     float yaw = 0.0f;
     float pitch = 0.0f;
     glm::vec3 lookingDirection = glm::vec3(0.0f, 0.0f, 1.0f);
-    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + lookingDirection, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 viewRotation = glm::mat4(1.0f);
 
     uint32_t extensionCount = 0;
     std::vector<VkExtensionProperties> extensions;
@@ -3714,6 +3714,11 @@ private:
         float velocityX = std::clamp(deltaMouseX, -MAX_VELOCITY, MAX_VELOCITY);
         float velocityY = std::clamp(deltaMouseY, -MAX_VELOCITY, MAX_VELOCITY);
 
+        float deadZone = 0.05f;
+
+        velocityX = std::abs(velocityX) > deadZone ? velocityX : 0.0f;
+        velocityY = std::abs(velocityY) > deadZone ? velocityY : 0.0f;
+
         float moveVelocityX = 0.0f;
         float moveVelocityZ = 0.0f;
 
@@ -3736,30 +3741,21 @@ private:
             moveVelocityZ -=0.2f;
         }
 
-        pitch += velocityY;
-        yaw += velocityX;
+        pitch = velocityY;
+        yaw = velocityX;
 
         UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0), glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f));// rotate(previousModel, velocityX * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        //ubo.model = glm::rotate(ubo.model, velocityY * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        //previousModel = ubo.model;
+        ubo.model = glm::mat4(1.0f);
 
-        glm::vec3 moveVector = glm::vec3(1.0f, 0.0f, 0.0f) * moveVelocityX + glm::vec3(0.0f, 0.0f, 1.0f) * moveVelocityZ;
+        glm::vec3 moveVector = glm::vec3(viewRotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) * moveVelocityX + viewRotation * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f) * moveVelocityZ);
 
         cameraPos += moveVector;
-        //center += moveVector;
 
 
-        glm::mat4 sceneRotation = glm::rotate(glm::mat4(1.0f), glm::radians(yaw), glm::vec3(0.0f, 1.0f, 0.0f));
-        sceneRotation = glm::rotate(sceneRotation, glm::radians(pitch), glm::vec3(1.0f, 0.0f, 0.0f));
+        viewRotation = glm::rotate(viewRotation, glm::radians(yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+        viewRotation = glm::rotate(viewRotation, glm::radians(pitch), glm::vec3(1.0f, 0.0f, 0.0f));
 
-        //lookingDirection = glm::vec3(sceneRotation * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
-
-        std::cout << pitch << std::endl;
-        std::cout << yaw << std::endl;
-
-        view = glm::lookAt(cameraPos, cameraPos + lookingDirection, glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.view = view;
+        ubo.view = glm::lookAt(cameraPos, cameraPos + glm::vec3(viewRotation * glm::vec4(lookingDirection, 0.0f)), glm::vec3(0.0f, 1.0f, 0.0f));;
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 1000.0f);
 
         ubo.proj[1][1] *= -1;
