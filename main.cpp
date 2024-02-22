@@ -2693,7 +2693,7 @@ private:
                                             VK_COLOR_COMPONENT_G_BIT | 
                                             VK_COLOR_COMPONENT_B_BIT |
                                             VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.blendEnable = VK_FALSE;
         colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -2831,7 +2831,7 @@ private:
                 descriptorWrites[j].descriptorCount = static_cast<uint32_t>(imageInfos[j - 1].size());
                 descriptorWrites[j].pBufferInfo = nullptr;
                 descriptorWrites[j].pImageInfo = imageInfos[j - 1].data();
-                descriptorWrites[j].pTexelBufferView = nullptr; 
+                descriptorWrites[j].pTexelBufferView = nullptr;
             }
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr); 
