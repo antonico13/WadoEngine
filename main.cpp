@@ -104,8 +104,8 @@ struct Vertex {
         attributeDescriptions[2].offset = offsetof(Vertex, normal);
         attributeDescriptions[3].binding= 0;
         attributeDescriptions[3].location = 3;
-        attributeDescriptions[4].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[4].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[3].offset = offsetof(Vertex, texCoord);
         attributeDescriptions[4].binding= 0;
         attributeDescriptions[4].location = 4;
         attributeDescriptions[4].format = VK_FORMAT_R8G8_UINT;
@@ -275,8 +275,8 @@ private:
     std::vector<VkSemaphore> computeFinishedSemaphores;
     std::vector<VkFence> computeInFlightFences;
     
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+    uint32_t verticesSize = 0;
+    uint32_t indicesSize = 0;
 
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
@@ -1962,6 +1962,7 @@ private:
         }
 
         VkDeviceSize bufferSize = sizeof(allIndices[0]) * allIndices.size();
+        indicesSize = allIndices.size();
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
 
@@ -1991,6 +1992,7 @@ private:
         }
 
         VkDeviceSize bufferSize = sizeof(Vertex) * allVertices.size();
+        verticesSize = allVertices.size();
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
 
@@ -2192,7 +2194,7 @@ private:
 
         //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indicesSize), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -2268,7 +2270,7 @@ private:
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gBufferPipelineLayout, 0, 1, &gBufferDescriptorSets[currentFrame], 0, nullptr);
         ////std::cout << "Bound G-buffer descriptor sets" << std::endl;
         //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indicesSize), 1, 0, 0, 0);
 
         //std::cout << "Called draw index" << std::endl;
 
