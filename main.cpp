@@ -1016,10 +1016,10 @@ private:
                 }
 
                 //vertices.push_back(vertex);
-                mainModel.subObjects[i].indices.push_back(offset + uniqueVertices[vertex]);
+                mainModel.subObjects[i].indices.push_back(indexOffset + uniqueVertices[vertex]);
             }
 
-            offset += uniqueVertices.size();
+            indexOffset += uniqueVertices.size();
         }
     }
 
@@ -1958,7 +1958,7 @@ private:
         std::vector<uint32_t> allIndices;
         
         for (int i = 0; i < mainModel.subObjects.size(); i++) {
-            allIndices.insert(allIndices.end(), mainModel.subObjects[i].indices.start(), mainModel.subObjects[i].indices.end());
+            allIndices.insert(allIndices.end(), mainModel.subObjects[i].indices.begin(), mainModel.subObjects[i].indices.end());
         }
 
         VkDeviceSize bufferSize = sizeof(allIndices[0]) * allIndices.size();
@@ -1987,7 +1987,7 @@ private:
         std::vector<Vertex> allVertices;
         
         for (int i = 0; i < mainModel.subObjects.size(); i++) {
-            allVertices.insert(allVertices.end(), mainModel.subObjects[i].vertices.start(), mainModel.subObjects[i].vertices.end());
+            allVertices.insert(allVertices.end(), mainModel.subObjects[i].vertices.begin(), mainModel.subObjects[i].vertices.end());
         }
 
         VkDeviceSize bufferSize = sizeof(Vertex) * allVertices.size();
@@ -2785,7 +2785,7 @@ private:
             std::array<VkDescriptorImageInfo, 5> imageInfos{};
             for (int j = 0; j < 5; j++) {
                 imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos[j].imageView = body_a_views[j]; // need to change this to support the full body
+                imageInfos[j].imageView = bodyATextures.textureViews[j]; // need to change this to support the full body
                 imageInfos[j].sampler = textureSampler; // this fine or do we need sampler per texture?
             }
 
