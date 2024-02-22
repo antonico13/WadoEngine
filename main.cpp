@@ -979,6 +979,7 @@ private:
         {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 2}, {9, 2} };
 
         int objCount = 10;
+        int indexOffset = 0;
         mainModel.subObjects.resize(objCount);
         for (int i = 0; i < objCount; i++) {
             tinyobj::shape_t shape = shapes[i];
@@ -1010,13 +1011,15 @@ private:
                 vertex.texIndex = textureDataMap[i];
 
                 if (uniqueVertices.count(vertex) == 0) {
-                    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    uniqueVertices[vertex] = static_cast<uint32_t>(mainModel.subObjects[i].vertices.size());
                     mainModel.subObjects[i].vertices.push_back(vertex);
                 }
 
                 //vertices.push_back(vertex);
-                mainModel.subObjects[i].indices.push_back(uniqueVertices[vertex]);
+                mainModel.subObjects[i].indices.push_back(offset + uniqueVertices[vertex]);
             }
+
+            offset += uniqueVertices.size();
         }
     }
 
@@ -1951,8 +1954,14 @@ private:
     // should abstract to "stageToBuffer"
 
     void createIndexBuffer() {
-        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
+        std::vector<uint32_t> allIndices;
+        
+        for (int i = 0; i < mainModel.subObjects.size(); i++) {
+            allIndices.insert(allIndices.end(), mainModel.subObjects[i].indices.start(), mainModel.subObjects[i].indices.end());
+        }
+
+        VkDeviceSize bufferSize = sizeof(allIndices[0]) * allIndices.size();
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
 
