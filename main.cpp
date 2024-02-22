@@ -88,8 +88,8 @@ struct Vertex {
         return bindingDescription;
     };
 
-    static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
+    static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
         attributeDescriptions[0].binding= 0;
         attributeDescriptions[0].location = 0;
         attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -742,7 +742,7 @@ private:
     void initVulkanDeferred() {
         // Make a renderer class at some point so we can support deferred, forward, full ray tracing 
         createInstance();
-        //std::cout << "Created instance" << std::endl;
+        std::cout << "Created instance" << std::endl;
         setupDebugMessenger();
         createSurface();
         pickPhysicalDevice();
@@ -750,53 +750,53 @@ private:
         createSwapChain();
         createImageViews();
         createDeferredRenderPass();
-        //std::cout << "Created deferred render pass" << std::endl;
+        std::cout << "Created deferred render pass" << std::endl;
         createGBufferDescriptorSetLayout();
-        //std::cout << "Created G-Buffer descriptor set layouts" << std::endl;
+        std::cout << "Created G-Buffer descriptor set layouts" << std::endl;
         createDeferredDescriptorSetLayout();
-        //std::cout << "Created deferred descriptor set layouts" << std::endl;
+        std::cout << "Created deferred descriptor set layouts" << std::endl;
         createGBufferPipeline();
-        //std::cout << "Created GBuffer pipeline" << std::endl;
+        std::cout << "Created GBuffer pipeline" << std::endl;
         createDeferredGraphicsPipeline();
-        //std::cout << "Created deferred pipeline" << std::endl;
+        std::cout << "Created deferred pipeline" << std::endl;
         createCommandPool();
-        //std::cout << "Created command pool" << std::endl;
+        std::cout << "Created command pool" << std::endl;
         createTransferPool();
-        //std::cout << "Created transfer pool" << std::endl;
+        std::cout << "Created transfer pool" << std::endl;
         createDeferredColorResources();
-        //std::cout << "Created deferred color resources" << std::endl;
+        std::cout << "Created deferred color resources" << std::endl;
         createDepthResources();
-        //std::cout << "Created depth resources" << std::endl;
+        std::cout << "Created depth resources" << std::endl;
         createDeferredFramebuffers();
-        //std::cout << "Created deferred framebuffers" << std::endl;
+        std::cout << "Created deferred framebuffers" << std::endl;
         createPBRTextureImages();
-        //std::cout << "Created PBR texture images" << std::endl;
+        std::cout << "Created PBR texture images" << std::endl;
         createPBRTextureImageViews();
-        //std::cout << "Created PBR texture image views" << std::endl;
+        std::cout << "Created PBR texture image views" << std::endl;
         createTextureSampler();
-        //std::cout << "Created PBR texture sampler" << std::endl;
+        std::cout << "Created PBR texture sampler" << std::endl;
         loadModel();
-        //std::cout << "Made it to loading objects" << std::endl;
+        std::cout << "Made it to loading objects" << std::endl;
         createVertexBuffer();
-        //std::cout << "Created vertex buffer" << std::endl;
+        std::cout << "Created vertex buffer" << std::endl;
         createIndexBuffer();
-        //std::cout << "Created index buffer" << std::endl;
+        std::cout << "Created index buffer" << std::endl;
         createUniformBuffers();
-        //std::cout << "Created uniform buffer" << std::endl;
+        std::cout << "Created uniform buffer" << std::endl;
         createLightBuffers();
-        //std::cout << "Created light buffers buffer" << std::endl;
+        std::cout << "Created light buffers buffer" << std::endl;
         createCameraBuffers();
-        //std::cout << "Created camera buffers" << std::endl;
+        std::cout << "Created camera buffers" << std::endl;
         createDeferredDescriptorPool();
-        //std::cout << "Created deferred descriptor pool" << std::endl;
+        std::cout << "Created deferred descriptor pool" << std::endl;
         createGBufferDescriptorSets();
-        //std::cout << "Created G Buffer descriptor sets" << std::endl;
+        std::cout << "Created G Buffer descriptor sets" << std::endl;
         createDeferredDescriptorSets();
-        //std::cout << "Created deferred descriptor sets" << std::endl;
+        std::cout << "Created deferred descriptor sets" << std::endl;
         createCommandBuffers();
-        //std::cout << "Created command buffers" << std::endl;
+        std::cout << "Created command buffers" << std::endl;
         createSyncObjects();
-        //std::cout << "Created sync objects" << std::endl;
+        std::cout << "Created sync objects" << std::endl;
     }
 
     void createDeferredRenderPass() {
