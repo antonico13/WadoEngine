@@ -2784,11 +2784,25 @@ private:
         }
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            std::array<VkDescriptorImageInfo, 5> imageInfos{};
+            std::array<std::array<VkDescriptorImageInfo, 3>, 5> imageInfos{};
+
             for (int j = 0; j < 5; j++) {
-                imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos[j].imageView = bodyATextures.textureViews[j]; // need to change this to support the full body
-                imageInfos[j].sampler = textureSampler; // this fine or do we need sampler per texture?
+                std::array<VkDescriptorImageInfo, 3> innerImageInfos{};
+
+                innerImageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                innerImageInfos[0].imageView = eyeTextures.textureViews[j];
+                innerImageInfos[0].sampler = textureSampler;
+
+                innerImageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                innerImageInfos[1].imageView = bodyATextures.textureViews[j];
+                innerImageInfos[1].sampler = textureSampler;
+
+                innerImageInfos[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                innerImageInfos[2].imageView = bodyBTextures.textureViews[j];
+                innerImageInfos[2].sampler = textureSampler;
+
+                imageInfos[j] = innerImageInfos;
+
             }
 
             VkDescriptorBufferInfo bufferInfo{};
@@ -2813,10 +2827,10 @@ private:
                 descriptorWrites[j].dstSet = gBufferDescriptorSets[i];
                 descriptorWrites[j].dstBinding = j;
                 descriptorWrites[j].dstArrayElement = 0;
-                descriptorWrites[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;;
-                descriptorWrites[j].descriptorCount = 1;//static_cast<uint32_t>(imageInfos.size());
+                descriptorWrites[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                descriptorWrites[j].descriptorCount = static_cast<uint32_t>(imageInfos[j - 1].size());
                 descriptorWrites[j].pBufferInfo = nullptr;
-                descriptorWrites[j].pImageInfo = &imageInfos[j - 1];
+                descriptorWrites[j].pImageInfo = imageInfos[j - 1].data();
                 descriptorWrites[j].pTexelBufferView = nullptr; 
             }
 
@@ -2928,10 +2942,12 @@ private:
         bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         bindings[0].pImmutableSamplers = nullptr;
 
+        const uint32_t MAX_TEXTURE_SETS = 32; 
+
         //std::array<VkDescriptorSetLayoutBinding, 5> samplerLayoutBindings{};
         for (int i = 1; i < 6; i++) {
             bindings[i].binding = i;
-            bindings[i].descriptorCount = 1;
+            bindings[i].descriptorCount = MAX_TEXTURE_SETS;
             bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             bindings[i].pImmutableSamplers = nullptr; 

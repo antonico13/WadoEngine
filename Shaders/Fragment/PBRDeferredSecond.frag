@@ -108,5 +108,5 @@ void main() {
     specularFactor = specularFactor > 0.0 ? (1.0 / specularFactor) : 0.0;
 
     vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
-    outColor = vec4(cosnl * (lightContribution * lambertContribution + ggxContribution), 1.0);
+    outColor = vec4(diffuseColor, 1.0);
 }
