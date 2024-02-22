@@ -76,8 +76,9 @@ struct CameraProperties {
 struct Vertex {
     alignas(16) glm::vec3 pos;
     alignas(16) glm::vec3 color;
-    alignas(8)  glm::vec2 texCoord;
     alignas(16) glm::vec3 normal;
+    alignas(8)  glm::vec2 texCoord;
+    alignas(4)  uint8_t texIndex;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -99,12 +100,16 @@ struct Vertex {
         attributeDescriptions[1].offset = offsetof(Vertex, color);
         attributeDescriptions[2].binding= 0;
         attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(Vertex, normal);
         attributeDescriptions[3].binding= 0;
         attributeDescriptions[3].location = 3;
-        attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[3].offset = offsetof(Vertex, normal);
+        attributeDescriptions[4].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[4].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[4].binding= 0;
+        attributeDescriptions[4].location = 4;
+        attributeDescriptions[4].format = VK_FORMAT_R8G8_UINT;
+        attributeDescriptions[4].offset = offsetof(Vertex, texIndex);
        
         return attributeDescriptions;
     };
@@ -124,9 +129,28 @@ namespace std {
     };
 }
 
+struct PBRTextureData {
+    std::vector<VkImage> textureImages;
+    std::vector<VkImageView> textureViews;
+    std::vector<VkDeviceMemory> textureMemories;
+    std::vector<int> mipLevels;
+};
+
+PBRTextureData bodyATextures;
+PBRTextureData bodyBTextures;
+PBRTextureData eyeTextures;
+
 struct Object {
     std::vector<Vertex> vertices;
-}
+    std::vector<uint32_t> indices;
+};
+
+struct Model {
+    std::vector<Object> subObjects;
+    std::vector<Model> lodModels;
+};
+
+Model mainModel;
 
 /*const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
@@ -152,21 +176,29 @@ const std::string TEXTURE_PATH = "Textures/viking_room.png";
 
 const std::string pbr_diffuse_a = "quaxly/pm1016_00_00_body_a_alb.png";
 const std::string pbr_diffuse_b = "quaxly/pm1016_00_00_body_b_alb.png";
+const std::string pbr_diffuse_eye = "quaxly/pm1016_00_00_eye_alb_composite.png";
 
 const std::string pbr_roughness_a = "quaxly/pm1016_00_00_body_a_rgn.png";
 const std::string pbr_roughness_b = "quaxly/pm1016_00_00_body_b_rgn.png";
+const std::string pbr_roughness_eye = "quaxly/pm1016_00_00_body_b_mtl.png";
 
 const std::string pbr_metallic_a = "quaxly/pm1016_00_00_body_b_mtl.png";
 const std::string pbr_metallic_b = "quaxly/pm1016_00_00_body_b_mtl.png";
+const std::string pbr_metallic_eye = "quaxly/pm1016_00_00_body_b_mtl.png";
 
 const std::string pbr_ao_a = "quaxly/pm1016_00_00_body_a_ao.png";
 const std::string pbr_ao_b = "quaxly/pm1016_00_00_body_b_ao.png";
+const std::string pbr_ao_eye = "quaxly/pm1016_00_00_body_b_mtl.png";
 
 const std::string pbr_normal_a = "quaxly/pm1016_00_00_body_a_nrm.png";
 const std::string pbr_normal_b = "quaxly/pm1016_00_00_body_b_nrm.png";
+const std::string pbr_normal_eye = "quaxly/pm1016_00_00_eye_nrm.png";
+
 
 const std::string body_a_maps[] = {pbr_diffuse_a, pbr_normal_a, pbr_metallic_a, pbr_roughness_a, pbr_ao_a};
 const std::string body_b_maps[] = {pbr_diffuse_b, pbr_normal_b, pbr_metallic_b, pbr_roughness_b, pbr_ao_b};
+const std::string eye_maps[] = {pbr_diffuse_eye, pbr_normal_eye, pbr_metallic_eye, pbr_roughness_eye, pbr_ao_eye};
+
 
 
 std::vector<const char*> validationLayers = {
@@ -943,14 +975,14 @@ private:
             throw std::runtime_error(warn + err);
         }
 
-        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+        std::map<int, PBRTextureData> textureDataMap{{0, eyeTextures}, {1, bodyATextures}, {2, bodyBTextures}, {3, bodyATextures}, 
+        {4, bodyATextures}, {5, bodyATextures}, {6, bodyATextures}, {7, bodyATextures}, {8, bodyBTextures}, {9, bodyBTextures} };
 
-        std::cout << "Material count " << materials.size() << std::endl;
-        std::cout << "Shape count " << shapes.size() << std::endl;
-
-        std::vector<
-
-        for (const auto& shape : shapes) {
+        int objCount = 10;
+        mainModel.subObjects.resize(objCount);
+        for (int i = 0; i < objCount; i++) {
+            tinyobj::shape_t shape = shapes[i];
+            std::unordered_map<Vertex, uint32_t> uniqueVertices{};
             for (const auto& index : shape.mesh.indices) {
                 Vertex vertex{};
 
@@ -975,12 +1007,13 @@ private:
 
                 if (uniqueVertices.count(vertex) == 0) {
                     uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
+                    mainModel.subObjects[i].vertices.push_back(vertex);
                 }
 
                 //vertices.push_back(vertex);
-                indices.push_back(uniqueVertices[vertex]);
+                mainModel.subObjects[i].indices.push_back(uniqueVertices[vertex]);
             }
+            mainModel.subObjects[i].textureData = textureDataMap[i];
         }
     }
 
@@ -1254,25 +1287,29 @@ private:
     }
 
     void createPBRTextureImageViews() {
-        body_a_views.resize(5);
-        body_b_views.resize(5);
         
         for (int i = 0; i < 5; i++) {
-            body_a_views[i] = create2DColorImageView(body_a_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, body_a_mips[i]); 
-        }
-
-         for (int i = 0; i < 5; i++) {
-            body_b_views[i] = create2DColorImageView(body_b_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, body_b_mips[i]); 
+            bodyATextures.textureViews[i] = create2DColorImageView(bodyATextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, bodyATextures.mipLevels[i]); 
+            bodyBTextures.textureViews[i] = create2DColorImageView(bodyBTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, bodyBTextures.mipLevels[i]); 
+            eyeTextures.textureViews[i] = create2DColorImageView(eyeTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, eyeTextures.mipLevels[i]); 
         }
     }
 
     void createPBRTextureImages() {
-        body_a_images.resize(5);
-        body_b_images.resize(5);
-        body_a_memories.resize(5);
-        body_b_memories.resize(5);
-        body_a_mips.resize(5);
-        body_b_mips.resize(5);
+        bodyATextures.textureImages.resize(5);
+        bodyATextures.textureMemories.resize(5);
+        bodyATextures.textureViews.resize(5);
+        bodyATextures.mipLevels.resize(5);
+
+        bodyBTextures.textureImages.resize(5);
+        bodyBTextures.textureMemories.resize(5);
+        bodyBTextures.textureViews.resize(5);
+        bodyBTextures.mipLevels.resize(5);
+
+        eyeTextures.textureImages.resize(5);
+        eyeTextures.textureMemories.resize(5);
+        eyeTextures.textureViews.resize(5);
+        eyeTextures.mipLevels.resize(5);
 
 /*      stbi_uc* images[5];
         int texWidths[5];
@@ -1301,7 +1338,7 @@ private:
 
             imageMipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
-            body_a_mips[i] = imageMipLevels;
+            bodyATextures.mipLevels[i] = imageMipLevels;
 
             //std::cout << "Mip levels: " << imageMipLevels << std::endl;
 
@@ -1326,21 +1363,21 @@ private:
 
             create2DImage(texWidth, texHeight, imageMipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, 
             VK_SHARING_MODE_CONCURRENT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, body_a_images[i], body_a_memories[i]);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, bodyATextures.textureImages[i], bodyATextures.textureMemories[i]);
 
             //std::cout << "Created 2D image " << i << std::endl;
 
-            transitionImageLayout(body_a_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, imageMipLevels);
+            transitionImageLayout(bodyATextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, imageMipLevels);
 
             //std::cout << "Transitioned image " << i  << " to transfer DST layout" << std::endl;
 
-            copyBufferToImage(stagingBuffer, body_a_images[i], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+            copyBufferToImage(stagingBuffer, bodyATextures.textureImages[i], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 
             //std::cout << "Copied buffer to image " << i << std::endl;
 
             //transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mipLevels);
 
-            generateMipmaps(body_a_images[i], VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, imageMipLevels);
+            generateMipmaps(bodyATextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, imageMipLevels);
 
             vkDestroyBuffer(device, stagingBuffer, nullptr);
             vkFreeMemory(device, stagingBufferMemory, nullptr); 
@@ -1364,7 +1401,7 @@ private:
 
             imageMipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
-            body_b_mips[i] = imageMipLevels;
+            bodyBTextures.mipLevels[i] = imageMipLevels;
 
             VkBuffer stagingBuffer;
             VkDeviceMemory stagingBufferMemory;
@@ -1382,15 +1419,62 @@ private:
 
             create2DImage(texWidth, texHeight, imageMipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, 
             VK_SHARING_MODE_CONCURRENT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, body_b_images[i], body_b_memories[i]);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, bodyBTextures.textureImages[i], bodyBTextures.textureMemories[i]);
 
-            transitionImageLayout(body_b_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, imageMipLevels);
+            transitionImageLayout(bodyBTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, imageMipLevels);
 
-            copyBufferToImage(stagingBuffer, body_b_images[i], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+            copyBufferToImage(stagingBuffer, bodyBTextures.textureImages[i], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 
             //transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mipLevels);
 
-            generateMipmaps(body_b_images[i], VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, imageMipLevels);
+            generateMipmaps(bodyBTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, imageMipLevels);
+
+            vkDestroyBuffer(device, stagingBuffer, nullptr);
+            vkFreeMemory(device, stagingBufferMemory, nullptr); 
+        }
+
+        for (int i = 0; i < 5; i++) {
+
+            int texWidth;
+            int texHeight;
+            int texChannels;
+            int imageMipLevels;
+            stbi_uc* pixels = stbi_load(eye_maps[i].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            VkDeviceSize imageSize = texWidth * texHeight * texChannels;
+
+            if (!pixels) {
+                throw std::runtime_error("Failed to load texture image!");
+            }
+
+            imageMipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
+            eyeTextures.mipLevels[i] = imageMipLevels;
+
+            VkBuffer stagingBuffer;
+            VkDeviceMemory stagingBufferMemory;
+
+            createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, 
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 
+                stagingBuffer, stagingBufferMemory);
+        
+            void* data;
+            vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+            memcpy(data, pixels, static_cast<size_t>(imageSize));
+            vkUnmapMemory(device, stagingBufferMemory);
+
+            stbi_image_free(pixels);
+
+            create2DImage(texWidth, texHeight, imageMipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, 
+            VK_SHARING_MODE_CONCURRENT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, eyeTextures.textureImages[i], eyeTextures.textureMemories[i]);
+
+            transitionImageLayout(eyeTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, imageMipLevels);
+
+            copyBufferToImage(stagingBuffer, eyeTextures.textureImages[i], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+
+            //transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mipLevels);
+
+            generateMipmaps(eyeTextures.textureImages[i], VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, imageMipLevels);
 
             vkDestroyBuffer(device, stagingBuffer, nullptr);
             vkFreeMemory(device, stagingBufferMemory, nullptr); 
