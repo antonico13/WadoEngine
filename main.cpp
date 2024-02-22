@@ -975,14 +975,16 @@ private:
             throw std::runtime_error(warn + err);
         }
 
-        std::map<int, PBRTextureData> textureDataMap{{0, eyeTextures}, {1, bodyATextures}, {2, bodyBTextures}, {3, bodyATextures}, 
-        {4, bodyATextures}, {5, bodyATextures}, {6, bodyATextures}, {7, bodyATextures}, {8, bodyBTextures}, {9, bodyBTextures} };
+        std::map<int, int> textureDataMap{{0, 0}, {1, 1}, {2, 2}, {3, 1}, 
+        {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 2}, {9, 2} };
 
         int objCount = 10;
         mainModel.subObjects.resize(objCount);
         for (int i = 0; i < objCount; i++) {
             tinyobj::shape_t shape = shapes[i];
+
             std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
             for (const auto& index : shape.mesh.indices) {
                 Vertex vertex{};
 
@@ -1005,6 +1007,8 @@ private:
                     attrib.normals[3 * index.normal_index+ 2]
                 };
 
+                vertex.texIndex = textureDataMap[i];
+
                 if (uniqueVertices.count(vertex) == 0) {
                     uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
                     mainModel.subObjects[i].vertices.push_back(vertex);
@@ -1013,7 +1017,6 @@ private:
                 //vertices.push_back(vertex);
                 mainModel.subObjects[i].indices.push_back(uniqueVertices[vertex]);
             }
-            mainModel.subObjects[i].textureData = textureDataMap[i];
         }
     }
 
@@ -1971,8 +1974,14 @@ private:
 
     void createVertexBuffer() {
         // if we do vertices[0] it doesn't depend on type anymore...
-        VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
-        //std::cout << "Vertex count " << vertices.size() << std::endl;
+
+        std::vector<Vertex> allVertices;
+        
+        for (int i = 0; i < mainModel.subObjects.size(); i++) {
+            allVertices.insert(allVertices.end(), mainModel.subObjects[i].vertices.start(), mainModel.subObjects[i].vertices.end());
+        }
+
+        VkDeviceSize bufferSize = sizeof(Vertex) * allVertices.size();
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
 
@@ -1980,7 +1989,7 @@ private:
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, stagingBuffer, stagingBufferMemory);
         void* data;
         vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
+        memcpy(data, allVertices.data(), static_cast<size_t>(bufferSize));
         vkUnmapMemory(device, stagingBufferMemory);
 
         // used by transfer and graphics queue
