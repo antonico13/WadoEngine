@@ -124,6 +124,10 @@ namespace std {
     };
 }
 
+struct Object {
+    std::vector<Vertex> vertices;
+}
+
 /*const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
@@ -306,7 +310,7 @@ private:
     std::vector<VkDescriptorSet> gBufferDescriptorSets;
     std::vector<VkDescriptorSet> deferredDescriptorSets;
 
-    glm::vec3 lightPos = glm::vec3(0.0, 0.0, 0.0);
+    glm::vec3 lightPos = glm::vec3(0.0, 20.0, 50.0);
     glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
     float lightPower = 40.0f;
     bool enableAmbient = true;
@@ -604,13 +608,13 @@ private:
         if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
             app->lightPos.x -= 1.0f;
         }
-        if (key == GLFW_KEY_W && action == GLFW_PRESS) {
+        if (key == GLFW_KEY_R && action == GLFW_PRESS) {
             app->lightPos.y -= 1.0f;
         }
-        if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+        if (key == GLFW_KEY_T && action == GLFW_PRESS) {
             app->lightPos.y += 1.0f;
         }
-        if (key == GLFW_KEY_A && action == GLFW_PRESS) {
+        if (key == GLFW_KEY_X && action == GLFW_PRESS) {
             app->lightPower += 5.0f;
         }
         if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
@@ -940,6 +944,11 @@ private:
         }
 
         std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+        std::cout << "Material count " << materials.size() << std::endl;
+        std::cout << "Shape count " << shapes.size() << std::endl;
+
+        std::vector<
 
         for (const auto& shape : shapes) {
             for (const auto& index : shape.mesh.indices) {
@@ -3812,7 +3821,7 @@ private:
         PointLight light{};
         light.lightPower = lightPower;
         // headlight 
-        light.lightPos = cameraPos;
+        light.lightPos = lightPos;
         light.lightColor = lightColor;
         light.enableDiffuse = enableDiffuse;
         light.enableSpecular = enableSpecular;

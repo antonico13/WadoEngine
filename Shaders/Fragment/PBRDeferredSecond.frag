@@ -88,14 +88,14 @@ void main() {
     vec3 halfwayDir = sign(dot(normal, lightDir)) * normalize(lightDir + viewDir); // h
 
     // contribution of the light 
-    vec3 lightContribution = light.lightColor * light.lightPower / (lightDistance * lightDistance);
+    float lightContribution = light.lightPower / (lightDistance * lightDistance);
 
     vec3 lambertContribution = diffuseColor / PI; // Brian Karis, Epic Games 
 
     
     // calculate specular contributions now 
     // GGX shadow mask, microfacet distribution, Schlick fresnel 
-    float shadowMaskK =  (roughness + 1.0) * (roughness + 1.0) / 8.0;
+    float shadowMaskK = (roughness + 1.0) * (roughness + 1.0) / 8.0;
     float shadowMask = shadowMaskGGX(lightDir, normal, shadowMaskK) * shadowMaskGGX(viewDir, normal, shadowMaskK);
     float distribution = micronormalDistributionGGX(halfwayDir, normal, roughness * roughness);
     float fresnel = fresnelCoefficientSchlick(lightDir, halfwayDir, reflectance); // should this be the view vector instead here?
@@ -108,6 +108,5 @@ void main() {
     specularFactor = specularFactor > 0.0 ? (1.0 / specularFactor) : 0.0;
 
     vec3 ggxContribution = (fresnel * shadowMask * distribution * specularFactor) * specularColor; 
-
-    outColor = vec4(cosnl, 0.0, 0.0, 1.0);
+    outColor = vec4(cosnl * (lightContribution * lambertContribution + ggxContribution), 1.0);
 }
