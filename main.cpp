@@ -1969,7 +1969,7 @@ private:
 
         void* data;
         vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, indices.data(), static_cast<size_t>(bufferSize));
+        memcpy(data, allIndices.data(), static_cast<size_t>(bufferSize));
         vkUnmapMemory(device, stagingBufferMemory);
 
         // used by transfer and graphics queue
