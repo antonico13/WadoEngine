@@ -11,6 +11,7 @@ layout (location = 3) out vec4 positionProperties;
 layout (location = 0) in vec2 fragTexCoord;
 layout (location = 1) in vec3 posWorldSpace;  
 layout (location = 2) in float baseFresnel; // reflectance? 
+layout (location = 3) in flat uint inTexIndex;
 
 // at some point could probably combine some of these to save even more space?
 layout (binding = 1) uniform sampler2D diffuseSampler;
@@ -32,7 +33,7 @@ void main() {
     meshProperties.x = texture(aoMapSampler, fragTexCoord).x;
     meshProperties.y = texture(metallicMapSampler, fragTexCoord).x;
     // Nothing yet. 
-    meshProperties.zw = vec2(1.0, 1.0);
+    meshProperties.zw = vec2(inTexIndex, 1.0);
 
     positionProperties.xyz = posWorldSpace;
     positionProperties.w = 1.0;
