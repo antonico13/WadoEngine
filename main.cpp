@@ -78,7 +78,7 @@ struct Vertex {
     alignas(16) glm::vec3 color;
     alignas(16) glm::vec3 normal;
     alignas(8)  glm::vec2 texCoord;
-    alignas(4)  uint8_t texIndex;
+    alignas(4)  uint32_t texIndex;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -108,7 +108,7 @@ struct Vertex {
         attributeDescriptions[3].offset = offsetof(Vertex, texCoord);
         attributeDescriptions[4].binding= 0;
         attributeDescriptions[4].location = 4;
-        attributeDescriptions[4].format = VK_FORMAT_R8G8_UINT;
+        attributeDescriptions[4].format = VK_FORMAT_R32_SINT;
         attributeDescriptions[4].offset = offsetof(Vertex, texIndex);
        
         return attributeDescriptions;
