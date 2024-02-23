@@ -1,8 +1,13 @@
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include <GLFW/glfw3.h>
+
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -22,15 +27,87 @@
 #include <fstream>
 #include <array>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
 #include <unordered_map>
 
 #include "WadoVersion.h"
+
+
+// From 70001 
+float *
+loadPFM(const char *filename,
+	 unsigned int *width, unsigned int *height,
+	 unsigned int *numComponents )
+{
+    FILE          *imgFile;
+    char          buf[1024];
+    char          type;
+    int           i, j, k, l;
+    double        distance, x, y;
+    float* imageData;
+    float* tmpData;
+
+    imgFile= fopen( filename, "rb" );
+
+
+    fscanf( imgFile, "PF \n", &type );
+    // skip comments
+    while( fscanf( imgFile, "#%[^\n]\n", buf ) )
+        ;
+
+    // read width
+    fscanf( imgFile, "%d", width );
+    /* skip comments */
+    while( fscanf( imgFile, "#%[^\n]\n", buf ) )
+        ;   
+  
+    /* read height */
+    fscanf( imgFile, "%d", height );
+    /* skip comments */
+    while( fscanf( imgFile, "#%[^\n]\n", buf ) )
+        ;
+
+   
+    
+    /* skip max. component and exactly one whitespace */
+    fscanf( imgFile, "%*f%*c" );
+
+
+  
+    imageData= (float*)malloc(sizeof(float)* *width * *height*3);
+  
+    fread( imageData, sizeof(float), *width * *height*3, imgFile );
+    *numComponents= 3;
+
+    fclose( imgFile );
+  
+    tmpData= (float*)malloc(sizeof(float)* *width * 3);
+  
+    //invert image for reading!!!
+    for(int i=0;i< *height/2;i++)
+        {
+            for(int j=0;j< *width;j++)
+                {
+                    for(int k=0;k<3;k++)
+                        {
+                            int indexS = i * *width * 3 + j*3 + k;
+                            int indexD = (*height-1 - i) * *width * 3 + j*3 + k;
+      
+                            tmpData[j*3 + k] = imageData[indexS];
+                            imageData[indexS] = imageData[indexD];
+                            imageData[indexD] = tmpData[j*3 + k];           
+                        }
+                } 
+        }
+  
+    free(tmpData);
+
+    return imageData;
+}
+
+
 
 struct Particle {
     glm::vec2 position;
@@ -171,6 +248,8 @@ const std::vector<uint16_t> indices = {
 const uint32_t WIDTH = 1280;
 const uint32_t HEIGHT = 720;
 
+const std::string SKYBOX_PATH = "skybox/latlong.png";
+
 const std::string MODEL_PATH = "quaxly/pm1016_00_00.obj";
 const std::string TEXTURE_PATH = "Textures/viking_room.png";
 
@@ -225,6 +304,7 @@ const double SCALING_FACTOR = 100.0f;
 class HelloTriangleApplication {
 public:
     void run() {
+        createSkyBoxAndSamples();
         initWindow();
         //initVulkan();
         initVulkanDeferred();
@@ -982,6 +1062,9 @@ private:
         int indexOffset = 0;
         mainModel.subObjects.resize(objCount);
         for (int i = 0; i < objCount; i++) {
+            if (i >= 4 && i <= 7) {
+                continue;
+            }
             tinyobj::shape_t shape = shapes[i];
 
             std::unordered_map<Vertex, uint32_t> uniqueVertices{};
@@ -1486,6 +1569,169 @@ private:
             vkFreeMemory(device, stagingBufferMemory, nullptr); 
         }
     }
+
+    struct Image {
+        char* pixels;
+        int width;
+        int height;
+    };
+
+    struct Pixel {
+        int x;
+        int y;
+    };
+
+    Pixel search_centriod(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
+        int height = max_h - min_h + 1;
+        int width = max_w - min_w + 1;
+        float totalIntensity = 0.0f;
+        for (int i = min_h; i < max_h; i++) {
+            for (int j = min_w; j < max_w; j++) {
+                totalIntensity += intensityMap[i][j];
+            }
+        }
+
+        float cdf = 0.0f;
+        
+        for (int h = min_h; h < max_h; h++) {
+            for (int w = min_w; w < max_w; w++) {
+                cdf += intensityMap[h][w];
+                if (cdf / totalIntensity >= 0.5) {
+                    return {h, w};
+                }
+            }
+        }
+    }
+
+    std::vector<float> getRowPDF(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
+        std::vector<float> rowPDF(max_h - min_h + 1);
+        int count = max_w - min_w;
+        for (int i = min_h; i < max_h; i++) {
+            for (int j = min_w; j < max_w; j++) {
+                rowPDF[i - min_h] += intensityMap[i][j];
+            }
+            rowPDF[i - min_h] = rowPDF[i - min_h] / count;
+        }
+        return rowPDF;
+    }
+
+    std::vector<float> getColumnPDF(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
+        std::vector<float> columnPDF(max_w - min_w + 1);
+        int count = max_h - min_h;
+        for (int j = min_w; j < max_w; j++) {
+            for (int i = min_h; i < max_h; i++) {
+                columnPDF[j - min_w] += intensityMap[i][j];
+            }
+            columnPDF[j - min_w] = columnPDF[j - min_w] / count;
+        }
+        return columnPDF;
+    }
+
+    int search_max_column(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
+        std::vector<float> columnPDF = getColumnPDF(min_h, max_h, min_w, max_w, intensityMap);
+
+        float totalIntensity = 0.0f;
+        for (int i = 0; i < columnPDF.size(); i++) {
+            totalIntensity += columnPDF[i];
+        }
+
+        float cdf = 0.0;
+        for (int w = min_w; w < max_w; w++) {
+            cdf += columnPDF[w - min_w];
+            if (cdf / totalIntensity >= 0.5) {
+                return w;
+            }
+        }
+    }
+
+    int search_max_row(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
+        std::vector<float> rowPDF = getRowPDF(min_h, max_h, min_w, max_w, intensityMap);
+
+        float totalIntensity = 0.0f;
+        for (int i = 0; i < rowPDF.size(); i++) {
+            totalIntensity += rowPDF[i];
+        }
+
+        float cdf = 0.0;
+        for (int h = min_h; h < max_h; h++) {
+            cdf += rowPDF[h - min_h];
+            if (cdf / totalIntensity >= 0.5) {
+                return h;
+            }
+        }
+    }
+
+    void median_cut(int min_h, int max_h, int min_w, int max_w, int max_depth, Image& image, std::vector<Pixel> &lights, std::vector<std::vector<float>> &intensityMap) {
+        if (max_depth == 0) { 
+            Pixel light = search_centriod(min_h, max_h, min_w, max_w, intensityMap);
+            lights.push_back(light);
+            return;
+        }
+        int w = max_w - min_w;
+        int h = max_h - min_h;
+        if (w >= h) {
+            int median_w = search_max_column(min_h, max_h, min_w, max_w, intensityMap);
+            median_cut(min_h, max_h, min_w, median_w+1, max_depth-1, image, lights, intensityMap);
+            median_cut(min_h, max_h, median_w, max_w, max_depth-1, image, lights, intensityMap);
+        }
+        else {
+            int median_h = search_max_row(min_h, max_h, min_w, max_w, intensityMap);
+            median_cut(min_h, median_h+1, min_w, max_w, max_depth-1, image, lights, intensityMap);
+            median_cut(median_h, max_h, min_w, max_w, max_depth-1, image, lights, intensityMap);
+        }
+    }
+
+    void createSkyBoxAndSamples() {
+        
+        Image imageData{};
+
+        std::cout << "Loading skybox" << std::endl;
+
+        int texChannels;
+        imageData.pixels = (char *) stbi_load(SKYBOX_PATH.c_str(), &imageData.width, &imageData.height, &texChannels, STBI_rgb_alpha);
+        
+        
+        if (!imageData.pixels) {
+            throw std::runtime_error("Failed to load skybox texture image!");
+        }
+
+        std::vector<std::vector<float>> intensityMap(imageData.height, std::vector<float>(imageData.width));
+
+        const double PI = 3.14159265;
+
+        for (int i = 0; i < imageData.height; i++) {
+            float theta = std::sin( ((float) i) / imageData.height * PI);
+            for (int j = 0; j < imageData.width; j++) {
+                intensityMap[i][j] = ((float) (imageData.pixels[imageData.width * i * 3 + j * 3] + imageData.pixels[imageData.width * i * 3 + j * 3 + 1] + imageData.pixels[imageData.width * i * 3 + j * 3 + 2])) / 3.0 * theta;
+            }
+        }
+
+        std::cout << "Calculated intensity map" << std::endl;
+
+        int depth = 6;
+
+        std::vector<Pixel> lights;
+
+        median_cut(0, imageData.height, 0, imageData.width, depth, imageData, lights, intensityMap);
+
+        for (int i = 0; i < lights.size(); i++) {
+            *(imageData.pixels + imageData.width * lights[i].x * 3 + lights[i].y * 3 + 0) = 0;
+            *(imageData.pixels + imageData.width * lights[i].x * 3 + lights[i].y * 3 + 1) = 0;
+            *(imageData.pixels + imageData.width * lights[i].x * 3 + lights[i].y * 3 + 2) = 255; 
+            std::cout << "Light " << i << std::endl;
+            std::cout << "Light pos: " << lights[i].x << " " << lights[i].y << std::endl;
+
+        }
+
+        
+        //stbi_write_png("skybox/latlongsampled.png", imageData.width, imageData.height, 3, (void *) imageData.pixels, imageData.width * 3);
+
+        //_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
+
+        stbi_image_free(imageData.pixels);
+    }
+
 
     void createTextureImage() {
         int texWidth;
