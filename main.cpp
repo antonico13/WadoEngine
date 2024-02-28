@@ -229,6 +229,12 @@ struct Model {
 
 Model mainModel;
 
+struct Pixel {
+        int x;
+        int y;
+};
+
+
 /*const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
@@ -304,7 +310,7 @@ const double SCALING_FACTOR = 100.0f;
 class HelloTriangleApplication {
 public:
     void run() {
-        createSkyBoxAndSamples();
+        //createSkyBoxAndSamples();
         initWindow();
         //initVulkan();
         initVulkanDeferred();
@@ -462,6 +468,8 @@ private:
     std::vector<VkExtensionProperties> extensions;
     uint32_t layerCount = 0;
     std::vector<VkLayerProperties> layers;
+
+    std::vector<Pixel> lights;
 
     // Static Vulkan/Debug setup
 
@@ -1051,14 +1059,14 @@ private:
         std::vector<tinyobj::material_t> materials;
         std::string warn, err;
 
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "models/sphere.obj")) { //MODEL_PATH.c_str()
             throw std::runtime_error(warn + err);
         }
 
         std::map<int, int> textureDataMap{{0, 0}, {1, 1}, {2, 2}, {3, 1}, 
         {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 2}, {9, 2} };
 
-        int objCount = 10;
+        int objCount = 1;
         int indexOffset = 0;
         mainModel.subObjects.resize(objCount);
         for (int i = 0; i < objCount; i++) {
@@ -1576,11 +1584,6 @@ private:
         int height;
     };
 
-    struct Pixel {
-        int x;
-        int y;
-    };
-
     Pixel search_centriod(int min_h, int max_h, int min_w, int max_w, std::vector<std::vector<float>> &intensityMap) {
         int height = max_h - min_h + 1;
         int width = max_w - min_w + 1;
@@ -1708,9 +1711,7 @@ private:
 
         std::cout << "Calculated intensity map" << std::endl;
 
-        int depth = 6;
-
-        std::vector<Pixel> lights;
+        int depth = 4;
 
         median_cut(0, imageData.height, 0, imageData.width, depth, imageData, lights, intensityMap);
 
@@ -4167,7 +4168,7 @@ private:
         yaw = velocityX;
 
         UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0f);
+        ubo.model = glm::mat4(100.0f);
 
         glm::vec3 moveVector = glm::vec3(viewRotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) * moveVelocityX + viewRotation * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f) * moveVelocityZ);
 
