@@ -2,11 +2,16 @@
 #define WADO_GRAPHICS_ABSTRACTION_LAYER
 
 #include <cstdint>
+#include <vector>
 
 namespace Wado::GAL {
 
     using WdImageHandle = void *; // not sure about this here?
     using WdBufferHandle = void *;
+
+    using WdFenceHandle = void *; 
+    using WdSemaphoreHandle = void *;
+
 
     using WdSize = size_t;
 
@@ -79,6 +84,14 @@ namespace Wado::GAL {
             virtual void copyBufferToImage(WdBufferHandle buffer, WdImageHandle image, WdExtent2D extent) = 0;
 
             virtual void copyBuffer(WdBufferHandle srcBuffer, WdBufferHandle dstBuffer, WdSize size) = 0;
+
+            virtual WdFenceHandle createFence(bool signaled = true) = 0;
+
+            virtual WdSemaphoreHandle createSemaphore() = 0;
+
+            virtual void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) = 0;
+
+            virtual void resetFences(std::vector<WdFenceHandle> fences) = 0;
     };
 }
 
