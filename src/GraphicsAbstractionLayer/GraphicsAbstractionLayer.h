@@ -6,7 +6,7 @@
 namespace Wado::GAL {
 
     using WdImageHandle = void *; // not sure about this here?
-    using WdBufferHanlde = void *;
+    using WdBufferHandle = void *;
 
     using WdSize = size_t;
 
@@ -31,6 +31,8 @@ namespace Wado::GAL {
         WD_FORMAT_R32G32B32A32_SFLOAT,
     };
 
+    using WdBufferUsageFlags = uint32_t;
+
     enum WdBufferUsage {
         WD_TRANSFER_SRC,
         WD_TRANSFER_DST,
@@ -43,6 +45,8 @@ namespace Wado::GAL {
         WD_INDIRECT_BUFFER,
     };
 
+
+    using WdImageUsageFlags = uint32_t;
     
     enum WdImageUsage {
         WD_TRANSFER_SRC,
@@ -65,6 +69,17 @@ namespace Wado::GAL {
         WD_SAMPLE_COUNT_64,
     };
 
+    class GraphicsLayer {
+        public:
+            virtual WdImageHandle create2DImage(WdExtent2D extent, uint32_t mipLevels, 
+                    WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
+
+            virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+
+            virtual void copyBufferToImage(WdBufferHandle buffer, WdImageHandle image, WdExtent2D extent) = 0;
+
+            virtual void copyBuffer(WdBufferHandle srcBuffer, WdBufferHandle dstBuffer, WdSize size) = 0;
+    };
 }
 
 #endif
