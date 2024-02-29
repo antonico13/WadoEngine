@@ -8,6 +8,8 @@ namespace Wado::GAL {
 
     using WdImageHandle = void *; // not sure about this here?
     using WdBufferHandle = void *;
+    using WdRenderTarget = void *; // this would be the image view 
+    using WdMemoryPointer = void *;
 
     using WdFenceHandle = void *; 
     using WdSemaphoreHandle = void *;
@@ -72,6 +74,24 @@ namespace Wado::GAL {
         WD_SAMPLE_COUNT_16,
         WD_SAMPLE_COUNT_32,
         WD_SAMPLE_COUNT_64,
+    };
+
+    using WdImage = struct WdImage {
+        WdImageHandle handle;
+        WdMemoryPointer memory;
+        WdRenderTarget target;
+        WdFormat format;
+        WdExtent3D extent;
+    };
+
+    using WdTexture = struct WdTexture : public WdImage {
+
+    };
+
+    using WdBuffer = struct WdBuffer {
+        WdBufferHandle handle;
+        WdMemoryPointer memory;
+        WdSize size;
     };
 
     class GraphicsLayer {
