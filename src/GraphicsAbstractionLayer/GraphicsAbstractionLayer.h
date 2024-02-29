@@ -94,8 +94,31 @@ namespace Wado::GAL {
         WdSize size;
     };
 
+    enum WdVertexRate {
+        WD_VERTEX_RATE_VERTEX,
+        WD_VERTEX_RATE_INSTANCE,
+    };
+
+    using WdVertexAttribute = struct WdVertexAttribute {
+        WdFormat format;
+        WdSize offset;
+    };
+
+    using WdVertexBinding = struct WdVertexBinding {
+        WdSize stride;
+        WdVertexRate rate;
+        std::vector<WdVertexAttribute> attributeDescriptions;
+    };
+
+    class WdVertexBuilder {
+        public:
+            virtual std::vector<WdVertexBinding> getBindingDescriptions() = 0;
+    };
+
     class GraphicsLayer {
         public:
+            virtual void init() = 0;
+
             virtual WdImageHandle create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
