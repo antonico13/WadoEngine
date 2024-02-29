@@ -122,6 +122,19 @@ namespace Wado::GAL {
             virtual WdInputTopology getInputTopology() = 0;
     };
 
+    using WdViewportProperties =  struct WdViewportProperties {
+        WdExtent2D startCoords;
+        WdExtent2D endCoords;
+        struct depth {
+            float min = 0.0f;
+            float max = 1.0f;
+        };
+        struct scissor {
+            WdExtent2D offset;
+            WdExtent2D extent;
+        };
+    };
+
     class GraphicsLayer {
         public:
             virtual void init() = 0;
