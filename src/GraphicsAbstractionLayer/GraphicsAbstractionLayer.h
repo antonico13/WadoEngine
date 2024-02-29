@@ -110,9 +110,16 @@ namespace Wado::GAL {
         std::vector<WdVertexAttribute> attributeDescriptions;
     };
 
+    enum WdInputTopology {
+        WD_TOPOLOGY_TRIANGLE_LIST,
+        WD_TOPOLOGY_POINT_LIST,
+        WD_TOPOLOGY_LINE_LIST,
+    };
+
     class WdVertexBuilder {
         public:
             virtual std::vector<WdVertexBinding> getBindingDescriptions() = 0;
+            virtual WdInputTopology getInputTopology() = 0;
     };
 
     class GraphicsLayer {
