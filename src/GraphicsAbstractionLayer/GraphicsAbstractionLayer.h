@@ -138,20 +138,38 @@ namespace Wado::GAL {
         };
     };
 
-    class Pipeline {
+    class WdPipeline {
         public:
         private:
-            Pipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties);
+            WdPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties);
             Shader::Shader _vertexShader;
             Shader::Shader _fragmentShader;
     };
 
-    class RenderPass {
+    class WdRenderPass {
         public:
         private:
-            RenderPass(std::vector<Pipeline> pipelines);
-            std::vector<Pipeline> _pipelines;
+            WdRenderPass(std::vector<WdPipeline> pipelines);
+            std::vector<WdPipeline> _pipelines;
 
+    };
+
+    class WdCommandList {
+        public:
+            virtual void resetCommandList() = 0;
+            virtual void beginCommandList() = 0;
+            virtual void setRenderPass(WdRenderPass renderPass) = 0;
+            virtual void nextPipeline() = 0;
+            virtual void setVertexBuffer(WdBuffer vertexBuffer) = 0;
+            virtual void setIndexBuffer(WdBuffer indexBuffer) = 0;
+            virtual void setViewport(WdViewportProperties WdViewportProperties) = 0;
+            virtual void drawIndexed() = 0;
+            virtual void drawVertices(uint32_t vertexCount) = 0;
+            virtual void endRenderPass() = 0;
+            virtual void endCommandList() = 0;
+            virtual void execute(WdFenceHandle fenceToSignal) = 0;
+        private:
+            WdCommandList();
     };
 
     class GraphicsLayer {
@@ -162,6 +180,8 @@ namespace Wado::GAL {
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
             virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+
+            virtual void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) = 0;
 
             virtual void copyBufferToImage(WdBufferHandle buffer, WdImageHandle image, WdExtent2D extent) = 0;
 
@@ -175,9 +195,11 @@ namespace Wado::GAL {
 
             virtual void resetFences(std::vector<WdFenceHandle> fences) = 0;
 
-            virtual Pipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties) = 0;
+            virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties) = 0;
 
-            virtual RenderPass createRenderPass(std::vector<Pipeline> pipelines);
+            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines);
+
+            virtual WdCommandList createCommandList() = 0;
     };
 }
 
