@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <vector>
+#include "Shader.h"
+
+class Wado::Shader::Shader;
 
 namespace Wado::GAL {
 
@@ -135,6 +138,22 @@ namespace Wado::GAL {
         };
     };
 
+    class Pipeline {
+        public:
+        private:
+            Pipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties);
+            Shader::Shader _vertexShader;
+            Shader::Shader _fragmentShader;
+    };
+
+    class RenderPass {
+        public:
+        private:
+            RenderPass(std::vector<Pipeline> pipelines);
+            std::vector<Pipeline> _pipelines;
+
+    };
+
     class GraphicsLayer {
         public:
             virtual void init() = 0;
@@ -155,6 +174,10 @@ namespace Wado::GAL {
             virtual void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) = 0;
 
             virtual void resetFences(std::vector<WdFenceHandle> fences) = 0;
+
+            virtual Pipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties) = 0;
+
+            virtual RenderPass createRenderPass(std::vector<Pipeline> pipelines);
     };
 }
 
