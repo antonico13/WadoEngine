@@ -4,6 +4,12 @@
 #include "GraphicsAbstractionLayer.h"
 #include <glm/glm.hpp>
 
+#include <map>
+#include <string>
+#include <memory>
+
+#define CREATE_VERTEX_BUILDER(builderName) (std::make_shared<builderName>())
+
 namespace Wado::GAL {
 
     using GBufferVertex = struct GBufferVertex {
@@ -22,12 +28,23 @@ namespace Wado::GAL {
     // uint32_t textureIndex
     class GBufferVertexBuilder : public WdVertexBuilder {
         public:
-            GBufferVertexBuilder();
+            friend class VertexBuilderManager;
             std::vector<WdVertexBinding> getBindingDescriptions();
             WdInputTopology getInputTopology();
         private:
+            GBufferVertexBuilder();
             std::vector<WdVertexBinding> _bindings;
             WdInputTopology _topology;
+    };
+
+    class VertexBuilderManager {
+        public:
+            static std::shared_ptr<VertexBuilderManager> getManager();
+            std::shared_ptr<WdVertexBuilder> getBuilder(std::string builderName);
+        private:
+            VertexBuilderManager() {};
+            static std::shared_ptr<VertexBuilderManager> manager;
+            std::map<std::string, std::shared_ptr<WdVertexBuilder>> vertexBuilders;
     };
 };
 

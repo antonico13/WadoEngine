@@ -22,7 +22,7 @@ namespace Wado::GAL {
 
     using WdExtent2D = struct WdExtent2D {
         uint32_t height;
-        uint32_t width;
+        uint32_t width;  
     };
 
     using WdExtent3D = struct WdExtent3D {
@@ -39,6 +39,9 @@ namespace Wado::GAL {
         WD_FORMAT_R32G32B32A32_UINT,
         WD_FORMAT_R32G32B32A32_SINT,
         WD_FORMAT_R32G32B32A32_SFLOAT,
+        WD_FORMAT_R32G32B32_SFLOAT,
+        WD_FORMAT_R32G32_SFLOAT,
+        WD_FORMAT_R32_SINT,
     };
 
     using WdBufferUsageFlags = uint32_t;
@@ -125,7 +128,7 @@ namespace Wado::GAL {
             virtual WdInputTopology getInputTopology() = 0;
     };
 
-    using WdViewportProperties =  struct WdViewportProperties {
+    using WdViewportProperties = struct WdViewportProperties {
         WdExtent2D startCoords;
         WdExtent2D endCoords;
         struct depth {

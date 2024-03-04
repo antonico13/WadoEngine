@@ -1,7 +1,33 @@
 #include "GraphicsAbstractionLayer.h"
 #include "VertexBuilders.h"
 
+#include <memory>
+
 namespace Wado::GAL {
+
+    VertexBuilderManager::manager;
+
+    std::shared_ptr<VertexBuilderManager> VertexBuilderManager::getManager() {
+        if (manager == nullptr) {
+            manager.reset(new VertexBuilderManager());
+        }
+        return manager;
+    };
+
+    std::shared_ptr<WdVertexBuilder> VertexBuilderManager::getBuilder(std::string builderName) {
+        std::map<std::string, std::shared_ptr<WdVertexBuilder>>::iterator it = vertexBuilders.find(builderName);
+        
+        if (it != vertexBuilders.end()) {
+            return *it;
+        };
+
+        std::shared_ptr<WdVertexBuilder> builder = static_cast<std::shared_ptr<WdVertexBuilder>>(CREATE_VERTEX_BUILDER(builderName));
+        
+        vertexBuilders.emplace(builderName, builder);
+        
+        return builder;
+    };
+
 
     GBufferVertexBuilder::GBufferVertexBuilder() {
         _bindings.resize(1);
