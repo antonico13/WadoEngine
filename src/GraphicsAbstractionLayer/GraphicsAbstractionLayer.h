@@ -198,7 +198,7 @@ namespace Wado::GAL {
 
             virtual void resetFences(std::vector<WdFenceHandle> fences) = 0;
 
-            virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties) = 0;
+            virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) = 0;
 
             virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines);
 

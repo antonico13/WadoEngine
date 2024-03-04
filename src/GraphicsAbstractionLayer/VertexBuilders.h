@@ -37,6 +37,18 @@ namespace Wado::GAL {
             WdInputTopology _topology;
     };
 
+    // has nothing 
+
+    class DeferredVertexBuilder : public WdVertexBuilder {
+        public:
+            friend class VertexBuilderManager;
+            std::vector<WdVertexBinding> getBindingDescriptions();
+            WdInputTopology getInputTopology();
+        private:
+            DeferredVertexBuilder() {};
+            std::vector<WdVertexBinding> _bindings;
+    };
+
     class VertexBuilderManager {
         public:
             static std::shared_ptr<VertexBuilderManager> getManager();

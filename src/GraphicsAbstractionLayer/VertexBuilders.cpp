@@ -64,4 +64,12 @@ namespace Wado::GAL {
     WdInputTopology GBufferVertexBuilder::getInputTopology() {
         return _topology;
     };
+
+    std::vector<WdVertexBinding> DeferredVertexBuilder::getBindingDescriptions() {
+        return _bindings; // will be empty array 
+    };
+
+    WdInputTopology GBufferVertexBuilder::getInputTopology() {
+        return WD_TOPOLOGY_TRIANGLE_LIST; // doesn't actually matter? maybe I should make it "NONE" ?
+    };
 };
