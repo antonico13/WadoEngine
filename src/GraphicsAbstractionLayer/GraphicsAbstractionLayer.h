@@ -154,11 +154,12 @@ namespace Wado::GAL {
         private:
             WdRenderPass(std::vector<WdPipeline> pipelines);
             std::vector<WdPipeline> _pipelines;
-
     };
 
     class WdCommandList {
         public:
+            friend class GraphicsLayer;
+
             virtual void resetCommandList() = 0;
             virtual void beginCommandList() = 0;
             virtual void setRenderPass(WdRenderPass renderPass) = 0;
@@ -200,7 +201,7 @@ namespace Wado::GAL {
 
             virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) = 0;
 
-            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines);
+            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines) = 0;
 
             virtual WdCommandList createCommandList() = 0;
     };
