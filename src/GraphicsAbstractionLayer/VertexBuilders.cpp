@@ -7,6 +7,16 @@ namespace Wado::GAL {
 
     VertexBuilderManager::manager;
 
+    template<GBufferVertexBuilder>
+    std::string getBuilderName() {
+        return "GBufferVertexBuilder";
+    };
+
+    template<DeferredVertexBuilder>
+    std::string getBuilderName() {
+        return "DeferredVertexBuilder";
+    };
+
     std::shared_ptr<VertexBuilderManager> VertexBuilderManager::getManager() {
         if (manager == nullptr) {
             manager.reset(new VertexBuilderManager());
@@ -14,14 +24,16 @@ namespace Wado::GAL {
         return manager;
     };
 
-    std::shared_ptr<WdVertexBuilder> VertexBuilderManager::getBuilder(std::string builderName) {
+    template <class T> 
+    std::shared_ptr<WdVertexBuilder> VertexBuilderManager::getBuilder() {
+        std::string builderName = getBuilderName<T>();
         std::map<std::string, std::shared_ptr<WdVertexBuilder>>::iterator it = vertexBuilders.find(builderName);
         
         if (it != vertexBuilders.end()) {
             return *it;
         };
 
-        std::shared_ptr<WdVertexBuilder> builder = static_cast<std::shared_ptr<WdVertexBuilder>>(CREATE_VERTEX_BUILDER(builderName));
+        std::shared_ptr<WdVertexBuilder> builder = static_cast<std::shared_ptr<WdVertexBuilder>>(std::make_shared<T>());
         
         vertexBuilders.emplace(builderName, builder);
         

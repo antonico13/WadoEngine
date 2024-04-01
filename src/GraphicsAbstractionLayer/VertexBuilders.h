@@ -8,8 +8,6 @@
 #include <string>
 #include <memory>
 
-#define CREATE_VERTEX_BUILDER(builderName) (std::make_shared<builderName>())
-
 namespace Wado::GAL {
 
     using GBufferVertex = struct GBufferVertex {
@@ -52,11 +50,14 @@ namespace Wado::GAL {
     class VertexBuilderManager {
         public:
             static std::shared_ptr<VertexBuilderManager> getManager();
-            std::shared_ptr<WdVertexBuilder> getBuilder(std::string builderName);
+            template<class T>
+            std::shared_ptr<WdVertexBuilder> getBuilder();
         private:
             VertexBuilderManager() {};
             static std::shared_ptr<VertexBuilderManager> manager;
             std::map<std::string, std::shared_ptr<WdVertexBuilder>> vertexBuilders;
+            template<class T>
+            std::string getBuilderName();
     };
 };
 
