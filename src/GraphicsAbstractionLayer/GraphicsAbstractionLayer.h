@@ -72,6 +72,30 @@ namespace Wado::GAL {
         WD_TRANSIENT_ATTACHMENT = 0x00000080,
     };
 
+    enum WdImageTiling {
+        WD_TILING_OPTIMAL,
+        WD_TILING_LINEAR
+    }
+
+    using WdFormatFeatureFlags = uint32_t;
+
+    // basically 1-to-1 with vulkan 
+    enum WdFormatFeatures {
+        WD_FORMAT_FEATURE_SAMPLED_IMAGE = 0x00000001,
+        WD_FORMAT_FEATURE_STORAGE_IMAGE = 0x00000002,
+        WD_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC = 0x00000004,
+        WD_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER = 0x00000008,
+        WD_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER = 0x00000010,
+        WD_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC = 0x00000020,
+        WD_FORMAT_FEATURE_VERTEX_BUFFER = 0x00000040,
+        WD_FORMAT_FEATURE_COLOR_ATTACHMENT = 0x00000080,
+        WD_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND = 0x00000100,
+        WD_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT = 0x00000200,
+        WD_FORMAT_FEATURE_BLIT_SRC = 0x00000400,
+        WD_FORMAT_FEATURE_BLIT_DST = 0x00000800,
+        WD_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR = 0x00001000,
+    }
+
     enum WdSampleCount {
         WD_SAMPLE_COUNT_1,
         WD_SAMPLE_COUNT_2, 
@@ -208,6 +232,8 @@ namespace Wado::GAL {
             virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines) = 0;
 
             virtual WdCommandList createCommandList() = 0;
+
+            virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
     };
 }
 
