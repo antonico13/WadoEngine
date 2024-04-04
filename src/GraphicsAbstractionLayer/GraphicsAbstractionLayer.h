@@ -42,6 +42,9 @@ namespace Wado::GAL {
         WD_FORMAT_R32G32B32_SFLOAT,
         WD_FORMAT_R32G32_SFLOAT,
         WD_FORMAT_R32_SINT,
+        WD_FORMAT_D32_SFLOAT,
+        WD_FORMAT_D32_SFLOAT_S8_UINT,
+        WD_FORMAT_D24_UNORM_S8_UINT,
     };
 
     using WdBufferUsageFlags = uint32_t;
@@ -62,6 +65,7 @@ namespace Wado::GAL {
     using WdImageUsageFlags = uint32_t;
     
     enum WdImageUsage {
+        WD_UNDEFINED = 0x0,
         WD_TRANSFER_SRC = 0x00000001,
         WD_TRANSFER_DST = 0x00000002,
         WD_SAMPLED_IMAGE = 0x00000004,
@@ -207,7 +211,8 @@ namespace Wado::GAL {
             virtual void init() = 0;
 
             // no sharing mode yet, will infer from usage I think.
-            // same for tiling. 
+            // for tiling, default optimal?
+            // figure out memory req from usage 
             virtual WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
@@ -234,6 +239,8 @@ namespace Wado::GAL {
             virtual WdCommandList createCommandList() = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
+
+            virtual void prepareImageFor(WdImage image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
     };
 }
 
