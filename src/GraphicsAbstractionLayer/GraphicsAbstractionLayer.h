@@ -90,8 +90,10 @@ namespace Wado::GAL {
         WdExtent3D extent;
     };
 
-    using WdTexture = struct WdTexture : public WdImage {
-
+    using WdTexture = struct WdTexture {
+        std::string name;
+        uint32_t uid;   
+        WdImage image;
     };
 
     using WdBuffer = struct WdBuffer {
