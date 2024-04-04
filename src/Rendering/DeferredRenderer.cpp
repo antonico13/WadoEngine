@@ -16,6 +16,17 @@ void DeferredRenderer::init() {
 };
 
 
+void DeferredRenderer::createDepthAttachment() {
+    WdFormat depthFormat = _graphicsLayer->findSupportedHardwareFormat(
+        {GAL::WdFormat::WD_FORMAT_D32_SFLOAT, GAL::WdFormat::WD_FORMAT_D32_SFLOAT_S8_UINT, GAL::WdFormat::WD_FORMAT_D24_UNORM_S8_UINT}, 
+        GAL::WdImageTiling::WD_IMAGE_TILING_OPTIMAL, 
+        GAL::WdFormatFeatures::WD_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT);
+
+    depthAttachment = _graphicsLayer->create2DImage(swapchainExtent, 1, GAL::WdSampleCount::WD_SAMPLE_COUNT_1, depthFormat, GAL::WdImageUsage::WD_DEPTH_STENCIL_ATTACHMENT); 
+    
+    _graphicsLayer->prepareImageFor(depthImage, GAL::WdImageUsage::WD_UNDEFINED, GAL::WdImageUsage::WD_DEPTH_STENCIL_ATTACHMENT);
+};
+
 void DeferredRenderer::createDeferredColorAttachments(GAL::WdFormat attachmentFormat) {
     deferredColorAttachments.resize(DEFERRED_ATTACHMENT_COUNT);
     // diffuse image, specular image, mesh image, position image 

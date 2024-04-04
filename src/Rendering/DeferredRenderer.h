@@ -18,8 +18,10 @@ class DeferredRender : public Renderer {
     private:
         GAL::GraphicsLayer *_graphicsLayer;
         std::vector<GAL::WdImage> deferredColorAttachments;
+        GAL::WdImage depthAttachment;
 
         void createDeferredColorAttachments(GAL::WdFormat attachmentFormat = DEFAULT_ATTACHMENT_FORMAT);
+        void createDepthAttachment();
 
         static const GAL::WdFormat DEFAULT_ATTACHMENT_FORMAT = WD_FORMAT_R8G8B8A8_SRGB;
         static const uint32_t DEFERRED_ATTACHMENT_COUNT = 4;
