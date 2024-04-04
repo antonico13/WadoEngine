@@ -234,12 +234,12 @@ namespace Wado::GAL {
 
             virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) = 0;
 
-            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines) = 0;
+            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) = 0;
 
             virtual WdCommandList createCommandList() = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
-
+            // this i can definitely automate with a render graph, a lot of this actually. 
             virtual void prepareImageFor(WdImage image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
     };
 }
