@@ -57,8 +57,8 @@ void DeferredRender::render(Scene scene) {
 
     GAL::WdViewportProperties viewportProperties{};
     viewportProperties.startCoords = {0, 0};
-    viewportProperties.endCoords = {WIDTH, HEIGHT};
-    viewportProperties.scissor = {{0, 0}, {WIDTH, HEIGHT}};
+    viewportProperties.endCoords = swapchainExtent;
+    viewportProperties.scissor = {{0, 0}, swapchainExtent};
     
     // these should be friend classes as well 
     // need to say here to use depth... should prob be created in the underlying GAL 
@@ -67,12 +67,17 @@ void DeferredRender::render(Scene scene) {
     GAL::WdPipeline deferredPipeline = _graphicsLayer->createPipeline(deferredVertexShader, deferredFragmentShader, deferredBuilder.get(), viewportProperties);
 
     // ^^ this could be/should be cached somehow so we actually only look for these pipelines if they don't exist.
-
     std::vector<GAL::WdPipeline> pipelines = {gBufferPipeline, deferredPipeline};
 
-    GAL::WdRenderPass deferredRenderPass = _graphicsLayer->createRenderPass(pipelines);
-
     createDeferredColorAttachments();
+    createDepthAttachment();
+
+    std::vector<GAL::WdImage> attachments = deferredColorAttachments;
+    attachments.push_back(depthAttachment);
+    // push back swap chain image for current frame here 
+    // attachments.push_back(swapchainImage[currentFrame])
+
+    GAL::WdRenderPass deferredRenderPass = _graphicsLayer->createRenderPass(pipelines, attachments);
 };  
 
 };
