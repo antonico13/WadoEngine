@@ -62,14 +62,14 @@ namespace Wado::GAL {
     using WdImageUsageFlags = uint32_t;
     
     enum WdImageUsage {
-        WD_TRANSFER_SRC,
-        WD_TRANSFER_DST,
-        WD_SAMPLED_IMAGE,
-        WD_STORAGE_IMAGE,
-        WD_COLOR_ATTACHMENT,
-        WD_DEPTH_STENCIL_ATTACHMENT,
-        WD_INPUT_ATTACHMENT,
-        WD_TRANSIENT_ATTACHMENT,
+        WD_TRANSFER_SRC = 0x00000001,
+        WD_TRANSFER_DST = 0x00000002,
+        WD_SAMPLED_IMAGE = 0x00000004,
+        WD_STORAGE_IMAGE = 0x00000008,
+        WD_COLOR_ATTACHMENT = 0x00000010,
+        WD_DEPTH_STENCIL_ATTACHMENT = 0x00000020,
+        WD_INPUT_ATTACHMENT = 0x00000040,
+        WD_TRANSIENT_ATTACHMENT = 0x00000080,
     };
 
     enum WdSampleCount {
@@ -182,7 +182,9 @@ namespace Wado::GAL {
         public:
             virtual void init() = 0;
 
-            virtual WdImageHandle create2DImage(WdExtent2D extent, uint32_t mipLevels, 
+            // no sharing mode yet, will infer from usage I think.
+            // same for tiling. 
+            virtual WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
             virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
