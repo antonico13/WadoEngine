@@ -37,7 +37,31 @@ void DeferredRender::createDeferredColorAttachments(GAL::WdFormat attachmentForm
 };
 
 void DeferredRender::recordCommandList() {
+    _commandList->beginCommandList();
+    // start render pass
+    _commandList->setRenderPass(_deferredRenderPass);
+    // start G-Buffer pipeline
+    _commandList->nextPipeline();
+    // TODO replace with actual scene buffers 
+    _commandList->setVertexBuffers({});
+    // TODO replace with actual scene index buffer
+    GAL::WdBuffer indexBuffer;
+    _commandList->setIndexBuffer(indexBuffer);
+    // Viewport is dynamic state
+    _commandList->setViewport(_viewportProperties);
+    // should bind descriptor sets here for the shader params
+    // that were set earlier, can do it in the draw commands
+    // or when setting the next pipeline,
+    // next pipeline makes more sense if it can be done out of order
+    _commandList->drawIndexed();
 
+    // now do deferred pipeline
+    _commandList->nextPipeline();
+    _commandList->drawVertices(3); // full screen triangle
+
+    _commandList->endRenderPass();
+
+    _commandList->endCommandList();
 };
 
 void DeferredRender::drawFrame() {
@@ -82,16 +106,15 @@ void DeferredRender::render(Scene scene) {
     std::shared_ptr<GAL::WdVertexBuilder> deferredBuilder = GAL::VertexBuilderManager::getManager()->getBuilder<DeferredVertexBuilder>();
 
 
-    GAL::WdViewportProperties viewportProperties{};
-    viewportProperties.startCoords = {0, 0};
-    viewportProperties.endCoords = swapchainExtent;
-    viewportProperties.scissor = {{0, 0}, swapchainExtent};
+    _viewportProperties.startCoords = {0, 0};
+    _viewportProperties.endCoords = swapchainExtent;
+    _viewportProperties.scissor = {{0, 0}, swapchainExtent};
     
     // these should be friend classes as well 
     // need to say here to use depth... should prob be created in the underlying GAL 
-    GAL::WdPipeline gBufferPipeline = _graphicsLayer->createPipeline(gbufferVertexShader, gbufferFragmentShader, gBufferBuilder.get(), viewportProperties);
+    GAL::WdPipeline gBufferPipeline = _graphicsLayer->createPipeline(gbufferVertexShader, gbufferFragmentShader, gBufferBuilder.get(), _viewportProperties);
 
-    GAL::WdPipeline deferredPipeline = _graphicsLayer->createPipeline(deferredVertexShader, deferredFragmentShader, deferredBuilder.get(), viewportProperties);
+    GAL::WdPipeline deferredPipeline = _graphicsLayer->createPipeline(deferredVertexShader, deferredFragmentShader, deferredBuilder.get(), _viewportProperties);
 
     // ^^ this could be/should be cached somehow so we actually only look for these pipelines if they don't exist.
     std::vector<GAL::WdPipeline> pipelines = {gBufferPipeline, deferredPipeline};
@@ -104,7 +127,7 @@ void DeferredRender::render(Scene scene) {
     // push back swap chain image for current frame here 
     // attachments.push_back(swapchainImage[currentFrame])
 
-    GAL::WdRenderPass deferredRenderPass = _graphicsLayer->createRenderPass(pipelines, attachments);
+    _deferredRenderPass = _graphicsLayer->createRenderPass(pipelines, attachments);
 
     // Go over scene and create/delete all textures models etc here 
     ///////////////////////////
