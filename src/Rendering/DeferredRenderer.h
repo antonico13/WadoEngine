@@ -18,6 +18,7 @@ class DeferredRender : public Renderer {
     private:
         std::shared_ptr<GAL::GraphicsLayer> _graphicsLayer; // can be shared if using multiple renderers at the same time
         std::unique_ptr<GAL::WdCommandList> _commandList; // unique command list per renderer 
+        GAL::WdFenceHandle frameInFlightFence; // only present when a frame has finished being rendered 
 
         std::vector<GAL::WdImage> deferredColorAttachments;
         GAL::WdImage depthAttachment;

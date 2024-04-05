@@ -88,6 +88,8 @@ void DeferredRender::render(Scene scene) {
 
     // create the command list (all the command buffers that will be used)
     _commandList = _graphicsLayer->createCommandList();
+
+    frameInFlightFence = _graphicsLayer->createFence(); // fence signaled when reset 
 };  
 
 };
