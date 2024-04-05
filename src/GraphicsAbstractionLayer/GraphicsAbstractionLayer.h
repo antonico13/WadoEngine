@@ -196,7 +196,7 @@ namespace Wado::GAL {
             virtual void beginCommandList() = 0;
             virtual void setRenderPass(WdRenderPass renderPass) = 0;
             virtual void nextPipeline() = 0;
-            virtual void setVertexBuffer(WdBuffer vertexBuffer) = 0;
+            virtual void setVertexBuffers(std::vector<WdBuffer> vertexBuffer) = 0;
             virtual void setIndexBuffer(WdBuffer indexBuffer) = 0;
             virtual void setViewport(WdViewportProperties WdViewportProperties) = 0;
             virtual void drawIndexed() = 0;
