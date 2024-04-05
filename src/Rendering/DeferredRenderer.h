@@ -16,7 +16,9 @@ class DeferredRender : public Renderer {
         void init();
         void render(Scene scene);
     private:
-        GAL::GraphicsLayer *_graphicsLayer;
+        std::shared_ptr<GAL::GraphicsLayer> _graphicsLayer; // can be shared if using multiple renderers at the same time
+        std::unique_ptr<GAL::WdCommandList> _commandList; // unique command list per renderer 
+
         std::vector<GAL::WdImage> deferredColorAttachments;
         GAL::WdImage depthAttachment;
 

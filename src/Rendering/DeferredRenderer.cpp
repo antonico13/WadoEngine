@@ -78,6 +78,16 @@ void DeferredRender::render(Scene scene) {
     // attachments.push_back(swapchainImage[currentFrame])
 
     GAL::WdRenderPass deferredRenderPass = _graphicsLayer->createRenderPass(pipelines, attachments);
+
+    // Go over scene and create/delete all textures models etc here 
+    ///////////////////////////
+
+    // Deal with texture sampler here too, should it be internal somehow? 
+
+    // create descriptor sets, this is "SetShaderParam" wherever I decide to add that
+
+    // create the command list (all the command buffers that will be used)
+    _commandList = _graphicsLayer->createCommandList();
 };  
 
 };
