@@ -30,6 +30,11 @@ class DeferredRender : public Renderer {
         static const uint32_t DEFERRED_ATTACHMENT_COUNT = 4;
 
         GAL::WdExtent2D swapchainExtent;
+
+        // will refactor later
+        void drawFrame();
+
+        void recordCommandList();
 };      
 
 };

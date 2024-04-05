@@ -11,12 +11,12 @@ class Scene {
 
 namespace Wado::Rendering {
 
-void DeferredRenderer::init() {
+void DeferredRender::init() {
 
 };
 
 
-void DeferredRenderer::createDepthAttachment() {
+void DeferredRender::createDepthAttachment() {
     WdFormat depthFormat = _graphicsLayer->findSupportedHardwareFormat(
         {GAL::WdFormat::WD_FORMAT_D32_SFLOAT, GAL::WdFormat::WD_FORMAT_D32_SFLOAT_S8_UINT, GAL::WdFormat::WD_FORMAT_D24_UNORM_S8_UINT}, 
         GAL::WdImageTiling::WD_IMAGE_TILING_OPTIMAL, 
@@ -27,7 +27,7 @@ void DeferredRenderer::createDepthAttachment() {
     _graphicsLayer->prepareImageFor(depthImage, GAL::WdImageUsage::WD_UNDEFINED, GAL::WdImageUsage::WD_DEPTH_STENCIL_ATTACHMENT);
 };
 
-void DeferredRenderer::createDeferredColorAttachments(GAL::WdFormat attachmentFormat) {
+void DeferredRender::createDeferredColorAttachments(GAL::WdFormat attachmentFormat) {
     deferredColorAttachments.resize(DEFERRED_ATTACHMENT_COUNT);
     // diffuse image, specular image, mesh image, position image 
     for (int i = 0; i < DEFERRED_ATTACHMENT_COUNT; i++) {
@@ -36,6 +36,33 @@ void DeferredRenderer::createDeferredColorAttachments(GAL::WdFormat attachmentFo
     }
 };
 
+void DeferredRender::recordCommandList() {
+
+};
+
+void DeferredRender::drawFrame() {
+    // wait for current frame to be finished before working 
+    _graphicsLayer->waitForFences({frameInFlightFence});
+
+    // acquire swapchain image here
+
+    _graphicsLayer->resetFences({frameInFlightFence});
+
+    // update uniform buffer with scene properties here
+
+    // reset command list to add current frame commands 
+
+    _commandList->resetCommandList();
+
+    recordCommandList(); // record all commands for current pipelines 
+
+    _commandList->endCommandList();
+
+    _commandList->execute(frameInFlightFence);
+
+    // this is too simple of an abstraction 
+    _graphicsLayer->presentCurrentFrame();
+};
 
 // draws one frame, maybe needs a better name 
 
