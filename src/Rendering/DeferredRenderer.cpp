@@ -24,14 +24,22 @@ void DeferredRender::createDepthAttachment() {
 
     depthAttachment = _graphicsLayer->create2DImage(swapchainExtent, 1, GAL::WdSampleCount::WD_SAMPLE_COUNT_1, depthFormat, GAL::WdImageUsage::WD_DEPTH_STENCIL_ATTACHMENT); 
     
+    // set clear value manually 
+
+    GAL::WdDepthStencilValue depthClear = {1.0f, 0};
+    depthAttachment.clearValue.depthStencil = depthClear;
+
     _graphicsLayer->prepareImageFor(depthImage, GAL::WdImageUsage::WD_UNDEFINED, GAL::WdImageUsage::WD_DEPTH_STENCIL_ATTACHMENT);
 };
 
 void DeferredRender::createDeferredColorAttachments(GAL::WdFormat attachmentFormat) {
     deferredColorAttachments.resize(DEFERRED_ATTACHMENT_COUNT);
     // diffuse image, specular image, mesh image, position image 
+    GAL::WdColorValue colorClear = {0.0f, 0.0f, 0.0f, 1.0f};
     for (int i = 0; i < DEFERRED_ATTACHMENT_COUNT; i++) {
         GAL::WdImage attachment = _graphicsLayer->create2DImage(swapchainExtent, 1, GAL::WdSampleCount::WD_SAMPLE_COUNT_1, attachmentFormat, GAL::WdImageUsage::WD_COLOR_ATTACHMENT | GAL::WdImageUsage::WD_INPUT_ATTACHMENT);
+        // need to set clear values here manually
+        attachment.clearValue.color = colorClear;
         deferredColorAttachments.push_back(attachment);
     }
 };
@@ -80,7 +88,7 @@ void DeferredRender::drawFrame() {
 
     recordCommandList(); // record all commands for current pipelines 
 
-    _commandList->endCommandList();
+    //_commandList->endCommandList();
 
     _commandList->execute(frameInFlightFence);
 

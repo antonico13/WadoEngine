@@ -112,12 +112,30 @@ namespace Wado::GAL {
         WD_SAMPLE_COUNT_64,
     };
 
+    using WdColorValue = struct WdColorValue {
+        float r;
+        float g;
+        float b;
+        float a;
+    };
+
+    using WdDepthStencilValue = struct WdDepthStencilValue {
+        float depth;
+        int stencil;
+    };
+
+    using WdClearValue = union WdClearValue {
+        WdColorValue color;
+        WdDepthStencilValue depthStencil;
+    };
+
     using WdImage = struct WdImage {
         WdImageHandle handle;
         WdMemoryPointer memory;
         WdRenderTarget target;
         WdFormat format;
         WdExtent3D extent;
+        WdClearValue clearValue;
     };
 
     using WdTexture = struct WdTexture {
