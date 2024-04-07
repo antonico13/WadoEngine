@@ -263,6 +263,8 @@ namespace Wado::GAL {
             virtual void prepareImageFor(WdImage image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
             virtual void presentCurrentFrame() = 0;
+
+            virtual void createRenderingSurfaces() = 0;
     };
 }
 

@@ -99,7 +99,8 @@ void DeferredRender::drawFrame() {
 // draws one frame, maybe needs a better name 
 
 void DeferredRender::render(Scene scene) {
-    
+    // create surfaces for rendering 
+    _graphicsLayer->createRenderingSurfaces();
     // these should be in init for the first time, otherwise cache
 
     // Extract all shaders from scene 
