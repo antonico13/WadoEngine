@@ -13,6 +13,7 @@ namespace Wado::GAL {
 
     using WdImageHandle = void *; // not sure about this here?
     using WdBufferHandle = void *;
+    using WdSamplerHandle = void *;
     using WdRenderTarget = void *; // this would be the image view 
     using WdMemoryPointer = void *;
 
@@ -110,6 +111,27 @@ namespace Wado::GAL {
         WD_SAMPLE_COUNT_32,
         WD_SAMPLE_COUNT_64,
     };
+
+    enum WdFilterMode {
+        WD_NEAREST_NEIGHBOUR,
+        WD_LINEAR,
+    };
+
+    enum WdAddressMode {
+        WD_REPEAT,
+        WD_MIRROR_REPEAT,
+        WD_CLAMP_TO_EDGE, 
+        WD_CLAMP_TO_BORDER,
+    };
+
+    // default 
+    using WdTextureAddressMode = struct WdTextureAddressMode {
+        WdAddressMode uMode;
+        WdAddressMode vMode;
+        WdAddressMode wMode; 
+    };
+
+    const WdTextureAddressMode DefaultTextureAddressMode = {WdAddressMode::WD_REPEAT, WdAddressMode::WD_REPEAT, WdAddressMode::WD_REPEAT};
 
     using WdColorValue = struct WdColorValue {
         float r;
@@ -238,6 +260,9 @@ namespace Wado::GAL {
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
             virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+
+            // create texture sampler 
+            virtual WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) = 0;
 
             virtual void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) = 0;
             // close or open "pipe" between CPU and GPU for this buffer's memory
