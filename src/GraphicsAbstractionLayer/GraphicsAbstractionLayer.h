@@ -74,8 +74,8 @@ namespace Wado::GAL {
         WD_STORAGE_IMAGE = 0x00000008,
         WD_COLOR_ATTACHMENT = 0x00000010,
         WD_DEPTH_STENCIL_ATTACHMENT = 0x00000020,
-        WD_INPUT_ATTACHMENT = 0x00000040,
-        WD_TRANSIENT_ATTACHMENT = 0x00000080,
+        WD_TRANSIENT_ATTACHMENT = 0x00000040,
+        WD_INPUT_ATTACHMENT = 0x00000080,
     };
 
     enum WdImageTiling {
@@ -149,6 +149,9 @@ namespace Wado::GAL {
         WdColorValue color;
         WdDepthStencilValue depthStencil;
     };
+
+    const WdDepthStencilValue defaultDepthStencilClear =  {1.0f, 0};
+    const WdColorValue defaultColorClear = {0.0f, 0.0f, 0.0f, 1.0f};
 
     using WdImage = struct WdImage {
         WdImageHandle handle;

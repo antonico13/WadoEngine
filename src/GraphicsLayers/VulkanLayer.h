@@ -16,6 +16,17 @@
 #include <memory>
 
 namespace Wado::GAL::Vulkan {
+
+
+    struct QueueFamilyIndices {
+        std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
+        std::optional<uint32_t> transferFamily;
+        //std::optional<uint32_t> computeFamily;
+
+        bool isComplete();
+    };
+
     class VulkanLayer : public GraphicsLayer {
         public:
             WdImage VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
@@ -42,21 +53,31 @@ namespace Wado::GAL::Vulkan {
 
             // used for global sampler and texture creation, based on device
             // properties and re-calculated every time device is set up.
-            static bool enableAnisotropy;
-            static float maxAnisotropy;
-            static uint32_t maxMipLevels;
+            bool enableAnisotropy;
+            float maxAnisotropy;
+            uint32_t maxMipLevels;
 
             // the pointer management here will need to change 
-            static std::vector<WdImage*> liveImages;
-            static std::vector<WdBuffer*> liveBuffers;
-            static std::vector<VkSampler> liveSamplers;
-            static std::vector<VkFence> liveFences;
-            static std::vector<VkSemaphore> liveSemaphores;
-            static std::vector<VkCommandPool> liveCommandPools;
-            static std::vector<VkPipeline> livePipelines;
-            static std::vector<VkRenderPass> liveRenderPasses;
-            
-            static VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
+            std::vector<WdImage*> liveImages;
+            std::vector<WdBuffer*> liveBuffers;
+            std::vector<VkSampler> liveSamplers;
+            std::vector<VkFence> liveFences;
+            std::vector<VkSemaphore> liveSemaphores;
+            std::vector<VkCommandPool> liveCommandPools;
+            std::vector<VkPipeline> livePipelines;
+            std::vector<VkRenderPass> liveRenderPasses;
+
+            // in order to determine resource sharing mode and queues to use
+            const VkImageUsageFlags transferUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            const VkImageUsageFlags graphicsUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+            const VkImageUsageFlags presentUsage = 0;
+
+            QueueFamilyIndices queueIndices;
+
+            VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
+            VkImageUsageFlags WdSampleBitsToVkSampleBits(WdImageUsageFlags imageUsage) const;
+            std::vector<uint32_t> getImageQueueFamilies(VkImageUsageFlags usage) const;
+            VkImageAspectFlags getImageAspectFlags(VkImageUsageFlags usage) const;
     };
 }
 
