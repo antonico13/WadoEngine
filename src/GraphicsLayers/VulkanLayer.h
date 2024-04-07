@@ -56,7 +56,7 @@ namespace Wado::GAL::Vulkan {
             static std::vector<VkPipeline> livePipelines;
             static std::vector<VkRenderPass> liveRenderPasses;
             
-            
+            static VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
     };
 }
 

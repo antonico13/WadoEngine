@@ -103,13 +103,13 @@ namespace Wado::GAL {
     }
 
     enum WdSampleCount {
-        WD_SAMPLE_COUNT_1,
-        WD_SAMPLE_COUNT_2, 
-        WD_SAMPLE_COUNT_4, 
-        WD_SAMPLE_COUNT_8, 
-        WD_SAMPLE_COUNT_16,
-        WD_SAMPLE_COUNT_32,
-        WD_SAMPLE_COUNT_64,
+        WD_SAMPLE_COUNT_1 = 0x00000001,
+        WD_SAMPLE_COUNT_2 = 0x00000002, 
+        WD_SAMPLE_COUNT_4 = 0x00000004, 
+        WD_SAMPLE_COUNT_8 = 0x00000008, 
+        WD_SAMPLE_COUNT_16 = 0x00000010,
+        WD_SAMPLE_COUNT_32 = 0x00000020,
+        WD_SAMPLE_COUNT_64 = 0x00000040,
     };
 
     enum WdFilterMode {
