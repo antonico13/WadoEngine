@@ -19,7 +19,6 @@ namespace Wado::GAL {
     using WdFenceHandle = void *; 
     using WdSemaphoreHandle = void *;
 
-
     using WdSize = size_t;
 
     using WdExtent2D = struct WdExtent2D {
@@ -193,6 +192,8 @@ namespace Wado::GAL {
 
     class WdPipeline {
         public:
+            void setVertexShaderParameter(std::string paramName, Shader::ShaderResource resource);
+            void setFragmentShaderParameter(std::string paramName, Shader::ShaderResource resource);
         private:
             WdPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties);
             Shader::Shader _vertexShader;

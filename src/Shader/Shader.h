@@ -1,10 +1,16 @@
 #ifndef H_WD_SHADER
 #define H_WD_SHADER
 
+#include "GraphicsAbstractionLayer.h"
 #include <cstdint>
 #include <vector>
 
 namespace Wado::Shader {
+
+struct ShaderResource {
+    GAL::WdImage* imageResource;
+    GAL::WdBuffer* bufferResource;
+};
 
 enum ShaderParameterType {
     WD_SAMPLED_IMAGE, // sampler2D
@@ -29,12 +35,23 @@ class ShaderParameter {
 
 class Shader {
     public:
+        virtual std::vector<ShaderParameter> getShaderUniforms() = 0;
     private:
         std::vector<uint8_t> shaderByteCode;
         std::vector<ShaderParameter> uniforms;
         std::vector<ShaderParameter> inputs;
         std::vector<ShaderParameter> outputs;
 };
+
+class VertexShader : public Shader {
+    public:
+        virtual std::vector<ShaderParameter> getShaderUniforms() = 0;
+    private:
+        std::vector<uint8_t> shaderByteCode;
+        std::vector<ShaderParameter> uniforms;
+        std::vector<ShaderParameter> inputs;
+        std::vector<ShaderParameter> outputs;
+}
 
 }
 #endif
