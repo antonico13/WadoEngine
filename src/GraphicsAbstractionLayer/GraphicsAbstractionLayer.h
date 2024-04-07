@@ -239,10 +239,19 @@ namespace Wado::GAL {
             virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
 
             virtual void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) = 0;
+            // close or open "pipe" between CPU and GPU for this buffer's memory
+            virtual void openBuffer(WdBuffer buffer) = 0;
+
+            virtual void closeBuffer(WdBuffer buffer) = 0;
 
             virtual void copyBufferToImage(WdBufferHandle buffer, WdImageHandle image, WdExtent2D extent) = 0;
 
             virtual void copyBuffer(WdBufferHandle srcBuffer, WdBufferHandle dstBuffer, WdSize size) = 0;
+
+            // close or open "pipe" between CPU and GPU for this image's memory
+            virtual void openImage(WdImage image) = 0;
+
+            virtual void closeImage(WdImage image) = 0;
 
             virtual WdFenceHandle createFence(bool signaled = true) = 0;
 
