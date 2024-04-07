@@ -24,6 +24,22 @@ namespace Wado::GAL::Vulkan {
             VulkanLayer();
             static std::shared_ptr<VulkanLayer> layer;
 
+            static VkFormat WdFormatToVKFormat[] = {
+                VK_FORMAT_R8G8B8A8_UINT,
+                VK_FORMAT_R8G8B8A8_SINT,
+                VK_FORMAT_R8G8B8A8_SRGB,
+                VK_FORMAT_UNDEFINED,
+                VK_FORMAT_R32G32B32A32_UINT,
+                VK_FORMAT_R32G32B32A32_SINT,
+                VK_FORMAT_R32G32B32A32_SFLOAT,
+                VK_FORMAT_R32G32B32_SFLOAT,
+                VK_FORMAT_R32G32_SFLOAT,
+                VK_FORMAT_R32_SINT,
+                VK_FORMAT_D32_SFLOAT,
+                VK_FORMAT_D32_SFLOAT_S8_UINT,
+                VK_FORMAT_D24_UNORM_S8_UINT,
+            };
+
             // used for global sampler and texture creation, based on device
             // properties and re-calculated every time device is set up.
             static bool enableAnisotropy;
