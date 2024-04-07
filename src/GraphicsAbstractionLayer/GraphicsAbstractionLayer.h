@@ -52,15 +52,15 @@ namespace Wado::GAL {
     using WdBufferUsageFlags = uint32_t;
 
     enum WdBufferUsage {
-        WD_TRANSFER_SRC,
-        WD_TRANSFER_DST,
-        WD_UNIFORM_BUFFER,
-        WD_STORAGE_BUFFER,
-        WD_INDEX_BUFFER,
-        WD_VERTEX_BUFFER,
-        WD_UNIFORM_TEXEL_BUFFER,
-        WD_STORAGE_TEXEL_BUFFER,
-        WD_INDIRECT_BUFFER,
+        WD_TRANSFER_SRC = 0x00000001,
+        WD_TRANSFER_DST = 0x00000002,
+        WD_UNIFORM_BUFFER = 0x00000004,
+        WD_STORAGE_BUFFER = 0x00000008,
+        WD_INDEX_BUFFER = 0x00000010,
+        WD_VERTEX_BUFFER = 0x00000020,
+        WD_UNIFORM_TEXEL_BUFFER = 0x00000040,
+        WD_STORAGE_TEXEL_BUFFER = 0x00000080,
+        WD_INDIRECT_BUFFER = 0x00000100,
     };
 
 
@@ -262,7 +262,7 @@ namespace Wado::GAL {
             virtual WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
-            virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+            virtual WdBuffer createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
 
             // create texture sampler 
             virtual WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) = 0;

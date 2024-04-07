@@ -29,7 +29,8 @@ namespace Wado::GAL::Vulkan {
 
     class VulkanLayer : public GraphicsLayer {
         public:
-            WdImage VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
+            WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
+            WdBuffer createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer();
@@ -67,16 +68,25 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkPipeline> livePipelines;
             std::vector<VkRenderPass> liveRenderPasses;
 
-            // in order to determine resource sharing mode and queues to use
+            // needed in order to determine resource sharing mode and queues to use
             const VkImageUsageFlags transferUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             const VkImageUsageFlags graphicsUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
             const VkImageUsageFlags presentUsage = 0;
 
+            const VkBufferUsageFlags bufferTransferUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            const VkBufferUsageFlags bufferGraphicsUsage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            const VkBufferUsageFlags bufferIndirectUsage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+
             QueueFamilyIndices queueIndices;
 
             VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
-            VkImageUsageFlags WdSampleBitsToVkSampleBits(WdImageUsageFlags imageUsage) const;
+
+            VkImageUsageFlags WdImageUsageToVkImageUsage(WdImageUsageFlags imageUsage) const;
+            VkBufferUsageFlags WdBufferUsageToVkBufferUsage(WdBufferUsageFlags bufferUsage) const;
+
             std::vector<uint32_t> getImageQueueFamilies(VkImageUsageFlags usage) const;
+            std::vector<uint32_t> getBufferQueueFamilies(VkBufferUsageFlags usage) const;
+
             VkImageAspectFlags getImageAspectFlags(VkImageUsageFlags usage) const;
     };
 }

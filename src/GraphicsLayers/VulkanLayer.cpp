@@ -7,6 +7,9 @@ namespace Wado::GAL::Vulkan {
         return graphicsFamily.has_value() && presentFamily.has_value() && transferFamily.has_value();// && computeFamily.has_value();
     };
 
+// UTILS:
+
+    // all of the below are designed to be 1-to-1 with Vulkan 
     VkSampleCountFlagBits VulkanLayer::WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const {
         return sampleCount;
     };
@@ -15,19 +18,35 @@ namespace Wado::GAL::Vulkan {
         return imageUsage;
     };
 
+    VkBufferUsageFlags VulkanLayer::WdBufferUsageToVkBufferUsage(WdBufferUsageFlags bufferUsage) const {
+        return bufferUsage;
+    }
+
+    // These are used to determine the queue families needed and aspect masks 
     std::vector<uint32_t> VulkanLayer::getImageQueueFamilies(VkImageUsageFlags usage) const {
-        VkImageUsageFlags imageTransferUsage = transferUsage & imageInfo.usage;
-        VkImageUsageFlags imageGraphicsUsage = graphics & imageInfo.usage;
         std::vector<uint32_t> queueFamilyIndices;
-        if (transferUsage & imageInfo.usage) {
+        if (transferUsage & usage) {
             queueFamilyIndices.push_back(queueIndices.transferFamily.value());
         }
 
-        if (graphicsUsage & imageInfo.usage) {
+        if (graphicsUsage & usage) {
             queueFamilyIndices.push_back(queueIndices.graphicsFamily.value());
         }
         return queueFamilyIndices;
     };
+
+    std::vector<uint32_t> getBufferQueueFamilies(VkBufferUsageFlags usage) const {
+        std::vector<uint32_t> queueFamilyIndices;
+        if (bufferTransferUsage & usage) {
+            queueFamilyIndices.push_back(queueIndices.transferFamily.value());
+        }
+
+        if (bufferGraphicsUsage & usage) {
+            queueFamilyIndices.push_back(queueIndices.graphicsFamily.value());
+        }
+        return queueFamilyIndices;
+    };
+
 
     VkImageAspectFlags VulkanLayer::getImageAspectFlags(VkImageUsageFlags usage) const {
         VkImageAspectFlags flags = 0;
@@ -40,6 +59,8 @@ namespace Wado::GAL::Vulkan {
 
         return flags;
     };
+
+// END OF UTILS
 
     WdImage VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
         VkImage image; // image handle, 1-to-1 translation to GAL 
@@ -127,5 +148,59 @@ namespace Wado::GAL::Vulkan {
         }
 
         liveImages.push_back(img); // keep track of this image 
-    }
+
+        return *img;
+    };
+
+    WdBuffer VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
+        VkBuffer buffer; // buffer handle 
+        VkMemory bufferMemory; // memory handle 
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = WdBufferUsageToVkBufferUsage(usage);
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        std::vector<uint32_t> queueFamilyIndices = getBufferQueueFamilies(bufferInfo.usage);
+        
+        if (queueFamilyIndices.size() > 1) {
+            bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            bufferInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size());
+            bufferInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+        }
+
+        bufferInfo.flags = 0;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create buffer!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate buffer memory!");
+        }
+
+        vkBindBufferMemory(device, buffer, bufferMemory, 0);
+
+        // Create GAL resource now 
+        WdBuffer* buf = new WdBuffer;
+        // error check etc (will do with cutom allocator in own new operator)
+
+        buf->handle = static_cast<WdBufferHandle>(buffer);
+        buf->memory = static_cast<WdMemoryPointer>(bufferMemory); 
+        buf->size = size;
+
+        liveBuffers.push_back(buf); // keep track of this image 
+
+        return *buf;
+    };
+
 }
