@@ -32,6 +32,10 @@ namespace Wado::GAL::Vulkan {
             WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
             WdBuffer createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
             WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
+            void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) override;
+            void openBuffer(WdBuffer& buffer) override;
+            void closeBuffer(WdBuffer& buffer) override;
+
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer();

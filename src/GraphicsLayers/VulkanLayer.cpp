@@ -253,4 +253,19 @@ namespace Wado::GAL::Vulkan {
 
         return static_cast<WdSamplerHandle>(textureSampler);
     };
+
+    void VulkanLayer::updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) {
+        // TODO: should do some bounds checks and stuff here at some point 
+        memcpy(buffer.data + offset, data, dataSize);
+    };
+
+    void VulkanLayer::openBuffer(WdBuffer& buffer) {
+        vkMapMemory(device, buffer.memory, 0, buffer.size, 0, &buffer.data);
+    };
+
+    // TODO when shutting down, call close buffer on all live buffers if they are open
+    void VulkanLayer::closeBuffer(WdBuffer& buffer) {
+        vkUnmapMemory(device, buffer.memory); 
+    };
+
 }
