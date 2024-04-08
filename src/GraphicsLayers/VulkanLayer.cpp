@@ -1,6 +1,8 @@
 #include "GraphicsAbstractionLayer.h"
 #include "VulkanLayer.h"
 
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
+
 namespace Wado::GAL::Vulkan {
     
     bool QueueFamilyIndices::isComplete() {
@@ -59,6 +61,17 @@ namespace Wado::GAL::Vulkan {
 
         return flags;
     };
+
+    // 1-to-1 with Vulkan right now
+    VkFilter VulkanLayer::WdFilterToVkFilter(WdFilterMode filter) const {
+        return filter;
+    };
+
+    VkSamplerAddressMode VulkanLayer::WdAddressModeToVkAddressMode(WdAddressMode addressMode) const {
+        return addressMode;
+    };
+
+
 
 // END OF UTILS
 
@@ -203,4 +216,41 @@ namespace Wado::GAL::Vulkan {
         return *buf;
     };
 
+    WdSamplerHandle VulkanLayer::createSampler(WdTextureAddressMode addressMode, WdFilterMode minFilter, WdFilterMode magFilter, WdFilterMode mipMapFilter) {
+        VkSampler textureSampler;
+
+        VkSamplerCreateInfo samplerInfo{};
+        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        samplerInfo.magFilter = WdFilterToVkFilter(magFilter);
+        samplerInfo.minFilter = WdFilterToVkFilter(minFilter);
+
+        samplerInfo.addressModeU = WdAddressModeToVkAddressMode(addressMode.uMode);
+        samplerInfo.addressModeV = WdAddressModeToVkAddressMode(addressMode.vMode);;
+        samplerInfo.addressModeW = WdAddressModeToVkAddressMode(addressMode.wMode);;
+        
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+        samplerInfo.anisotropyEnable = enableAnisotropy ? VK_TRUE : VK_FALSE;
+        samplerInfo.maxAnisotropy = MIN(properties.limits.maxSamplerAnisotropy, maxAnisotropy);
+
+        samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+        samplerInfo.compareEnable = VK_FALSE;
+        samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+
+        samplerInfo.mipmapMode = WdAddressModeToVkAddressMode(mipMapFilter);
+        samplerInfo.mipLodBias = 0.0f;
+        samplerInfo.minLod = 0.0f;
+        samplerInfo.maxLod = static_cast<float>(maxMipLevels);
+
+        if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create texture sampler!");
+        }
+
+        liveSamplers.push_back(static_cast<WdSamplerHandle>(textureSampler));
+
+        return static_cast<WdSamplerHandle>(textureSampler);
+    };
 }

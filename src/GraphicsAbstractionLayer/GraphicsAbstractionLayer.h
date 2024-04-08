@@ -112,16 +112,18 @@ namespace Wado::GAL {
         WD_SAMPLE_COUNT_64 = 0x00000040,
     };
 
+    // same as Vulkan
     enum WdFilterMode {
-        WD_NEAREST_NEIGHBOUR,
-        WD_LINEAR,
+        WD_NEAREST_NEIGHBOUR = 0,
+        WD_LINEAR = 1,
     };
 
+    // same as Vulkan
     enum WdAddressMode {
-        WD_REPEAT,
-        WD_MIRROR_REPEAT,
-        WD_CLAMP_TO_EDGE, 
-        WD_CLAMP_TO_BORDER,
+        WD_REPEAT = 0,
+        WD_MIRROR_REPEAT = 1,
+        WD_CLAMP_TO_EDGE = 2, 
+        WD_CLAMP_TO_BORDER = 3,
     };
 
     // default 
