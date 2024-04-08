@@ -36,6 +36,11 @@ namespace Wado::GAL::Vulkan {
             void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) override;
             void openBuffer(WdBuffer& buffer) override;
             void closeBuffer(WdBuffer& buffer) override;
+
+            WdFenceHandle createFence(bool signaled = true) override;
+            void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
+            void resetFences(std::vector<WdFenceHandle> fences) override;
+
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer();

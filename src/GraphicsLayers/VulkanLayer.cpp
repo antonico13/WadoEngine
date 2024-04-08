@@ -2,6 +2,7 @@
 #include "VulkanLayer.h"
 
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
+#define TO_VK_BOOL(A) ((A) ? (VK_TRUE) : (VK_FALSE))
 
 namespace Wado::GAL::Vulkan {
     
@@ -266,6 +267,32 @@ namespace Wado::GAL::Vulkan {
     // TODO when shutting down, call close buffer on all live buffers if they are open
     void VulkanLayer::closeBuffer(WdBuffer& buffer) {
         vkUnmapMemory(device, buffer.memory); 
+    };
+
+
+    WdFenceHandle VulkanLayer::createFence(bool signaled) {
+        VkFence fence;
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0; 
+
+        if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create semaphores and fence for graphics!");
+        }
+
+        liveFences.push_back(fence);
+
+        return static_cast<WdFenceHandle>(fence); 
+    };
+
+    void VulkanLayer::waitForFences(std::vector<WdFenceHandle> fences, bool waitAll, uint64_t timeout) {
+        // should probably do a static cast here for fence data?
+        vkWaitForFences(device, static_cast<uint32_t>(fences.size()), fences.data(), TO_VK_BOOL(waitAll), timeout);
+    };
+
+    void VulkanLayer::resetFences(std::vector<WdFenceHandle> fences) {
+        vkResetFences(device, static_cast<uint32_t>(fences.size()), fences.data());
     };
 
 }
