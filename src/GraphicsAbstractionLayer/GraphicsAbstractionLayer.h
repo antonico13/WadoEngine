@@ -283,11 +283,6 @@ namespace Wado::GAL {
             virtual void copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) = 0;
             virtual void copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) = 0;
 
-            // close or open "pipe" between CPU and GPU for this image's memory
-            virtual void openImage(WdImage image) = 0;
-
-            virtual void closeImage(WdImage image) = 0;
-
             virtual WdFenceHandle createFence(bool signaled = true) = 0;
 
             virtual WdSemaphoreHandle createSemaphore() = 0;
@@ -303,7 +298,8 @@ namespace Wado::GAL {
             virtual std::unique_ptr<WdCommandList> createCommandList() = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
-            // this i can definitely automate with a render graph, a lot of this actually. 
+            // this i can definitely automate with a render graph, a lot of this actually.
+            // this is also immediate
             virtual void prepareImageFor(WdImage image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
             virtual void presentCurrentFrame() = 0;
