@@ -251,6 +251,8 @@ namespace Wado::GAL {
             virtual void endRenderPass() = 0;
             virtual void endCommandList() = 0;
             virtual void execute(WdFenceHandle fenceToSignal) = 0;
+            virtual void copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) = 0;
+            virtual void copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) = 0;
         private:
             WdCommandList();
     };
@@ -275,10 +277,6 @@ namespace Wado::GAL {
             virtual void openBuffer(WdBuffer& buffer) = 0;
 
             virtual void closeBuffer(WdBuffer& buffer) = 0;
-
-            virtual void copyBufferToImage(WdBufferHandle buffer, WdImageHandle image, WdExtent2D extent) = 0;
-
-            virtual void copyBuffer(WdBufferHandle srcBuffer, WdBufferHandle dstBuffer, WdSize size) = 0;
 
             // close or open "pipe" between CPU and GPU for this image's memory
             virtual void openImage(WdImage image) = 0;
