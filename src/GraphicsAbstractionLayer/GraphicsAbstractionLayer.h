@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <map>
 
 class Wado::Shader::Shader;
 
@@ -220,16 +221,69 @@ namespace Wado::GAL {
 
     class WdPipeline {
         public:
-            void setVertexShaderParameter(std::string paramName, Shader::ShaderResource resource);
-            void setFragmentShaderParameter(std::string paramName, Shader::ShaderResource resource);
+            friend class GraphicsLayer;
+            friend class WdRenderPass;
+
+            using WdImageResource = struct WdImageResource {
+                WdImage* image;
+                WdSamplerHandle sampler;
+            };
+
+            using WdBufferResource = struct WdBufferResource {
+                WdBuffer* buffer;
+                WdRenderTarget bufferTarget;
+            };
+
+            union ShaderResource {
+                WdImageResource imageResource;
+                WdBufferResource bufferResource;
+            };
+
+            void setVertexShaderParameter(std::string paramName, ShaderResource resource);
+            void setFragmentShaderParameter(std::string paramName, ShaderResource resource);
+        
         private:
-            WdPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder vertexBuilder, WdViewportProperties viewportProperties);
-            Shader::Shader _vertexShader;
-            Shader::Shader _fragmentShader;
+            
+            enum ShaderParameterType {
+                WD_SAMPLED_IMAGE, // sampler2D
+                WD_TEXTURE_IMAGE,// just texture2D
+                WD_STORAGE_IMAGE, // read-write
+                WD_SAMPLED_BUFFER,
+                WD_BUFFER_IMAGE,
+                WD_SAMPLER,
+                WD_UNIFORM_BUFFER,
+                WD_PUSH_CONSTANT, // only supported by Vulkan backend
+                WD_SUBPASS_INPUT, // only supported by Vulkan
+                WD_STAGE_INPUT, // used for ins 
+                WD_STAGE_OUTPUT, // used for outs 
+                WD_STORAGE_BUFFER, 
+            };
+
+            using ShaderParameter = struct ShaderParameter {
+                ShaderParameterType paramType;
+                uint8_t decorationSet;
+                uint8_t decorationBinding;
+                uint8_t decorationLocation;
+                ShaderResource resource;
+            };
+
+            using ShaderParams = struct ShaderParams {
+                std::map<std::string, ShaderParameter> uniforms;
+                std::map<std::string, ShaderParameter> inputs;
+                std::map<std::string, ShaderParameter> outputs;
+                std::map<std::string, ShaderParameter> subpassInputs;
+            };
+
+            WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
+            Shader::ShaderByteCode _vertexShader;
+            ShaderParams _vertexParams;
+            Shader::ShaderByteCode _fragmentShader;
+            ShaderParams _fragmentParams;
     };
 
     class WdRenderPass {
         public:
+            friend class GraphicsLayer;
         private:
             WdRenderPass(std::vector<WdPipeline> pipelines);
             std::vector<WdPipeline> _pipelines;
@@ -285,7 +339,7 @@ namespace Wado::GAL {
 
             virtual WdFenceHandle createFence(bool signaled = true) = 0;
 
-            virtual WdSemaphoreHandle createSemaphore() = 0;
+            //virtual WdSemaphoreHandle createSemaphore() = 0;
 
             virtual void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) = 0;
 
