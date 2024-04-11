@@ -1,6 +1,7 @@
 #include "GraphicsAbstractionLayer.h"
 #include "Shader.h"
 
+#include "spirv.h"
 #include "spirv_cross.hpp"
 
 // get layout decorations for uniforms 
@@ -56,6 +57,7 @@ namespace Wado::GAL {
 
         // add all inputs (only vertex)
         // TODO, not relevant right now 
+        // but can extract the actual shape of the vertex inputs without using a vertex builder actually, much more useful 
 
         // add all subpass inputs (Vulkan only)
         for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
@@ -72,11 +74,15 @@ namespace Wado::GAL {
     };
 
 
-    void WdPipeline::setVertexShaderParameter(std::string paramName, ShaderResource resource) {
+    void WdPipeline::setVertexUniform(std::string paramName, ShaderResource resource) {
+    
+    };
+
+    void WdPipeline::setFragmentUniform(std::string paramName, ShaderResource resource) {
 
     };
 
-    void WdPipeline::setFragmentShaderParameter(std::string paramName, ShaderResource resource) {
+    void WdPipeline::setFragmentOutput(std::string paramName, ShaderResource resource) {
 
     };
         

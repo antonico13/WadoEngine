@@ -240,8 +240,11 @@ namespace Wado::GAL {
                 WdBufferResource bufferResource;
             };
 
-            void setVertexShaderParameter(std::string paramName, ShaderResource resource);
-            void setFragmentShaderParameter(std::string paramName, ShaderResource resource);
+            // subpass inputs handled in setUniform 
+            void setVertexUniform(std::string paramName, ShaderResource resource);
+            void setFragmentUniform(std::string paramName, ShaderResource resource);
+            // special case, since it realtes to the "framebuffer"
+            void setFragmentOutput(std::string paramName, ShaderResource resource);
 
             // these should be private
             enum ShaderParameterType {
