@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <string>
 
 class Wado::Shader::Shader;
 
@@ -82,7 +83,7 @@ namespace Wado::GAL {
     enum WdImageTiling {
         WD_TILING_OPTIMAL,
         WD_TILING_LINEAR
-    }
+    };
 
     using WdFormatFeatureFlags = uint32_t;
 
@@ -101,7 +102,7 @@ namespace Wado::GAL {
         WD_FORMAT_FEATURE_BLIT_SRC = 0x00000400,
         WD_FORMAT_FEATURE_BLIT_DST = 0x00000800,
         WD_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR = 0x00001000,
-    }
+    };
 
     enum WdSampleCount {
         WD_SAMPLE_COUNT_1 = 0x00000001,
@@ -241,9 +242,8 @@ namespace Wado::GAL {
 
             void setVertexShaderParameter(std::string paramName, ShaderResource resource);
             void setFragmentShaderParameter(std::string paramName, ShaderResource resource);
-        
-        private:
-            
+
+            // these should be private
             enum ShaderParameterType {
                 WD_SAMPLED_IMAGE, // sampler2D
                 WD_TEXTURE_IMAGE,// just texture2D
@@ -264,6 +264,7 @@ namespace Wado::GAL {
                 uint8_t decorationSet;
                 uint8_t decorationBinding;
                 uint8_t decorationLocation;
+                uint8_t decorationIndex; // if input attachment, exclusive to Vulkan GLSL 
                 ShaderResource resource;
             };
 
@@ -273,6 +274,9 @@ namespace Wado::GAL {
                 std::map<std::string, ShaderParameter> outputs;
                 std::map<std::string, ShaderParameter> subpassInputs;
             };
+
+        private:
+            ShaderParams generateShaderParams(Shader::ShaderByteCode byteCode);
 
             WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
             Shader::ShaderByteCode _vertexShader;
