@@ -249,7 +249,7 @@ namespace Wado::GAL {
             // these should be private
             enum ShaderParameterType {
                 WD_SAMPLED_IMAGE, // sampler2D
-                WD_TEXTURE_IMAGE,// just texture2D
+                WD_TEXTURE_IMAGE, // just texture2D
                 WD_STORAGE_IMAGE, // read-write
                 WD_SAMPLED_BUFFER,
                 WD_BUFFER_IMAGE,

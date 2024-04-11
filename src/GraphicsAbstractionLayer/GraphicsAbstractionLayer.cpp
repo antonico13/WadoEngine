@@ -75,15 +75,40 @@ namespace Wado::GAL {
 
 
     void WdPipeline::setVertexUniform(std::string paramName, ShaderResource resource) {
-    
+        std::map<std::string, ShaderParameter>::iterator it = _vertexParams.uniforms.find(paramName);
+        if (it == _vertexParams.uniforms.end()) {
+            it = _vertexParams.subpassInputs.find(paramName);
+            if (it != _vertexParams.subpassInputs.end()) {
+                it->second.resource = resource;
+            }
+        } else {
+            it->second.resource = resource;
+        }
+        // error, param not found bla bla 
+        // can also type check here (later)
     };
 
     void WdPipeline::setFragmentUniform(std::string paramName, ShaderResource resource) {
-
+        std::map<std::string, ShaderParameter>::iterator it = _fragmentParams.uniforms.find(paramName);
+        if (it == _fragmentParams.uniforms.end()) {
+            it = _fragmentParams.subpassInputs.find(paramName);
+            if (it != _fragmentParams.subpassInputs.end()) {
+                it->second.resource = resource;
+            }
+        } else {
+            it->second.resource = resource;
+        }
+        // error, param not found bla bla 
+        // can also type check here (later)
     };
 
     void WdPipeline::setFragmentOutput(std::string paramName, ShaderResource resource) {
-
+        std::map<std::string, ShaderParameter>::iterator it = _fragmentParams.outputs.find(paramName);
+        if (it != _fragmentParams.outputs.end()) {
+            it->second.resource = resource;
+        }
+        // error, param not found bla bla 
+        // can also type check here (later)
     };
         
 }
