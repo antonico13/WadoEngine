@@ -26,6 +26,7 @@ namespace Wado::GAL {
         _fragmentShader = fragmentShader;
         _fragmentParams = generateShaderParams(_fragmentShader);
         _vertexParams = generateShaderParams(_vertexShader);
+        _viewportProperties = viewportProperties;
     };
 
     ShaderParams WdPipeline::generateShaderParams(Shader::ShaderByteCode byteCode) {
@@ -110,5 +111,11 @@ namespace Wado::GAL {
         // error, param not found bla bla 
         // can also type check here (later)
     };
-        
+    
+
+    void WdPipeline::setDepthStencilResource(ShaderResource resource) {
+        // should do some checks here for formats and what not 
+        depthStencilResource = resource;
+    };
+
 }

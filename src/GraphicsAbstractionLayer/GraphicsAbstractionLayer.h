@@ -266,6 +266,8 @@ namespace Wado::GAL {
             // special case, since it realtes to the "framebuffer"
             void setFragmentOutput(std::string paramName, ShaderResource resource);
 
+            void setDepthStencilResource(ShaderResource resource);
+
             // these should be private
             enum ShaderParameterType {
                 WD_SAMPLED_IMAGE, // sampler2D
@@ -307,6 +309,8 @@ namespace Wado::GAL {
             ShaderParams _vertexParams;
             Shader::ShaderByteCode _fragmentShader;
             ShaderParams _fragmentParams;
+
+            ShaderResource depthStencilResource;
 
             WdViewportProperties _viewportProperties
     };
