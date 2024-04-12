@@ -238,6 +238,26 @@ namespace Wado::GAL {
             union ShaderResource {
                 WdImageResource imageResource;
                 WdBufferResource bufferResource;
+
+                ShaderResource(WdImage* img) {
+                    // Should have default values for sampler
+                    imageResource.image = img;
+                };
+
+                ShaderResource(WdBuffer* buf) {
+                    // should have default values for Buffer View
+                    bufferResource.buffer = buf;
+                };
+
+                ShaderResource(WdSamplerHandle sampler) {
+                    // should have default value for img 
+                    imageResource.sampler = sampler;
+                };
+
+                ShaderResource(WdImage* img, WdSamplerHandle sampler) {
+                    imageResource.image = img;
+                    imageResource.sampler = sampler;
+                };
             };
 
             // subpass inputs handled in setUniform 
@@ -282,10 +302,13 @@ namespace Wado::GAL {
             ShaderParams generateShaderParams(Shader::ShaderByteCode byteCode);
 
             WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
+            
             Shader::ShaderByteCode _vertexShader;
             ShaderParams _vertexParams;
             Shader::ShaderByteCode _fragmentShader;
             ShaderParams _fragmentParams;
+
+            WdViewportProperties _viewportProperties
     };
 
     class WdRenderPass {
