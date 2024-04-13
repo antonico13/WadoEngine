@@ -22,7 +22,7 @@ namespace Wado::GAL::Vulkan {
     };
 
     VkImageUsageFlags VulkanLayer::WdImageUsageToVkImageUsage(WdImageUsageFlags imageUsage) const {
-        return imageUsage;
+        return imageUsage & (~WdImageUsage::WD_PRESENT); //  need to remove the present flag before converting to Vulkan
     };
 
     VkBufferUsageFlags VulkanLayer::WdBufferUsageToVkBufferUsage(WdBufferUsageFlags bufferUsage) const {
@@ -350,7 +350,7 @@ namespace Wado::GAL::Vulkan {
             UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 
             std::map<std::string, WdPipeline::ShaderParameter> fragmentInputs = pipeline._fragmentParams.subpassInputs;
-            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            UPDATE_ATTACHMENTS(fragmentInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 
             std::map<std::string, WdPipeline::ShaderParameter> fragmentOutputs = pipeline._fragmentParams.outputs;
             UPDATE_ATTACHMENTS(fragmentOutputs, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)

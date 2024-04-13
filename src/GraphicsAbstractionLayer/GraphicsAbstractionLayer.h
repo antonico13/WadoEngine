@@ -78,6 +78,7 @@ namespace Wado::GAL {
         WD_DEPTH_STENCIL_ATTACHMENT = 0x00000020,
         WD_TRANSIENT_ATTACHMENT = 0x00000040,
         WD_INPUT_ATTACHMENT = 0x00000080,
+        WD_PRESENT = 0x10000000, // special, GAL-only. This is used later on in the Vulkan backend for image layouts 
     };
 
     enum WdImageTiling {
@@ -320,6 +321,7 @@ namespace Wado::GAL {
             friend class GraphicsLayer;
         private:
             WdRenderPass(std::vector<WdPipeline> pipelines);
+            virtual void init() = 0;
             std::vector<WdPipeline> _pipelines;
     };
 
