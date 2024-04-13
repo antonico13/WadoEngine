@@ -41,6 +41,10 @@ namespace Wado::GAL::Vulkan {
             void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
             void resetFences(std::vector<WdFenceHandle> fences) override;
 
+            
+            WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) override;
+            WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) override;
+
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer();
@@ -106,6 +110,17 @@ namespace Wado::GAL::Vulkan {
             VkFilter WdFilterToVkFilter(WdFilterMode filter) const;
             VkSamplerAddressMode WdAddressModeToVkAddressMode(WdAddressMode addressMode) const;
 
+    };
+
+    class VulkanRenderPass : public WdRenderPass {
+        public:
+            friend class GraphicsLayer;
+        private:
+            VulkanRenderPass(std::vector<WdPipeline> pipelines, GraphicsLayer* vulkanLayer);
+            void init() override;
+
+            GraphicsLayer* _vulkanLayer;
+            std::vector<WdPipeline> _pipelines
     };
 }
 

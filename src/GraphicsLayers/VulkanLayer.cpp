@@ -1,6 +1,10 @@
 #include "GraphicsAbstractionLayer.h"
 #include "VulkanLayer.h"
 
+#include <map>
+#include <string>
+
+
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
 #define TO_VK_BOOL(A) ((A) ? (VK_TRUE) : (VK_FALSE))
 
@@ -293,6 +297,69 @@ namespace Wado::GAL::Vulkan {
 
     void VulkanLayer::resetFences(std::vector<WdFenceHandle> fences) {
         vkResetFences(device, static_cast<uint32_t>(fences.size()), fences.data());
+    };
+
+    // Skeleton for now, needs to be expanded 
+    WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) {
+        return WdPipeline(vertexShader, fragmentShader, vertexBuilder, viewportProperties);
+    };
+
+    // creates render pass and all subpasses 
+    WdRenderPass VulkanLayer::createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) {
+        
+    };
+
+    // Render pass creation & utils 
+
+    #define UPDATE_ATTACHMENTS(ATTACH_MAP, ATTACH_LAYOUT) \
+    for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = ATTACH_MAP.begin(); it != ATTACH_MAP.end(); ++it) { \
+        WdImageHandle attachmentHandle = it->second.resource.imageResource.image->handle; \
+        std::map<WdImageHandle, AttachmentInfo>::iterator attachment = attachments.find(attachmentHandle); \
+        if (attachment == attachments.end()) { \
+            AttachmentInfo info{}; \
+            info.attachmentIndex = attachmentIndex; \
+            attachmentIndex++; \
+            VkAttachmentReference attachmentRef{}; \
+            attachmentRef.attachment = info.attachmentIndex; \
+            attachmentRef.layout = ATTACH_LAYOUT; \
+            info.refs.push_back(attachmentRef); \
+            attachments[attachmentHandle] = info; \
+        } else { \
+            VkAttachmentReference attachmentRef{}; \
+            attachmentRef.attachment = attachment->second.attachmentIndex; \
+            attachmentRef.layout = ATTACH_LAYOUT; \ 
+            attachment->second.refs.push_back(attachmentRef); \
+        } \
+    }; 
+
+    void VulkanRenderPass::init() {
+        using AttachmentInfo = struct AttachmentInfo {
+            VkAttachmentDescription attachmentDesc;
+            std::vector<VkAttachmentReference> refs;
+            uint8_t attachmentIndex;
+        };
+        std::map<WdImageHandle, AttachmentInfo> attachments;
+
+        uint8_t pipelineIndex = 0;
+        uint8_t attachmentIndex = 0;
+        for (const WdPipeline& pipeline : _pipelines) {
+            // There is an imposed ordering for attachments here.
+            // Vertex input -> Fragment input -> Fragment Color
+
+            std::map<std::string, WdPipeline::ShaderParameter> vertexInputs = pipeline._vertexParams.subpassInputs;
+            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+
+            std::map<std::string, WdPipeline::ShaderParameter> fragmentInputs = pipeline._fragmentParams.subpassInputs;
+            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+
+            std::map<std::string, WdPipeline::ShaderParameter> fragmentOutputs = pipeline._fragmentParams.outputs;
+            UPDATE_ATTACHMENTS(fragmentOutputs, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+            
+            pipelineIndex++;
+        };
+
+        // at this point, I have a map of Handle -> AttachmentInfo. Each info has all the uses of an attachment via refs,
+        // and everything should be correctly labeled and indexed. Can create the actual descs now. 
     };
 
 }
