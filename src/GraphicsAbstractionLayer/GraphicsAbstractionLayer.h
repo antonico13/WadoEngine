@@ -158,12 +158,14 @@ namespace Wado::GAL {
     const WdDepthStencilValue defaultDepthStencilClear =  {1.0f, 0};
     const WdColorValue defaultColorClear = {0.0f, 0.0f, 0.0f, 1.0f};
 
+    // TODO: these should also have private constructors.
     using WdImage = struct WdImage {
         WdImageHandle handle;
         WdMemoryPointer memory;
         WdRenderTarget target;
         WdFormat format;
         WdExtent3D extent;
+        WdImageUsageFlags usage;
         WdClearValue clearValue;
     };
 

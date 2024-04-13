@@ -159,6 +159,7 @@ namespace Wado::GAL::Vulkan {
         img->target = static_cast<WdRenderTarget>(imageView); 
         img->format = format;
         img->extent = {extent.height, extent.width, 1};
+        img->usage = usageFlags;
         if (flags & VK_IMAGE_ASPECT_DEPTH_BIT) {
             img->clearValue.depthStencil = defaultDepthStencilClear;
         } else {
