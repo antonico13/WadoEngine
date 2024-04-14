@@ -312,6 +312,26 @@ namespace Wado::GAL::Vulkan {
 
     // Render pass creation & utils 
 
+    // types 
+    using AttachmentInfo = struct AttachmentInfo {
+            VkAttachmentDescription attachmentDesc;            
+            std::vector<VkAttachmentReference> refs;
+            uint8_t attachmentIndex;
+            bool presentSrc;
+    };
+
+    enum Stage {
+        Undefined,
+        Vertex,
+        Fragment,
+    };
+
+    using ResourceInfo = struct ResourceInfo {
+        WdPipeline::ShaderParamType type;
+        Stage stage;
+        uint8_t pipelineIndex;
+    };
+
     // need to figure out how to handle samples here, for now everything is 1 sample 
     #define UPDATE_ATTACHMENTS(ATTACH_MAP, ATTACH_LAYOUT, CONTAINER) \
     for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = ATTACH_MAP.begin(); it != ATTACH_MAP.end(); ++it) { \
@@ -373,14 +393,89 @@ namespace Wado::GAL::Vulkan {
                 } \
             };
 
-    void VulkanRenderPass::init() {
-        using AttachmentInfo = struct AttachmentInfo {
-            VkAttachmentDescription attachmentDesc;            
-            std::vector<VkAttachmentReference> refs;
-            uint8_t attachmentIndex;
-            bool presentSrc;
-        };
 
+    // usually can just infer from the stage enum in ResourceInfo,
+    // but attachments need special attention 
+    VkPipelineStageFlags ResInfoToVkStage(ResourceInfo resInfo) {
+        if (resInfo.type == WdPipeline::ShaderParamType::WD_STAGE_OUTPUT) {
+            return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        }
+        if (resInfo.stage == Stage::Vertex) {
+            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        }
+        if (resInfo.stage == Stage::Fragment) {
+            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT; // this should throw an error maybe 
+    };
+
+    const VkAccessFlags paramTypeToAccess[] = {
+            VK_ACCESS_SHADER_READ_BIT, 
+            VK_ACCESS_SHADER_READ_BIT,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_UNIFORM_READ_BIT,
+            VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+    };           
+
+    const uint32_t imgReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT;
+    const uint32_t imgWriteMask = WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
+
+    const uint32_t bufReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+    const uint32_t bufWriteMask = WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+
+    // need to refactor the duplication here 
+    void addDependencies(std::vector<VkSubpassDependency>& dependencies, std::vector<ResourceInfo>& resInfos, uint32_t readMask, uint32_t writeMask) {
+        ResourceInfo lastRead{};
+        ResourceInfo lastWrite{};
+        lastRead.stage = Stage::Undefined;
+        lastWrite.stage = Stage::Undefined;
+        // Go over every usage of every resource 
+        // ugly, need to fix later 
+        for (const ResourceInfo& resInfo : resInfos) {
+            if (resInfo.type & readMask) {
+                if (lastWrite != resInfo && lastWrite.stage != Stage::Undefined) {
+                    // this means there is a write happening before this read, need to 
+                    // add a dependency 
+                    VkSubpassDependency dependency{};
+                    dependency.srcSubpass = lastWrite.pipelineIndex;
+                    dependency.dstSubpass = resInfo.pipelineIndex;
+                            
+                    // stage is obtained from resInfo's stage and param type 
+                    dependency.srcStageMask = ResInfoToVkStage(lastWrite);
+                    dependency.srcAccessMask = paramTypeToAccess[lastWrite.type];
+
+                    dependency.dstStageMask = ResInfoToVkStage(resInfo);
+                    dependency.dstAccessMask = paramTypeToAccess[resInfo.type];
+                    dependencies.push_back(dependency);
+                }
+                lastRead = resInfo;
+            }
+            if (resInfo.type & writeMask) {
+                if (lastRead != resInfo && lastRead.stage != Stage::Undefined) {
+                    // this means there is a write happening before this read, need to 
+                    // add a dependency 
+                    VkSubpassDependency dependency{};
+                    dependency.srcSubpass = lastRead.pipelineIndex;
+                    dependency.dstSubpass = resInfo.pipelineIndex;
+                            
+                    // stage is obtained from resInfo's stage and param type 
+                    dependency.srcStageMask = ResInfoToVkStage(lastRead);
+                    dependency.srcAccessMask = paramTypeToAccess[lastRead.type];
+
+                    dependency.dstStageMask = ResInfoToVkStage(resInfo);
+                    dependency.dstAccessMask = paramTypeToAccess[resInfo.type];
+                    dependencies.push_back(dependency);
+                }
+                lastWrite = resInfo;
+            }
+        }
+    };
+
+    void VulkanRenderPass::init() {
         std::map<WdImageHandle, AttachmentInfo> attachments;
 
         uint8_t attachmentIndex = 0;
@@ -426,7 +521,9 @@ namespace Wado::GAL::Vulkan {
         // at this point, I have a map of Handle -> AttachmentInfo. Each info has all the uses of an attachment via refs,
         // and everything should be correctly labeled and indexed. Can create the actual descs now & deps now 
 
-        for (std::map<WdHandle, AttachmentInfo>::iterator it = attachments.begin(); it != attachments.end(); ++it) {
+        std::vector<VkAttachmentDescription> attachmentDescs(attachments.size());
+
+        for (std::map<WdImageHandle, AttachmentInfo>::iterator it = attachments.begin(); it != attachments.end(); ++it) {
             // need to check first and last ref. 
             // if first ref is subpass input, we want to *keep* the values at the end of the renderpass, so the 
             // initial layout should be the same as the final layout and the load op should be load with store op store,
@@ -461,25 +558,18 @@ namespace Wado::GAL::Vulkan {
             it->second.attachmentDesc.initialLayout = initialLayout;
             it->second.attachmentDesc.finalLayout = finalLayout;
 
+            attachmentDescs[info.attachmentIndex] = it->second.attachmentDesc;
+
             /*for (const AttachmentRef& ref : info.refs) {
 
             }*/
         } 
-
-        enum Stage {
-            Vertex,
-            Fragment,
-        };
-
-        // Next need to generate all dependencies now
-        using ResourceInfo = struct ResourceInfo {
-            WdPipeline::ShaderParamType type;
-            Stage stage;
-            uint8_t pipelineIndex;
-        };
+        
+        // need to generate all deps now 
 
         std::map<WdImageHandle, std::vector<ResourceInfo>> imageResources;
         std::map<WdBufferHandle, std::vector<ResourceInfo>> bufferResources;
+
         uint8_t pipelineIndex = 0;
 
         uint32_t bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
@@ -487,7 +577,7 @@ namespace Wado::GAL::Vulkan {
 
         // generate resource maps now 
         for (const WdPipeline& pipeline : _pipelines) {
-            
+            // resources are updated in order of pipeline and stage 
             WdPipeline::ShaderParams vertexParams = pipeline._vertexParams;
             UPDATE_RESOURCES(vertexParams.uniforms, Vertex);
             UPDATE_RESOURCES(vertexParams.subpassInputs, Vertex);
@@ -498,10 +588,32 @@ namespace Wado::GAL::Vulkan {
             UPDATE_RESOURCES(fragmentParams.outputs, Fragment);
 
             pipelineIndex++;
-        
         }
 
         std::vector<VkSubpassDependency> dependencies;
+
+        for (std::map<WdImageHandle, std::vector<ResourceInfo>>::iterator it = imageResources.begin(); it != imageResources.end(); ++it) {
+            addDependencies(dependencies, it->second, imgReadMask, imgWriteMask);
+        }
+
+        for (std::map<WdBufferHandle, std::vector<ResourceInfo>>::iterator it = bufferResources.begin(); it != bufferResources.end(); ++it) {
+            addDependencies(dependencies, it->second, bufReadMask, bufWriteMask);
+        }
+        // all dependencies except external dependencies should be added now 
+
+        // can create the actual render pass object now 
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachmentDescs.size());
+        renderPassInfo.pAttachments = attachmentDescs.data();
+        renderPassInfo.subpassCount = static_cast<uint32_t>(subpasses.size());
+        renderPassInfo.pSubpasses = subpasses.data();
+        renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        renderPassInfo.pDependencies = dependencies.data();
+
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create render pass");
+        }
     };
 
 }

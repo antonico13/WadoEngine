@@ -121,6 +121,7 @@ namespace Wado::GAL::Vulkan {
 
             GraphicsLayer* _vulkanLayer;
             std::vector<WdPipeline> _pipelines
+            VkRenderPass _renderPass;
     };
 }
 
