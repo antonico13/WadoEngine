@@ -312,24 +312,33 @@ namespace Wado::GAL::Vulkan {
 
     // Render pass creation & utils 
 
-    #define UPDATE_ATTACHMENTS(ATTACH_MAP, ATTACH_LAYOUT) \
+    // need to figure out how to handle samples here, for now everything is 1 sample 
+    #define UPDATE_ATTACHMENTS(ATTACH_MAP, ATTACH_LAYOUT, CONTAINER) \
     for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = ATTACH_MAP.begin(); it != ATTACH_MAP.end(); ++it) { \
         WdImageHandle attachmentHandle = it->second.resource.imageResource.image->handle; \
         std::map<WdImageHandle, AttachmentInfo>::iterator attachment = attachments.find(attachmentHandle); \
         if (attachment == attachments.end()) { \
+            VkAttachmentDescription attachmentDesc{}; \
+            attachmentDesc.format = WdFormatToVKFormat[it->second.resource.imageResource.image->format]; \
+            attachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT; \
             AttachmentInfo info{}; \
             info.attachmentIndex = attachmentIndex; \
+            info.attachmentDesc = attachmentDesc; \
+            info.presentSrc = it->second.resource.imageResource.image->usage & WdImageUsage::WD_PRESENT; \
             attachmentIndex++; \
             VkAttachmentReference attachmentRef{}; \
             attachmentRef.attachment = info.attachmentIndex; \
             attachmentRef.layout = ATTACH_LAYOUT; \
             info.refs.push_back(attachmentRef); \
             attachments[attachmentHandle] = info; \
+            framebuffer.push_back(static_cast<VkImageView>(it->second.resource.imageResource.image->target)); \
+            CONTAINER.push_back(attachmentRef); \
         } else { \
             VkAttachmentReference attachmentRef{}; \
             attachmentRef.attachment = attachment->second.attachmentIndex; \
             attachmentRef.layout = ATTACH_LAYOUT; \ 
             attachment->second.refs.push_back(attachmentRef); \
+            CONTAINER.push_back(attachmentRef); \
         } \
     }; 
 
@@ -338,29 +347,91 @@ namespace Wado::GAL::Vulkan {
             VkAttachmentDescription attachmentDesc;
             std::vector<VkAttachmentReference> refs;
             uint8_t attachmentIndex;
+            bool presentSrc;
         };
         std::map<WdImageHandle, AttachmentInfo> attachments;
 
         uint8_t pipelineIndex = 0;
         uint8_t attachmentIndex = 0;
+
+        std::vector<VkImageView> framebuffer;
+
+        std::vector<VkSubpassDescription> subpasses;
+
+        // create subpass descriptions, attachment refs and framebuffer view array 
+        // (pipeline <-> subpass being used interchangeably here)
         for (const WdPipeline& pipeline : _pipelines) {
             // There is an imposed ordering for attachments here.
             // Vertex input -> Fragment input -> Fragment Color
 
+            std::vector<VkAttachmentReference> colorRefs;
+            std::vector<VkAttachmentReference> inputRefs;
+            // resolve, depth, & preserve attachments, idk how to deal with yet 
+
+            // i think input refs can be reused in both shader stages, need to check
             std::map<std::string, WdPipeline::ShaderParameter> vertexInputs = pipeline._vertexParams.subpassInputs;
-            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, inputRefs)
 
             std::map<std::string, WdPipeline::ShaderParameter> fragmentInputs = pipeline._fragmentParams.subpassInputs;
-            UPDATE_ATTACHMENTS(fragmentInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            UPDATE_ATTACHMENTS(fragmentInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, inputRefs)
 
             std::map<std::string, WdPipeline::ShaderParameter> fragmentOutputs = pipeline._fragmentParams.outputs;
             UPDATE_ATTACHMENTS(fragmentOutputs, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
             
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            
+            subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
+            subpass.pColorAttachments = colorRefs.data();
+
+            subpass.inputAttachmentCount = static_cast<uint32_t>(inputRefs.size());
+            subpass.pInputAttachments = inputRefs.data();
+
+            //subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+            subpasses.push_back(subpass);
+
             pipelineIndex++;
         };
 
         // at this point, I have a map of Handle -> AttachmentInfo. Each info has all the uses of an attachment via refs,
         // and everything should be correctly labeled and indexed. Can create the actual descs now. 
+
+        for (std::map<WdHandle, AttachmentInfo>::iterator it = attachments.begin(); it != attachments.end(); ++it) {
+            // need to check first and last ref. 
+            // if first ref is subpass input, we want to *keep* the values at the end of the renderpass, so the 
+            // initial layout should be the same as the final layout and the load op should be load with store op store,
+            // otherwise the layout should be undefined and load is clear
+
+            // if the img is being used as present src, then the final layout should be present source,
+            // otherwise we match it to the last ref 
+
+            // if present, store op is store, otherwise if the first ref is subpass input we also do store store 
+
+            AttachmentInfo info = it->second;
+
+            VkAttachmentReference& firstRef = info.refs.front();
+            VkAttachmentReference& lastRef = info.refs.back();
+
+            VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+            VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            VkImageLayout finalLayout = info.presentSrc ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : lastRef.layout;
+
+            if (firstRef.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                initialLayout = finalLayout; // should be final layout actually 
+                loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            }
+
+            it->second.attachmentDesc.loadOp = loadOp;
+            it->second.attachmentDesc.storeOp = storeOp;
+            it->second.attachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            it->second.attachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            it->second.attachmentDesc.initialLayout = initialLayout;
+            it->second.attachmentDesc.finalLayout = finalLayout;
+        } 
     };
 
 }
