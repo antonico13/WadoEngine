@@ -342,16 +342,47 @@ namespace Wado::GAL::Vulkan {
         } \
     }; 
 
+    #define UPDATE_RESOURCES(PARAMS, STAGE) \
+    for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = PARAMS.begin(); it != PARAMS.end(); ++it) { \
+                WdPipeline::ShaderParameterType paramType = it->second.paramType; \
+                if (paramType & imageMask) { \
+                    WdImageHandle handle = it->second.resource.imageResource.image->handle;
+                    std::map<WdImageHandle, std::vector<ResourceInfo>>::iterator imgResInfo = imageResources.find(handle); \
+                    if (imgResInfo == imageResources.end()) { \
+                        std::vector<ResourceInfo> resInfos; \
+                        imageResources[handle] = resInfos; \
+                    } \
+                    ResourceInfo resInfo{}; \
+                    resInfo.type = paramType; \
+                    resInfo.stage = Stage::STAGE; \
+                    resInfo.pipelineIndex = pipelineIndex; \
+                    imageResources[handle].push_back(resInfo); \
+                } \
+                if (paramType & bufferMask) { \
+                    WdBufferHandle handle = it->second.resource.bufferResource.buffer->handle; \
+                    std::map<WdBufferHandle, std::vector<ResourceInfo>>::iterator bufResInfo = bufferResources.find(handle); \
+                    if (bufResInfo == bufferResources.end()) { \
+                        std::vector<ResourceInfo> resInfos; \
+                        bufferResources[handle] = resInfos; \
+                    }
+                    ResourceInfo resInfo{}; \
+                    resInfo.type = paramType; \
+                    resInfo.stage = Stage::STAGE; \
+                    resInfo.pipelineIndex = pipelineIndex; \
+                    bufferResources[handle].push_back(resInfo); \
+                } \
+            };
+
     void VulkanRenderPass::init() {
         using AttachmentInfo = struct AttachmentInfo {
-            VkAttachmentDescription attachmentDesc;
+            VkAttachmentDescription attachmentDesc;            
             std::vector<VkAttachmentReference> refs;
             uint8_t attachmentIndex;
             bool presentSrc;
         };
+
         std::map<WdImageHandle, AttachmentInfo> attachments;
 
-        uint8_t pipelineIndex = 0;
         uint8_t attachmentIndex = 0;
 
         std::vector<VkImageView> framebuffer;
@@ -390,12 +421,10 @@ namespace Wado::GAL::Vulkan {
             //subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
             subpasses.push_back(subpass);
-
-            pipelineIndex++;
         };
 
         // at this point, I have a map of Handle -> AttachmentInfo. Each info has all the uses of an attachment via refs,
-        // and everything should be correctly labeled and indexed. Can create the actual descs now. 
+        // and everything should be correctly labeled and indexed. Can create the actual descs now & deps now 
 
         for (std::map<WdHandle, AttachmentInfo>::iterator it = attachments.begin(); it != attachments.end(); ++it) {
             // need to check first and last ref. 
@@ -410,8 +439,8 @@ namespace Wado::GAL::Vulkan {
 
             AttachmentInfo info = it->second;
 
-            VkAttachmentReference& firstRef = info.refs.front();
-            VkAttachmentReference& lastRef = info.refs.back();
+            VkAttachmentReference& firstRef = info.refs.front().ref;
+            VkAttachmentReference& lastRef = info.refs.back().ref;
 
             VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -420,7 +449,7 @@ namespace Wado::GAL::Vulkan {
             VkImageLayout finalLayout = info.presentSrc ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : lastRef.layout;
 
             if (firstRef.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                initialLayout = finalLayout; // should be final layout actually 
+                initialLayout = finalLayout;
                 loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 storeOp = VK_ATTACHMENT_STORE_OP_STORE;
             }
@@ -431,7 +460,48 @@ namespace Wado::GAL::Vulkan {
             it->second.attachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             it->second.attachmentDesc.initialLayout = initialLayout;
             it->second.attachmentDesc.finalLayout = finalLayout;
+
+            /*for (const AttachmentRef& ref : info.refs) {
+
+            }*/
         } 
+
+        enum Stage {
+            Vertex,
+            Fragment,
+        };
+
+        // Next need to generate all dependencies now
+        using ResourceInfo = struct ResourceInfo {
+            WdPipeline::ShaderParamType type;
+            Stage stage;
+            uint8_t pipelineIndex;
+        };
+
+        std::map<WdImageHandle, std::vector<ResourceInfo>> imageResources;
+        std::map<WdBufferHandle, std::vector<ResourceInfo>> bufferResources;
+        uint8_t pipelineIndex = 0;
+
+        uint32_t bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+        uint32_t imageMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
+
+        // generate resource maps now 
+        for (const WdPipeline& pipeline : _pipelines) {
+            
+            WdPipeline::ShaderParams vertexParams = pipeline._vertexParams;
+            UPDATE_RESOURCES(vertexParams.uniforms, Vertex);
+            UPDATE_RESOURCES(vertexParams.subpassInputs, Vertex);
+
+            WdPipeline::ShaderParams fragmentParams = pipeline._fragmentParams;
+            UPDATE_RESOURCES(fragmentParams.uniforms, Fragment);
+            UPDATE_RESOURCES(fragmentParams.subpassInputs, Fragment);
+            UPDATE_RESOURCES(fragmentParams.outputs, Fragment);
+
+            pipelineIndex++;
+        
+        }
+
+        std::vector<VkSubpassDependency> dependencies;
     };
 
 }
