@@ -266,25 +266,30 @@ namespace Wado::GAL {
             // subpass inputs handled in setUniform 
             void setVertexUniform(std::string paramName, ShaderResource resource);
             void setFragmentUniform(std::string paramName, ShaderResource resource);
-            // special case, since it realtes to the "framebuffer"
-            void setFragmentOutput(std::string paramName, ShaderResource resource);
 
-            void setDepthStencilResource(ShaderResource resource);
+            // for array params
+            void setVertexUniform(std::string paramName, std::vector<ShaderResource> resources);
+            void setFragmentUniform(std::string paramName, std::vector<ShaderResource> resources);
+
+            // special case, since it relates to the framebuffer
+            void setFragmentOutput(std::string paramName, WdImageResource resource);
+
+            void setDepthStencilResource(WdImageResource resource);
 
             // these should be private
             enum ShaderParameterType {
-                WD_SAMPLED_IMAGE, // sampler2D
-                WD_TEXTURE_IMAGE, // just texture2D
-                WD_STORAGE_IMAGE, // read-write
-                WD_SAMPLED_BUFFER,
-                WD_BUFFER_IMAGE,
-                WD_SAMPLER,
-                WD_UNIFORM_BUFFER,
+                WD_SAMPLED_IMAGE = 0, // sampler2D
+                WD_TEXTURE_IMAGE = 1, // just texture2D
+                WD_STORAGE_IMAGE = 2, // read-write
+                WD_SAMPLED_BUFFER = 3,
+                WD_BUFFER_IMAGE = 4,
+                WD_UNIFORM_BUFFER = 5,
+                WD_SUBPASS_INPUT = 6, // only supported by Vulkan
+                WD_STORAGE_BUFFER = 7, 
+                WD_STAGE_OUTPUT = 8, // used for outs 
+                WD_SAMPLER = 9,
                 WD_PUSH_CONSTANT, // only supported by Vulkan backend
-                WD_SUBPASS_INPUT, // only supported by Vulkan
                 WD_STAGE_INPUT, // used for ins 
-                WD_STAGE_OUTPUT, // used for outs 
-                WD_STORAGE_BUFFER, 
             };
 
             using ShaderParameter = struct ShaderParameter {
@@ -296,12 +301,38 @@ namespace Wado::GAL {
                 ShaderResource resource;
             };
 
-            using ShaderParams = struct ShaderParams {
-                std::map<std::string, ShaderParameter> uniforms;
-                std::map<std::string, ShaderParameter> inputs;
-                std::map<std::string, ShaderParameter> outputs;
-                std::map<std::string, ShaderParameter> subpassInputs;
+            using VertexInput = struct VertexInput {
+                ShaderParameterType paramType;
+                uint8_t decorationLocation;
+                uint8_t decorationBinding; // I think this should be unused for now 
+                uint8_t offset;
+                uint8_t size;
+                WdFormat format;
             };
+
+            using Uniform = struct Uniform {
+                ShaderParameterType paramType;
+                uint8_t decorationSet;
+                uint8_t decorationBinding;
+                uint8_t decorationLocation;
+                uint8_t resourceCount;
+                std::vector<ShaderResourc>e resources;
+            };
+
+            using SubpassInput = struct SubpassInput { // Vulkan only 
+                ShaderParameterType paramType; // always subpass input, doesn't really matter 
+                uint8_t decorationSet;
+                uint8_t decorationBinding;
+                uint8_t decorationLocation;
+                uint8_t decorationIndex;
+                WdImageResource resource; // should always be img resource
+            }; 
+
+            using FragmentOutput = struct FragmentOutput { 
+                ShaderParameterType paramType; // always stage output, doesn't really matter 
+                uint8_t decorationLocation; // needed for refs 
+                WdImageResource resource; // should always be img resource
+            }; 
 
         private:
             ShaderParams generateShaderParams(Shader::ShaderByteCode byteCode);
@@ -309,9 +340,15 @@ namespace Wado::GAL {
             WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
             
             Shader::ShaderByteCode _vertexShader;
-            ShaderParams _vertexParams;
             Shader::ShaderByteCode _fragmentShader;
-            ShaderParams _fragmentParams;
+
+            std::vector<VertexInput> vertexInputs;
+            std::map<std::string, Uniform> vertexUniforms;
+            
+            std::map<std::string, Uniform> fragmentUniforms;
+            std::map<std::string, SubpassInput> subpassInputs; // fragment only
+
+            std::map<std::string, SubpassInput> fragmentOutputs;
 
             ShaderResource depthStencilResource;
 
