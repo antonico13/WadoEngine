@@ -417,8 +417,8 @@ namespace Wado::GAL::Vulkan {
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_ACCESS_UNIFORM_READ_BIT,
             VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     };           
 
     const uint32_t imgReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT;
@@ -614,6 +614,63 @@ namespace Wado::GAL::Vulkan {
         if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create render pass");
         }
+    };
+
+    const VkDescriptorType WdParamTypeToVkDescriptorType[] = {
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, // this is temp only 
+        VK_DESCRIPTOR_TYPE_SAMPLER,
+    };
+
+    void addDescriptorSetBindings(std::vector<VkDescriptorSetLayoutBinding>& bindings, std::map<std::string, WdPipeline::ShaderParameter> params, VkShaderStageFlagBits stages) {
+        for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = params.begin(); it != params.end(); ++it) {
+            WdPipeline::ShaderParameter param = it->second;
+            
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = param.decorationBinding;
+            binding.descriptorType = WdParamTypeToVkDescriptorType[param.paramType];
+            binding.descriptorCount = 1; // this needs to be fixed 
+            binding.stageFlags = stages; // support single stage only right now, need to fix for multi-stage 
+            binding.pImmutableSamplers = nullptr;
+
+            bindings.push_back(binding);
+        }
+    };
+
+    // Vulkan Pipeline, layout and descriptor set creation 
+    VkDescriptorSetLayout createDescriptorSetLayout(WdPipeline::ShaderParams vertexParams, WdPipeline::ShaderParams fragmentParams) {
+        VkDescriptorSetLayout layout;
+        
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+        // first, vertex params 
+        addDescriptorSetBindings(bindings, vertexParams.uniforms, VK_SHADER_STAGE_VERTEX_BIT);
+        addDescriptorSetBindings(bindings, vertexParams.subpassInputs, VK_SHADER_STAGE_VERTEX_BIT);
+        // next, fragment 
+        addDescriptorSetBindings(bindings, fragmentParams.uniforms, VK_SHADER_STAGE_FRAGMENT_BIT);
+        addDescriptorSetBindings(bindings, fragmentParams.subpassInputs, VK_SHADER_STAGE_FRAGMENT_BIT);
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor set layout!");
+        }
+
+        return layout;
+    };  
+
+    VulkanPipeline VulkanRenderPass::createVulkanPipeline(WdPipeline pipeline, uint8_t index) {
+
     };
 
 }

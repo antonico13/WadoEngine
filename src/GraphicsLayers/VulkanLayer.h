@@ -116,12 +116,25 @@ namespace Wado::GAL::Vulkan {
         public:
             friend class GraphicsLayer;
         private:
+            using VulkanPipeline = struct VulkanPipeline {
+                VkPipeline pipeline;
+                VkPipelineLayout pipelineLayout;
+                VkDescriptorSetLayout descriptorSetLayout;
+                VkDescriptorSet descriptorSet;
+            };
+
             VulkanRenderPass(std::vector<WdPipeline> pipelines, GraphicsLayer* vulkanLayer);
             void init() override;
+            VulkanPipeline createVulkanPipeline(WdPipeline pipeline, uint8_t index);
 
             GraphicsLayer* _vulkanLayer;
-            std::vector<WdPipeline> _pipelines
+            
             VkRenderPass _renderPass;
+            VkDescriptorPool _descriptorPool;
+            
+            std::vector<WdPipeline> _pipelines
+            std::vector<VulkanPipeline> _vkPipelines;
+            
     };
 }
 
