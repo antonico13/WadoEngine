@@ -636,11 +636,11 @@ namespace Wado::GAL::Vulkan {
 
         std::vector<VkSubpassDependency> dependencies;
 
-        for (std::map<WdImageHandle, std::vector<ResourceInfo>>::iterator it = imageResources.begin(); it != imageResources.end(); ++it) {
+        for (ImageResources::iterator it = imageResources.begin(); it != imageResources.end(); ++it) {
             addDependencies(dependencies, it->second, imgReadMask, imgWriteMask);
         }
 
-        for (std::map<WdBufferHandle, std::vector<ResourceInfo>>::iterator it = bufferResources.begin(); it != bufferResources.end(); ++it) {
+        for (BufferResources::iterator it = bufferResources.begin(); it != bufferResources.end(); ++it) {
             addDependencies(dependencies, it->second, bufReadMask, bufWriteMask);
         }
         // all dependencies except external dependencies should be added now 
@@ -655,7 +655,7 @@ namespace Wado::GAL::Vulkan {
         renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
         renderPassInfo.pDependencies = dependencies.data();
 
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
+        if (vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create render pass");
         }
     };
@@ -673,44 +673,64 @@ namespace Wado::GAL::Vulkan {
         VK_DESCRIPTOR_TYPE_SAMPLER,
     };
 
-    void addDescriptorSetBindings(std::vector<VkDescriptorSetLayoutBinding>& bindings, std::map<std::string, WdPipeline::ShaderParameter> params, VkShaderStageFlagBits stages) {
-        for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = params.begin(); it != params.end(); ++it) {
-            WdPipeline::ShaderParameter param = it->second;
-            
-            VkDescriptorSetLayoutBinding binding;
-            binding.binding = param.decorationBinding;
-            binding.descriptorType = WdParamTypeToVkDescriptorType[param.paramType];
-            binding.descriptorCount = 1; // this needs to be fixed 
-            binding.stageFlags = stages; // support single stage only right now, need to fix for multi-stage 
-            binding.pImmutableSamplers = nullptr;
-
-            bindings.push_back(binding);
-        }
-    };
-
     // Vulkan Pipeline, layout and descriptor set creation 
     VkVertexInputAttributeDescription createVertexAttributeDescription() {
         //TODO
     };
 
-    VkDescriptorSetLayout createDescriptorSetLayout(WdPipeline::ShaderParams vertexParams, WdPipeline::ShaderParams fragmentParams) {
+    VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::Uniforms& vertexUniforms, const WdPipeline::Uniforms& fragmentUniforms, const WdPipeline::SubpassInputs& fragmentInputs) {
         VkDescriptorSetLayout layout;
         
         std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-        // first, vertex params 
-        addDescriptorSetBindings(bindings, vertexParams.uniforms, VK_SHADER_STAGE_VERTEX_BIT);
-        addDescriptorSetBindings(bindings, vertexParams.subpassInputs, VK_SHADER_STAGE_VERTEX_BIT);
-        // next, fragment 
-        addDescriptorSetBindings(bindings, fragmentParams.uniforms, VK_SHADER_STAGE_FRAGMENT_BIT);
-        addDescriptorSetBindings(bindings, fragmentParams.subpassInputs, VK_SHADER_STAGE_FRAGMENT_BIT);
+        // TODO:: lots of duplication here
+
+        for (WdPipeline::Uniforms::iterator it = vertexUniforms.begin(); it != vertexUniforms.end(); ++it) {
+            WdPipeline::Uniform uniform = it->second;
+            
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = uniform.decorationBinding;
+            binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
+            binding.descriptorCount = uniform.resourceCount;
+            binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
+            binding.pImmutableSamplers = nullptr;
+
+            bindings.push_back(binding);
+        }
+
+        for (WdPipeline::Uniforms::iterator it = fragmentUniforms.begin(); it != fragmentUniforms.end(); ++it) {
+            WdPipeline::Uniform uniform = it->second;
+            
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = uniform.decorationBinding;
+            binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
+            binding.descriptorCount = uniform.resourceCount;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
+            binding.pImmutableSamplers = nullptr; // no immutable sampler support either
+
+            bindings.push_back(binding);
+        }
+
+        
+        for (WdPipeline::SubpassInputs::iterator it = fragmentInputs.begin(); it != fragmentInputs.end(); ++it) {
+            WdPipeline::SubpassInput subpassInput = it->second;
+            
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = uniform.decorationBinding;
+            binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
+            binding.pImmutableSamplers = nullptr; // no immutable sampler support either
+
+            bindings.push_back(binding);
+        }
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
         layoutInfo.pBindings = bindings.data();
 
-        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {
+        if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create descriptor set layout!");
         }
 
