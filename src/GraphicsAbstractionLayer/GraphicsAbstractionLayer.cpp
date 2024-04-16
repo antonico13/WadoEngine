@@ -54,8 +54,8 @@ namespace Wado::GAL {
     WdPipeline::WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) {
         _vertexShader = vertexShader;
         _fragmentShader = fragmentShader;
-        _fragmentParams = generateShaderParams(_fragmentShader);
-        _vertexParams = generateShaderParams(_vertexShader);
+        generateVertexParams(_vertexShader, vertexInputs, vertexUniforms);
+        generateFragmentParams(_fragmentShader, subpassInputs, fragmentUniforms, fragmentOutputs);
         _viewportProperties = viewportProperties;
     };
 
@@ -94,7 +94,10 @@ namespace Wado::GAL {
     };
     
     void WdPipeline::generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs) {
-        
+        // create compiler object for the SPIR-V bytecode
+        spirv_cross::Compiler spirvCompiler(move(byteCode));
+        spirv_cross::ShaderResources resources = comp.get_shader_resources();
+
         // Check all non-subpass input uniforms 
         ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_IMAGE);
         ADD_UNIFORM_DESC(separate_images, WD_TEXTURE_IMAGE);
@@ -104,40 +107,28 @@ namespace Wado::GAL {
         ADD_UNIFORM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
         ADD_UNIFORM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
         ADD_UNIFORM_DESC(storage_buffer, WD_STORAGE_BUFFER);
-    };
 
-
-    ShaderParams WdPipeline::generateShaderParams(Shader::ShaderByteCode byteCode) {
-        ShaderParams params;
-
-        // add all attachments/outputs (only fragment) 
-        for (const spirv_cross::Resource &resource : resources.stage_outputs) {
-            ShaderParameter param; 
-            param.paramType = ShaderParameterType::WD_STAGE_OUTPUT;
-            param.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); 
-            param.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
-            param.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
-            params.outputs[resource.name.c_str()] = param; 
-        };
-
-        // add all inputs (only vertex)
-        // TODO, not relevant right now 
-        // but can extract the actual shape of the vertex inputs without using a vertex builder actually, much more useful 
-
-        // add all subpass inputs (Vulkan only)
+        // process supbass inputs now 
         for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
-            ShaderParameter param; 
-            param.paramType = ShaderParameterType::WD_SUBPASS_INPUT;
-            param.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); 
-            param.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
-            param.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
-            param.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationInputAttachmentIndex); 
-            params.subpassInputs[resource.name.c_str()] = param; 
+            SubpassInput subpassInput;
+            subpassInput.paramType = ShaderParameterType::WD_SUBPASS_INPUT;
+            subpassInput.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
+            subpassInput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
+            subpassInput.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationInputAttachmentIndex);
+            subpassInput.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
+            // by construction the names have to be unique 
+            inputs[resource.name] = subpassInput; 
         };
 
-        return params;
+        // process fragment outputs now 
+        for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
+            FragmentOutput fragOutput;
+            fragOutput.paramType = ShaderParameterType::WD_STAGE_OUTPUT;
+            fragOutput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
+            // by construction the names have to be unique 
+            outputs[resource.name] = fragOutput; 
+        };
     };
-
 
     void WdPipeline::setVertexUniform(std::string paramName, ShaderResource resource) {
         std::map<std::string, ShaderParameter>::iterator it = _vertexParams.uniforms.find(paramName);
