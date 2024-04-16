@@ -302,7 +302,7 @@ namespace Wado::GAL::Vulkan {
     };
 
     // Skeleton for now, needs to be expanded 
-    WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) {
+    WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) {
         return WdPipeline(vertexShader, fragmentShader, vertexBuilder, viewportProperties);
     };
 
@@ -321,6 +321,8 @@ namespace Wado::GAL::Vulkan {
             bool presentSrc;
     };
 
+    using AttachmentMap = std::map<WdImageHandle, AttachmentInfo>;
+
     enum Stage {
         Undefined,
         Vertex,
@@ -332,36 +334,6 @@ namespace Wado::GAL::Vulkan {
         Stage stage;
         uint8_t pipelineIndex;
     };
-
-    // need to figure out how to handle samples here, for now everything is 1 sample 
-    #define UPDATE_ATTACHMENTS(ATTACH_MAP, ATTACH_LAYOUT, CONTAINER) \
-    for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = ATTACH_MAP.begin(); it != ATTACH_MAP.end(); ++it) { \
-        WdImageHandle attachmentHandle = it->second.resource.imageResource.image->handle; \
-        std::map<WdImageHandle, AttachmentInfo>::iterator attachment = attachments.find(attachmentHandle); \
-        if (attachment == attachments.end()) { \
-            VkAttachmentDescription attachmentDesc{}; \
-            attachmentDesc.format = WdFormatToVkFormat[it->second.resource.imageResource.image->format]; \
-            attachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT; \
-            AttachmentInfo info{}; \
-            info.attachmentIndex = attachmentIndex; \
-            info.attachmentDesc = attachmentDesc; \
-            info.presentSrc = it->second.resource.imageResource.image->usage & WdImageUsage::WD_PRESENT; \
-            attachmentIndex++; \
-            VkAttachmentReference attachmentRef{}; \
-            attachmentRef.attachment = info.attachmentIndex; \
-            attachmentRef.layout = ATTACH_LAYOUT; \
-            info.refs.push_back(attachmentRef); \
-            attachments[attachmentHandle] = info; \
-            framebuffer.push_back(static_cast<VkImageView>(it->second.resource.imageResource.image->target)); \
-            CONTAINER.push_back(attachmentRef); \
-        } else { \
-            VkAttachmentReference attachmentRef{}; \
-            attachmentRef.attachment = attachment->second.attachmentIndex; \
-            attachmentRef.layout = ATTACH_LAYOUT; \ 
-            attachment->second.refs.push_back(attachmentRef); \
-            CONTAINER.push_back(attachmentRef); \
-        } \
-    }; 
 
     #define UPDATE_RESOURCES(PARAMS, STAGE) \
     for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = PARAMS.begin(); it != PARAMS.end(); ++it) { \
@@ -476,8 +448,46 @@ namespace Wado::GAL::Vulkan {
         }
     };
 
+    template <class T>
+    void updateAttachements(const T& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& subpassRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout) {
+        for (T::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
+            WdImageHandle attachmentHandle = it->second.resource.image->handle;
+            uint8_t index = it->second.decorationIndex;
+
+            AttachmentMap::iterator attachment = attachments.find(attachmentHandle);
+            
+            if (attachment == attachments.end()) {
+                // first time seeing this resource used as an attachment, need to create new entry
+                VkAttachmentDescription attachmentDesc{};
+                attachmentDesc.format = WdFormatToVkFormat[it->second.resource.image->format];
+                attachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT; // need to figure out samples here 
+                // layouts, store ops are calculated later
+
+                AttachmentInfo info{}; 
+                info.attachmentIndex = attachmentIndex;
+                info.attachmentDesc = attachmentDesc;
+                info.presentSrc = it->second.resource.image->usage & WdImageUsage::WD_PRESENT;
+                    
+                attachmentIndex++; 
+            
+                // add info to attachment map and framebuffers
+                attachments[attachmentHandle] = info; 
+                framebuffer.push_back(static_cast<VkImageView>(it->second.resource.image->target));
+            }
+
+            // create attachment ref 
+            VkAttachmentReference attachmentRef{};
+            attachmentRef.layout = layout; 
+            attachmentRef.attachment = attachments[attachmentHandle].attachmentIndex;
+
+            attachments[attachmentHandle].refs.push_back(attachmentRef);
+
+            subpassRefs[index] = attachmentRef;
+        }
+    };
+
     void VulkanRenderPass::init() {
-        std::map<WdImageHandle, AttachmentInfo> attachments;
+        AttachmentMap attachments;
 
         uint8_t attachmentIndex = 0;
 
@@ -489,21 +499,18 @@ namespace Wado::GAL::Vulkan {
         // (pipeline <-> subpass being used interchangeably here)
         for (const WdPipeline& pipeline : _pipelines) {
             // There is an imposed ordering for attachments here.
-            // Vertex input -> Fragment input -> Fragment Color
+            // Fragment input -> Fragment Color
 
-            std::vector<VkAttachmentReference> colorRefs;
-            std::vector<VkAttachmentReference> inputRefs;
             // resolve, depth, & preserve attachments, idk how to deal with yet 
 
-            // i think input refs can be reused in both shader stages, need to check
-            std::map<std::string, WdPipeline::ShaderParameter> vertexInputs = pipeline._vertexParams.subpassInputs;
-            UPDATE_ATTACHMENTS(vertexInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, inputRefs)
+            WdPipeline::SubpassInputs fragmentInputs = pipeline.subpassInputs;
+            WdPipeline::FragmentOutputs fragmentOutputs = pipeline.fragmentOutputs;
 
-            std::map<std::string, WdPipeline::ShaderParameter> fragmentInputs = pipeline._fragmentParams.subpassInputs;
-            UPDATE_ATTACHMENTS(fragmentInputs, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, inputRefs)
+            std::vector<VkAttachmentReference> inputRefs(fragmentInputs.size());
+            std::vector<VkAttachmentReference> colorRefs(fragmentOutputs.size());
 
-            std::map<std::string, WdPipeline::ShaderParameter> fragmentOutputs = pipeline._fragmentParams.outputs;
-            UPDATE_ATTACHMENTS(fragmentOutputs, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+            updateAttachements<WdPipeline::SubpassInputs>(fragmentInputs, attachments, attachmentIndex, inputRefs, framebuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            updateAttachements<WdPipeline::FragmentOutputs>(fragmentOutputs, attachments, attachmentIndex, colorRefs, framebuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             
             VkSubpassDescription subpass{};
             subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
