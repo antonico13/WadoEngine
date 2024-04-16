@@ -49,18 +49,29 @@ namespace Wado::GAL {
                 continue;
             };
 
-            Uniform uniform; 
-            uniform.paramType = paramType; 
-            uniform.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); 
-            uniform.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
-            uniform.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
-            uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; 
-            uniform.resources.resize(uniform.resourceCount); 
+            uint8_t decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
+            uint8_t decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding);
+            uint8_t decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
 
-            UniformAddress address(uniform.decorationSet, uniform.decorationBinding, uniform.decorationLocation); 
+            UniformAddress address(decorationSet, decorationBinding, decorationLocation); 
+
+            if (_uniforms.find(address) == _uniforms.end()) {
+                // not found, add entry 
+                Uniform uniform; 
+                uniform.paramType = paramType; 
+                uniform.decorationSet = decorationSet;
+                uniform.decorationBinding = decorationBinding;
+                uniform.decorationLocation = decorationLocation;
+                uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; 
+                uniform.resources.resize(uniform.resourceCount);
+                uniform.stages = WdStage::Unknown;
+
+                _uniforms[address] = uniform;
+            }
+
+            _uniforms[address] |= stage;
+
             _uniformAddresses[{resource.name, stage}] = address; 
-            // This could be an unnecessary write, but it's probably better than doing a std::find since that is log n 
-            _uniforms[address] = uniform;
         };
     };
 

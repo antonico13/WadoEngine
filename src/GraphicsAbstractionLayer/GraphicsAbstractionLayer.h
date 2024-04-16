@@ -2,6 +2,7 @@
 #define WADO_GRAPHICS_ABSTRACTION_LAYER
 
 #include "Shader.h"
+#include "VulkanLayer.h"
 
 #include <cstdint>
 #include <vector>
@@ -197,6 +198,7 @@ namespace Wado::GAL {
     // TODO: these should also have private constructors.
     using WdImage = struct WdImage {
             friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
 
             const WdImageHandle handle;
             const WdMemoryPointer memory;
@@ -224,6 +226,7 @@ namespace Wado::GAL {
 
     using WdBuffer = struct WdBuffer {
             friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
 
             const WdBufferHandle handle;
             const WdMemoryPointer memory;
@@ -250,15 +253,20 @@ namespace Wado::GAL {
     };
 
     enum WdStage = {
-        Unknown = 0,
-        Vertex = 1,
-        Fragment = 2,
+        Unknown = 0x00000000,
+        Vertex = 0x00000001,
+        Fragment = 0x00000002,
     };
+
+    using WdStageMask = uint32_t;
 
     class WdPipeline {
         public:
             friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
+
             friend class WdRenderPass;
+            friend class Vulkan::VulkanRenderPass;
 
             using WdImageResource = struct WdImageResource {
                 WdImage* image;
@@ -342,6 +350,7 @@ namespace Wado::GAL {
                 uint8_t decorationBinding;
                 uint8_t decorationLocation;
                 uint8_t resourceCount;
+                WdStageMask stages;
                 std::vector<ShaderResource> resources;
             };
 
@@ -394,6 +403,8 @@ namespace Wado::GAL {
     class WdRenderPass {
         public:
             friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
+
         private:
             WdRenderPass(std::vector<WdPipeline> pipelines);
             virtual void init() = 0;
@@ -403,6 +414,7 @@ namespace Wado::GAL {
     class WdCommandList {
         public:
             friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
 
             virtual void resetCommandList() = 0;
             virtual void beginCommandList() = 0;
