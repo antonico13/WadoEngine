@@ -764,7 +764,10 @@ namespace Wado::GAL::Vulkan {
     };
 
 
-    VulkanPipeline VulkanRenderPass::createVulkanPipeline(const WdPipeline& pipeline, uint8_t index) {
+    VulkanPipeline VulkanRenderPass::createVulkanPipeline(const WdPipeline& pipeline, uint8_t index, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts) {
+        VulkanPipeline vkPipeline{};
+        vkPipeline.descriptorSetLayouts = descriptorSetLayouts;
+        
         VkShaderModule vertShaderModule = createShaderModule(pipeline._vertexShader);
         VkShaderModule fragShaderModule = createShaderModule(pipeline._fragmentShader);
 
@@ -772,27 +775,26 @@ namespace Wado::GAL::Vulkan {
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
         vertShaderStageInfo.module = vertShaderModule;
-        vertShaderStageInfo.pName = "main";
+        vertShaderStageInfo.pName = "main"; // TODO: could be configurable like Unreal
         vertShaderStageInfo.pNext = nullptr;
 
         VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
         fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
         fragShaderStageInfo.module = fragShaderModule;
-        fragShaderStageInfo.pName = "main";
+        fragShaderStageInfo.pName = "main"; // TODO: could be configurable like Unreal
         fragShaderStageInfo.pNext = nullptr;
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             vertShaderStageInfo, fragShaderStageInfo
         };
 
-        auto bindingDescription = Vertex::getBindingDescription();
-        auto attributeDescriptions = Vertex::getAttributeDescriptions();
+        std::vector<VkVertexInputAttributeDescription> attributeDescriptions = createVertexAttributeDescription(pipeline.vertexInputs);
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 1;
-        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: same as in binding desc function
+        vertexInputInfo.pVertexBindingDescriptions = &getBindingDescription(pipeline.vertexInputs);
         vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
         vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
@@ -801,17 +803,18 @@ namespace Wado::GAL::Vulkan {
         inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         inputAssembly.primitiveRestartEnable = VK_FALSE;
 
+        // Dynamic state
         VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) swapChainExtent.width;
-        viewport.height = (float) swapChainExtent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+        viewport.x = static_cast<float>(pipeline._viewportProperties.startCoords.x);
+        viewport.y = static_cast<float>(pipeline._viewportProperties.startCoords.y);
+        viewport.width = static_cast<float>(pipeline._viewportProperties.endCoords.x);
+        viewport.height = static_cast<float>(pipeline._viewportProperties.endCoords.y);
+        viewport.minDepth = pipeline._viewportProperties.depth.min;
+        viewport.maxDepth = pipeline._viewportProperties.depth.max;
 
         VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = swapChainExtent;
+        scissor.offset = pipeline._viewportProperties.scissor.offset;
+        scissor.extent = pipeline._viewportProperties.scissor.extent;
 
         std::vector<VkDynamicState> dynamicStates = {
             VK_DYNAMIC_STATE_VIEWPORT, 
@@ -828,8 +831,7 @@ namespace Wado::GAL::Vulkan {
         viewportState.viewportCount = 1;
         viewportState.scissorCount = 1;
 
-        // Not sure if all of these are needeed or not 
-        // Do I need rasterizer for this pass? 
+        //TODO: Currently rasterizer, multisampling & color blending are not customizable
         VkPipelineRasterizationStateCreateInfo rasterizer{};
         rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
         rasterizer.depthClampEnable = VK_FALSE;
@@ -871,7 +873,7 @@ namespace Wado::GAL::Vulkan {
 
         // Add color blend here for every color output
 
-        std::vector<VkPipelineColorBlendAttachmentState> blendStates(4, colorBlendAttachment);
+        std::vector<VkPipelineColorBlendAttachmentState> blendStates(pipeline.fragmentOutputs.size(), colorBlendAttachment);
 
         // Color Blend State, for all framebuffers 
 
@@ -888,15 +890,16 @@ namespace Wado::GAL::Vulkan {
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &gBufferDescriptorSetLayout;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()); // TODO: when would you have more than 1?
+        pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+        pipelineLayoutInfo.pushConstantRangeCount = 0; // TODO: work push constants into the workflow
         pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &gBufferPipelineLayout) != VK_SUCCESS) {
+        if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &vkPipeline.pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create G-Buffer pipeline layout!");
         }
 
+        // TODO: do this based on whether the depth resource is set or not 
         VkPipelineDepthStencilStateCreateInfo depthStencil{};
         depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depthStencil.depthTestEnable = VK_TRUE;
@@ -924,18 +927,20 @@ namespace Wado::GAL::Vulkan {
         pipelineInfo.pDepthStencilState = &depthStencil;
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamicState;
-        pipelineInfo.layout = gBufferPipelineLayout;
-        pipelineInfo.renderPass = deferredRenderPass;
-        pipelineInfo.subpass = 0;
-        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.renderPass = _renderPass;
+        pipelineInfo.subpass = index;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // TODO: deal with this during pipeline caching
         //pipelineInfo.basePipelineIndex = -1;
 
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &gBufferPipeline) != VK_SUCCESS) {
+        if (vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline.pipeline) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create G-Buffer graphics pipeline");
         }
         
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
-        vkDestroyShaderModule(device, vertShaderModule, nullptr);        
+        vkDestroyShaderModule(device, vertShaderModule, nullptr);    
+
+        return VulkanPipeline;    
     };
 
 }
