@@ -80,7 +80,7 @@ namespace Wado::GAL::Vulkan {
 
 // END OF UTILS
 
-    WdImage VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
+    WdImage& VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
         VkImage image; // image handle, 1-to-1 translation to GAL 
         VkDeviceMemory imageMemory; // memory handle, 1-to-1
         VkImageView imageView; // view handle, same concept 
@@ -91,9 +91,9 @@ namespace Wado::GAL::Vulkan {
         imageInfo.extent = {extent.width, extent.height, 1};
         imageInfo.mipLevels = mipLevels;
         imageInfo.arrayLayers = 1;
-        imageInfo.format = WdFormatToVKFormat[format];
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.format = WdFormatToVkFormat[format];
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; // start with optimal tiling
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // should this be undefined to start with?
         imageInfo.usage = WdImageUsageToVkImageUsage(usage);
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -108,29 +108,29 @@ namespace Wado::GAL::Vulkan {
         imageInfo.samples = WdSampleBitsToVkSampleBits(numSamples);
         imageInfo.flags = 0;
 
-        if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+        if (vkCreateImage(_device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create image!");
         }
 
         VkMemoryRequirements memRequirements;
-        vkGetImageMemoryRequirements(device, image, &memRequirements);
+        vkGetImageMemoryRequirements(_device, image, &memRequirements);
         
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(_device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate image memory!");
         }
 
-        vkBindImageMemory(device, image, imageMemory, 0);
+        vkBindImageMemory(_device, image, imageMemory, 0);
 
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.image = image;
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = WdFormatToVKFormat[format];
+        viewInfo.format = WdFormatToVkFormat[format];
 
         VkImageAspectFlags flags = getImageAspectFlags(imageInfo.usage);
 
@@ -146,32 +146,35 @@ namespace Wado::GAL::Vulkan {
         viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
         viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
        
-        if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        if (vkCreateImageView(_device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create 2D image view!");
         }
 
         // Create GAL resource now 
-        WdImage* img = new WdImage;
-        // error check etc (will do with cutom allocator in own new operator)
 
-        img->handle = static_cast<WdImageHandle>(image);
-        img->memory = static_cast<WdMemoryPointer>(imageMemory); 
-        img->target = static_cast<WdRenderTarget>(imageView); 
-        img->format = format;
-        img->extent = {extent.height, extent.width, 1};
-        img->usage = usageFlags;
+        WdClearValue clearValue;
+
         if (flags & VK_IMAGE_ASPECT_DEPTH_BIT) {
-            img->clearValue.depthStencil = defaultDepthStencilClear;
+            clearValue.depthStencil = defaultDepthStencilClear;
         } else {
-            img->clearValue.color = defaultColorClear;
+            clearValue.color = defaultColorClear;
         }
+
+        WdImage* img = new WdImage(static_cast<WdImageHandle>(image), 
+                                   static_cast<WdMemoryPointer>(imageMemory), 
+                                   static_cast<WdRenderTarget>(imageView), 
+                                   format,
+                                   {extent.height, extent.width, 1},
+                                   usageFlags,
+                                   clearValue);
+        // error check etc (will do with cutom allocator in own new operator)
 
         liveImages.push_back(img); // keep track of this image 
 
         return *img;
     };
 
-    WdBuffer VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
+    WdBuffer& VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
         VkBuffer buffer; // buffer handle 
         VkMemory bufferMemory; // memory handle 
 
@@ -191,31 +194,29 @@ namespace Wado::GAL::Vulkan {
 
         bufferInfo.flags = 0;
 
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+        if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create buffer!");
         }
 
         VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+        vkGetBufferMemoryRequirements(_device, buffer, &memRequirements);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate buffer memory!");
         }
 
-        vkBindBufferMemory(device, buffer, bufferMemory, 0);
+        vkBindBufferMemory(_device, buffer, bufferMemory, 0);
 
         // Create GAL resource now 
-        WdBuffer* buf = new WdBuffer;
+        WdBuffer* buf = new WdBuffer(static_cast<WdBufferHandle>(buffer), 
+                                     static_cast<WdMemoryPointer>(bufferMemory),
+                                     size);
         // error check etc (will do with cutom allocator in own new operator)
-
-        buf->handle = static_cast<WdBufferHandle>(buffer);
-        buf->memory = static_cast<WdMemoryPointer>(bufferMemory); 
-        buf->size = size;
 
         liveBuffers.push_back(buf); // keep track of this image 
 
@@ -251,7 +252,7 @@ namespace Wado::GAL::Vulkan {
         samplerInfo.minLod = 0.0f;
         samplerInfo.maxLod = static_cast<float>(maxMipLevels);
 
-        if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+        if (vkCreateSampler(_device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create texture sampler!");
         }
 
@@ -260,7 +261,7 @@ namespace Wado::GAL::Vulkan {
         return static_cast<WdSamplerHandle>(textureSampler);
     };
 
-    void VulkanLayer::updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) {
+    void VulkanLayer::updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) {
         // TODO: should do some bounds checks and stuff here at some point 
         memcpy(buffer.data + offset, data, dataSize);
     };
@@ -291,13 +292,13 @@ namespace Wado::GAL::Vulkan {
         return static_cast<WdFenceHandle>(fence); 
     };
 
-    void VulkanLayer::waitForFences(std::vector<WdFenceHandle> fences, bool waitAll, uint64_t timeout) {
+    void VulkanLayer::waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll, uint64_t timeout) {
         // should probably do a static cast here for fence data?
-        vkWaitForFences(device, static_cast<uint32_t>(fences.size()), fences.data(), TO_VK_BOOL(waitAll), timeout);
+        vkWaitForFences(_device, static_cast<uint32_t>(fences.size()), fences.data(), TO_VK_BOOL(waitAll), timeout);
     };
 
-    void VulkanLayer::resetFences(std::vector<WdFenceHandle> fences) {
-        vkResetFences(device, static_cast<uint32_t>(fences.size()), fences.data());
+    void VulkanLayer::resetFences(const std::vector<WdFenceHandle>& fences) {
+        vkResetFences(_device, static_cast<uint32_t>(fences.size()), fences.data());
     };
 
     // Skeleton for now, needs to be expanded 
@@ -339,7 +340,7 @@ namespace Wado::GAL::Vulkan {
         std::map<WdImageHandle, AttachmentInfo>::iterator attachment = attachments.find(attachmentHandle); \
         if (attachment == attachments.end()) { \
             VkAttachmentDescription attachmentDesc{}; \
-            attachmentDesc.format = WdFormatToVKFormat[it->second.resource.imageResource.image->format]; \
+            attachmentDesc.format = WdFormatToVkFormat[it->second.resource.imageResource.image->format]; \
             attachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT; \
             AttachmentInfo info{}; \
             info.attachmentIndex = attachmentIndex; \
@@ -645,6 +646,10 @@ namespace Wado::GAL::Vulkan {
     };
 
     // Vulkan Pipeline, layout and descriptor set creation 
+    VkVertexInputAttributeDescription createVertexAttributeDescription() {
+        //TODO
+    };
+
     VkDescriptorSetLayout createDescriptorSetLayout(WdPipeline::ShaderParams vertexParams, WdPipeline::ShaderParams fragmentParams) {
         VkDescriptorSetLayout layout;
         

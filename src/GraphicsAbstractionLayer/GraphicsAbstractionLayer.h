@@ -13,7 +13,7 @@ class Wado::Shader::Shader;
 
 namespace Wado::GAL {
 
-    using WdImageHandle = void *; // not sure about this here?
+    using WdImageHandle = void *; // not sure about this yet
     using WdBufferHandle = void *;
     using WdSamplerHandle = void *;
     using WdRenderTarget = void *; // this would be the image view 
@@ -102,7 +102,6 @@ namespace Wado::GAL {
         WD_INDIRECT_BUFFER = 0x00000100,
     };
 
-
     using WdImageUsageFlags = uint32_t;
     
     enum WdImageUsage {
@@ -166,7 +165,6 @@ namespace Wado::GAL {
         WD_CLAMP_TO_BORDER = 3,
     };
 
-    // default 
     using WdTextureAddressMode = struct WdTextureAddressMode {
         WdAddressMode uMode;
         WdAddressMode vMode;
@@ -192,34 +190,52 @@ namespace Wado::GAL {
         WdDepthStencilValue depthStencil;
     };
 
-    const WdDepthStencilValue defaultDepthStencilClear =  {1.0f, 0};
+    const WdDepthStencilValue defaultDepthStencilClear = {1.0f, 0};
     const WdColorValue defaultColorClear = {0.0f, 0.0f, 0.0f, 1.0f};
 
     // TODO: these should also have private constructors.
     using WdImage = struct WdImage {
-        WdImageHandle handle;
-        WdMemoryPointer memory;
-        WdRenderTarget target;
-        WdFormat format;
-        WdExtent3D extent;
-        WdImageUsageFlags usage;
-        WdClearValue clearValue;
+            friend class GraphicsLayer;
+
+            const WdImageHandle handle;
+            const WdMemoryPointer memory;
+            const WdRenderTarget target;
+            const WdFormat format;
+            const WdExtent3D extent;
+            const WdImageUsageFlags usage;
+            const WdClearValue clearValue;
+        private:
+            WdImage(WdImageHandle _handle, WdMemoryPointer _memory, WdRenderTarget _target, WdFormat _format, WdExtent3D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue) : 
+                handle(_handle), 
+                memory(_memory),
+                target(_target),
+                format(_format),
+                extent(_extent),
+                usage(_usage),
+                clearValue(_clearValue) {};
     };
 
     using WdTexture = struct WdTexture {
         std::string name;
-        uint32_t uid;   
+        uint32_t uid; 
         WdImage image;
     };
 
     using WdBuffer = struct WdBuffer {
-        WdBufferHandle handle;
-        WdMemoryPointer memory;
-        WdSize size;
-        void* data;
+            friend class GraphicsLayer;
+
+            const WdBufferHandle handle;
+            const WdMemoryPointer memory;
+            const WdSize size;
+        private:
+            WdBuffer(WdBufferHandle _handle, WdMemoryPointer _memory, WdSize _size) :
+                handle(_handle),
+                memory(_memory),
+                size(_size) {};
+            void* data;
     };
 
-    enum WdVertexRate {
+    /*enum WdVertexRate {
         WD_VERTEX_RATE_VERTEX,
         WD_VERTEX_RATE_INSTANCE,
     };
@@ -245,7 +261,7 @@ namespace Wado::GAL {
         public:
             virtual std::vector<WdVertexBinding> getBindingDescriptions() = 0;
             virtual WdInputTopology getInputTopology() = 0;
-    };
+    };*/
 
     using WdViewportProperties = struct WdViewportProperties {
         WdExtent2D startCoords;
@@ -441,18 +457,15 @@ namespace Wado::GAL {
         public:
             virtual void init() = 0;
 
-            // no sharing mode yet, will infer from usage I think.
-            // for tiling, default optimal?
-            // figure out memory req from usage 
-            virtual WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, 
+            virtual WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
-            virtual WdBuffer createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+            virtual WdBuffer& createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
 
             // create texture sampler 
             virtual WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) = 0;
 
-            virtual void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) = 0;
+            virtual void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) = 0;
             // close or open "pipe" between CPU and GPU for this buffer's memory
             virtual void openBuffer(WdBuffer& buffer) = 0;
 
@@ -466,20 +479,20 @@ namespace Wado::GAL {
 
             //virtual WdSemaphoreHandle createSemaphore() = 0;
 
-            virtual void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) = 0;
+            virtual void waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) = 0;
 
-            virtual void resetFences(std::vector<WdFenceHandle> fences) = 0;
+            virtual void resetFences(const std::vector<WdFenceHandle>& fences) = 0;
 
-            virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) = 0;
+            virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) = 0;
 
-            virtual WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) = 0;
+            virtual WdRenderPass createRenderPass(const std::vector<WdPipeline>& pipelines) = 0;
 
             virtual std::unique_ptr<WdCommandList> createCommandList() = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
             // this i can definitely automate with a render graph, a lot of this actually.
             // this is also immediate
-            virtual void prepareImageFor(WdImage image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
+            virtual void prepareImageFor(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
             virtual void presentCurrentFrame() = 0;
 

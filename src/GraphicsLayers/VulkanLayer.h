@@ -29,30 +29,29 @@ namespace Wado::GAL::Vulkan {
 
     class VulkanLayer : public GraphicsLayer {
         public:
-            WdImage create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
-            WdBuffer createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
+            WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
+            WdBuffer& createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
             WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
             
-            void updateBuffer(WdBuffer buffer, void * data, WdSize offset, WdSize dataSize) override;
+            void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) override;
             void openBuffer(WdBuffer& buffer) override;
             void closeBuffer(WdBuffer& buffer) override;
 
             WdFenceHandle createFence(bool signaled = true) override;
-            void waitForFences(std::vector<WdFenceHandle> fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
-            void resetFences(std::vector<WdFenceHandle> fences) override;
-
+            void waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
+            void resetFences(const std::vector<WdFenceHandle>& fences) override;
             
             WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) override;
-            WdRenderPass createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) override;
+            WdRenderPass createRenderPass(const std::vector<WdPipeline>& pipelines) override;
 
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer();
-            static std::shared_ptr<VulkanLayer> layer;
+            static std::shared_ptr<VulkanLayer> _layer;
 
             // Internal components 
-            VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-            VkDevice device;
+            VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
+            VkDevice _device;
 
             static VkFormat WdFormatToVkFormat[] = {
                 VK_FORMAT_UNDEFINED,
@@ -108,19 +107,19 @@ namespace Wado::GAL::Vulkan {
 
             // used for global sampler and texture creation, based on device
             // properties and re-calculated every time device is set up.
-            bool enableAnisotropy;
-            float maxAnisotropy;
-            uint32_t maxMipLevels;
+            bool _enableAnisotropy;
+            float _maxAnisotropy;
+            uint32_t _maxMipLevels;
 
             // the pointer management here will need to change 
-            std::vector<WdImage*> liveImages;
-            std::vector<WdBuffer*> liveBuffers;
-            std::vector<VkSampler> liveSamplers;
-            std::vector<VkFence> liveFences;
-            std::vector<VkSemaphore> liveSemaphores;
-            std::vector<VkCommandPool> liveCommandPools;
-            std::vector<VkPipeline> livePipelines;
-            std::vector<VkRenderPass> liveRenderPasses;
+            std::vector<WdImage*> _liveImages;
+            std::vector<WdBuffer*> _liveBuffers;
+            std::vector<VkSampler> _liveSamplers;
+            std::vector<VkFence> _liveFences;
+            std::vector<VkSemaphore> _liveSemaphores;
+            std::vector<VkCommandPool> _liveCommandPools;
+            std::vector<VkPipeline> _livePipelines;
+            std::vector<VkRenderPass> _liveRenderPasses;
 
             // needed in order to determine resource sharing mode and queues to use
             const VkImageUsageFlags transferUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -131,7 +130,7 @@ namespace Wado::GAL::Vulkan {
             const VkBufferUsageFlags bufferGraphicsUsage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
             const VkBufferUsageFlags bufferIndirectUsage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
-            QueueFamilyIndices queueIndices;
+            QueueFamilyIndices _queueIndices;
 
             VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
 
@@ -145,7 +144,6 @@ namespace Wado::GAL::Vulkan {
 
             VkFilter WdFilterToVkFilter(WdFilterMode filter) const;
             VkSamplerAddressMode WdAddressModeToVkAddressMode(WdAddressMode addressMode) const;
-
     };
 
     class VulkanRenderPass : public WdRenderPass {
