@@ -943,4 +943,54 @@ namespace Wado::GAL::Vulkan {
         return VulkanPipeline;    
     };
 
+    // Create descriptor pool 
+
+    // too much duplication, will be fixed when dealing with uniform aliasing 
+    void addDescriptorPoolSizes(const WdPipeline& pipeline, std::vector<VkDescriptorPoolSize>& poolSizes) {
+        // according to Vulkan spec this is fine to do 
+        for (WdPipeline::Uniforms::iterator it = pipeline.vertexUniforms.begin(), it != pipeline.vertexUniforms.end(); ++it) {
+            VkDescriptorPoolSize poolSize{};
+            poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
+            poolSize.descriptorCount = static_cast<uint32_t>(it->second.resourceCount);
+            poolSizes.push_back(poolSize);
+        };
+
+        for (WdPipeline::Uniforms::iterator it = pipeline.fragmentUniforms.begin(), it != pipeline.fragmentUniforms.end(); ++it) {
+            VkDescriptorPoolSize poolSize{};
+            poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
+            poolSize.descriptorCount = static_cast<uint32_t>(it->second.resourceCount);
+            poolSizes.push_back(poolSize);
+        };
+
+        for (WdPipeline::SubpassInputs::iterator it = pipeline.subpassInputs.begin(), it != pipeline.subpassInputs.end(); ++it) {
+            VkDescriptorPoolSize poolSize{};
+            poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
+            poolSize.descriptorCount = 1;
+            poolSizes.push_back(poolSize);
+        };
+    };
+    
+    VkDescriptorPool createDescriptorPool(const std::vector<WdPipeline>& pipelines) {
+        VkDescriptorPool descriptorPool;
+
+        std::vector<VkDescriptorPoolSize> poolSizes{};
+
+        for (const WdPipeline& pipeline : pipelines) {
+            std::array<VkDescriptorPoolSize, 3> poolSizes{};
+            addDescriptorPoolSizes(pipeline, poolSizes);
+        }
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+        poolInfo.maxSets = static_cast<uint32_t>(pipelines.size()); // as many as pipelines?
+        poolInfo.flags = 0;
+
+        if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor pool");
+        }
+
+        return descriptorPool;
+    }
+
 }
