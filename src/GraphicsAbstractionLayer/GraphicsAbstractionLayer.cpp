@@ -4,24 +4,6 @@
 #include "spirv.h"
 #include "spirv_cross.hpp"
 
-// get layout decorations for uniforms 
-// TODO: make this NOT a macro 
-#define ADD_UNIFORM_DESC(RESTYPE, PARAMTYPE) \
-for (const spirv_cross::Resource &resource : resources.RESTYPE) { \
-            if ( ((ShaderParameterType::PARAMTYPE == ShaderParameterType::WD_SAMPLED_BUFFER) || (ShaderParameterType::PARAMTYPE == ShaderParameterType::WD_BUFFER_IMAGE)) && \
-                    (spirvCompiler.get_type(resource.type_id).image.dim != Dim::DimBuffer) ) { \
-                continue; \
-            } \
-            Uniform uniform; \
-            uniform.paramType = ShaderParameterType::PARAMTYPE; \
-            uniform.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); \
-            uniform.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); \
-            uniform.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); \
-            uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; \
-            uniform.resources.resize(uniform.resourceCount); \
-            uniforms[resource.name] = uniform; \
-        };
-
 namespace Wado::GAL { 
 
     // index by vec size first, then by base type 
@@ -51,28 +33,51 @@ namespace Wado::GAL {
 		8, //Double,
     };
 
-    WdPipeline::WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) {
-        _vertexShader = vertexShader;
-        _fragmentShader = fragmentShader;
-        generateVertexParams(_vertexShader, vertexInputs, vertexUniforms);
-        generateFragmentParams(_fragmentShader, subpassInputs, fragmentUniforms, fragmentOutputs);
-        _viewportProperties = viewportProperties;
+    WdPipeline::WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdViewportProperties viewportProperties) : 
+        _vertexShader(vertexShader),
+        _fragmentShader(fragmentShader), 
+        _viewportProperties(viewportProperties) {
+
+        generateVertexParams();
+        generateFragmentParams();
     };
 
-    void WdPipeline::generateVertexParams(Shader::ShaderByteCode byteCode, VertexInputs& inputs, Uniforms& uniforms) {
+    void WdPipeline::addUniformDescription(spirv_cross::Compiler& spirvCompiler, const std::vector<spirv_cross::Resource>& resources, const ShaderParameterType paramType, const WdStage stage) {
+        for (const spirv_cross::Resource &resource : resources) {
+            if ( ((paramType == ShaderParameterType::WD_SAMPLED_BUFFER) || (paramType == ShaderParameterType::WD_BUFFER_IMAGE)) &&
+                    (spirvCompiler.get_type(resource.type_id).image.dim != Dim::DimBuffer) ) {
+                continue;
+            };
+
+            Uniform uniform; 
+            uniform.paramType = paramType; 
+            uniform.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); 
+            uniform.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
+            uniform.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
+            uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; 
+            uniform.resources.resize(uniform.resourceCount); 
+
+            UniformAddress address(uniform.decorationSet, uniform.decorationBinding, uniform.decorationLocation); 
+            _uniformAddresses[resource.name + std::to_string(stage)] = address; 
+            // This could be an unnecessary write, but it's probably better than doing a std::find since that is log n 
+            _uniforms[address] = uniform;
+        };
+    };
+
+    void WdPipeline::generateVertexParams() {
         // create compiler object for the SPIR-V bytecode
-        spirv_cross::Compiler spirvCompiler(move(byteCode));
+        spirv_cross::Compiler spirvCompiler(move(_vertexShader));
         spirv_cross::ShaderResources resources = comp.get_shader_resources();
 
         // Check all non-subpass input uniforms 
-        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_IMAGE);
-        ADD_UNIFORM_DESC(separate_images, WD_TEXTURE_IMAGE);
-        ADD_UNIFORM_DESC(storage_images, WD_BUFFER_IMAGE);
-        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_BUFFER);
-        ADD_UNIFORM_DESC(separate_samplers, WD_SAMPLER);
-        ADD_UNIFORM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
-        ADD_UNIFORM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
-        ADD_UNIFORM_DESC(storage_buffer, WD_STORAGE_BUFFER);
+        addUniformDescription(spirvCompiler, resources.sampled_images, ShaderParameterType::WD_SAMPLED_IMAGE, WdStage::Vertex);
+        addUniformDescription(spirvCompiler, resources.separate_images, ShaderParameterType::WD_TEXTURE_IMAGE, WdStage::Vertex);
+        addUniformDescription(spirvCompiler, resources.storage_images, ShaderParameterType::WD_BUFFER_IMAGE, WdStage::Vertex);
+        addUniformDescription(spirvCompiler, resources.sampled_images, ShaderParameterType::WD_SAMPLED_BUFFER, WdStage::Vertex);
+        addUniformDescription(spirvCompiler, resources.separate_samplers, ShaderParameterType::WD_SAMPLER, WdStage::Vertex);
+        addUniformDescription(spirvCompiler, resources.uniform_buffers, ShaderParameterType::WD_UNIFORM_BUFFER, WdStage::Vertex);
+        //addUniformDescription(push_constant_buffers, WD_PUSH_CONSTANT); TODO: These need to be handled separately 
+        addUniformDescription(spirvCompiler, resources.storage_buffer, ShaderParameterType::WD_STORAGE_BUFFER, WdStage::Vertex);
 
         // process vertex input now 
         for (const spirv_cross::Resource &resource : resources.stage_inputs) {
@@ -89,24 +94,24 @@ namespace Wado::GAL {
             vertexInput.size = vecSize * SPIRVBaseToSize[baseType];
             vertexInput.format = SPIRVtoWdFormat[vecSize - 1][baseType];
 
-            inputs.push_back(vertexInput);
+            _vertexInputs.push_back(vertexInput);
         };
     };
     
-    void WdPipeline::generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs) {
+    void WdPipeline::generateFragmentParams() {
         // create compiler object for the SPIR-V bytecode
-        spirv_cross::Compiler spirvCompiler(move(byteCode));
+        spirv_cross::Compiler spirvCompiler(move(_fragmentShader));
         spirv_cross::ShaderResources resources = comp.get_shader_resources();
 
         // Check all non-subpass input uniforms 
-        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_IMAGE);
-        ADD_UNIFORM_DESC(separate_images, WD_TEXTURE_IMAGE);
-        ADD_UNIFORM_DESC(storage_images, WD_BUFFER_IMAGE);
-        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_BUFFER);
-        ADD_UNIFORM_DESC(separate_samplers, WD_SAMPLER);
-        ADD_UNIFORM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
-        ADD_UNIFORM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
-        ADD_UNIFORM_DESC(storage_buffer, WD_STORAGE_BUFFER);
+        addUniformDescription(spirvCompiler, resources.sampled_images, ShaderParameterType::WD_SAMPLED_IMAGE, WdStage::Fragment);
+        addUniformDescription(spirvCompiler, resources.separate_images, ShaderParameterType::WD_TEXTURE_IMAGE, WdStage::Fragment);
+        addUniformDescription(spirvCompiler, resources.storage_images, ShaderParameterType::WD_BUFFER_IMAGE, WdStage::Fragment);
+        addUniformDescription(spirvCompiler, resources.sampled_images, ShaderParameterType::WD_SAMPLED_BUFFER, WdStage::Fragment);
+        addUniformDescription(spirvCompiler, resources.separate_samplers, ShaderParameterType::WD_SAMPLER, WdStage::Fragment);
+        addUniformDescription(spirvCompiler, resources.uniform_buffers, ShaderParameterType::WD_UNIFORM_BUFFER, WdStage::Fragment);
+        //addUniformDescription(push_constant_buffers, WD_PUSH_CONSTANT); TODO: These need to be handled separately 
+        addUniformDescription(spirvCompiler, resources.storage_buffer, ShaderParameterType::WD_STORAGE_BUFFER, WdStage::Fragment);
 
         // process supbass inputs now 
         for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
@@ -117,18 +122,27 @@ namespace Wado::GAL {
             subpassInput.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationInputAttachmentIndex);
             subpassInput.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
             // by construction the names have to be unique 
-            inputs[resource.name] = subpassInput; 
+            _subpassInputs[resource.name] = subpassInput; 
         };
 
         // process fragment outputs now 
         for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
             FragmentOutput fragOutput;
             fragOutput.paramType = ShaderParameterType::WD_STAGE_OUTPUT;
-            fragOutput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
+            fragOutput.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
             // by construction the names have to be unique 
-            outputs[resource.name] = fragOutput; 
+            _fragmentOutputs[resource.name] = fragOutput; 
         };
     };
+
+    // subpass inputs handled in setUniform 
+    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, ShaderResource resource);
+
+    // for array params
+    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, std::vector<ShaderResource>& resources);
+
+    void WdPipeline::addToUniform(const WdStage stage, const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
+
 
     // TODO: error handling here 
     void WdPipeline::setVertexUniform(const std::string& paramName, ShaderResource resource) {

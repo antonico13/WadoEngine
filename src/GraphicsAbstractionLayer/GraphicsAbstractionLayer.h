@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <tuple>
 #include <memory>
 #include <map>
 #include <string>
@@ -235,34 +236,6 @@ namespace Wado::GAL {
             void* data;
     };
 
-    /*enum WdVertexRate {
-        WD_VERTEX_RATE_VERTEX,
-        WD_VERTEX_RATE_INSTANCE,
-    };
-
-    using WdVertexAttribute = struct WdVertexAttribute {
-        WdFormat format;
-        WdSize offset;
-    };
-
-    using WdVertexBinding = struct WdVertexBinding {
-        WdSize stride;
-        WdVertexRate rate;
-        std::vector<WdVertexAttribute> attributeDescriptions;
-    };
-
-    enum WdInputTopology {
-        WD_TOPOLOGY_TRIANGLE_LIST,
-        WD_TOPOLOGY_POINT_LIST,
-        WD_TOPOLOGY_LINE_LIST,
-    };
-
-    class WdVertexBuilder {
-        public:
-            virtual std::vector<WdVertexBinding> getBindingDescriptions() = 0;
-            virtual WdInputTopology getInputTopology() = 0;
-    };*/
-
     using WdViewportProperties = struct WdViewportProperties {
         WdExtent2D startCoords;
         WdExtent2D endCoords;
@@ -274,6 +247,12 @@ namespace Wado::GAL {
             WdExtent2D offset;
             WdExtent2D extent;
         };
+    };
+
+    enum WdStage = {
+        Unknown = 0,
+        Vertex = 1,
+        Fragment = 2,
     };
 
     class WdPipeline {
@@ -319,22 +298,20 @@ namespace Wado::GAL {
             static const int UNIFORM_END = -1;
 
             // subpass inputs handled in setUniform 
-            void setVertexUniform(const std::string& paramName, ShaderResource resource);
-            void setFragmentUniform(const std::string& paramName, ShaderResource resource);
+            void setUniform(const WdStage stage, const std::string& paramName, ShaderResource resource);
 
             // for array params
-            void setVertexUniform(const std::string& paramName, std::vector<ShaderResource>& resources);
-            void setFragmentUniform(const std::string& paramName, std::vector<ShaderResource>& resources);
+            void setUniform(const WdStage stage, const std::string& paramName, std::vector<ShaderResource>& resources);
 
-            void addToVertexUniform(const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
-            void addToFragmentUniform(const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
+            void addToUniform(const WdStage stage, const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
 
             // special case, since it relates to the framebuffer
             void setFragmentOutput(const std::string& paramName, WdImageResource resource);
 
             void setDepthStencilResource(WdImageResource resource);
 
-            // these should be private
+        private:
+        // Util types 
             enum ShaderParameterType {
                 WD_SAMPLED_IMAGE = 0, // sampler2D
                 WD_TEXTURE_IMAGE = 1, // just texture2D
@@ -348,15 +325,6 @@ namespace Wado::GAL {
                 WD_SAMPLER = 9,
                 WD_PUSH_CONSTANT, // only supported by Vulkan backend
                 WD_STAGE_INPUT, // used for ins 
-            };
-
-            using ShaderParameter = struct ShaderParameter {
-                ShaderParameterType paramType;
-                uint8_t decorationSet;
-                uint8_t decorationBinding;
-                uint8_t decorationLocation;
-                uint8_t decorationIndex; // if input attachment, exclusive to Vulkan GLSL 
-                ShaderResource resource;
             };
 
             using VertexInput = struct VertexInput {
@@ -388,35 +356,39 @@ namespace Wado::GAL {
 
             using FragmentOutput = struct FragmentOutput { 
                 ShaderParameterType paramType; // always stage output, doesn't really matter 
-                uint8_t decorationLocation; // needed for refs 
+                uint8_t decorationIndex; // needed for refs 
                 WdImageResource resource; // should always be img resource
             }; 
 
+            using UniformAddress = std::tuple<uint8_t, uint8_t, uint8_t>; // (Set, Binding, Location)
+            using UniformIdent = std::tuple<std::string, WdStage>; // (uniform name, stage its in)
+
             using VertexInputs = std::vector<VertexInput>;
-            using Uniforms = std::map<std::string, Uniform>;
+            using Uniforms = std::map<UniformAddress, Uniform>;
+            using UniformAddresses = std::map<UniformIdent, UniformAddress>;
             using SubpassInputs = std::map<std::string, SubpassInput>;
             using FragmentOutputs = std::map<std::string, FragmentOutput>;
 
-        private:
-            void generateVertexParams(Shader::ShaderByteCode byteCode, VertexInputs& inputs, Uniforms& uniforms);
-            void generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs);
+            void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const std::vector<spirv_cross::Resource>& resources, const ShaderParameterType paramType, const WdStage stage);
+
+            void generateVertexParams();
+            void generateFragmentParams();
             void setUniform(Uniforms& uniforms, const std::string& paramName, std::vector<ShaderResource>& resources);
             void addToUniform(Uniforms& uniforms, const std::string& paramName, ShaderResource resource, int index);
 
-            WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
+            WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdViewportProperties viewportProperties);
             
             Shader::ShaderByteCode _vertexShader;
             Shader::ShaderByteCode _fragmentShader;
 
-            VertexInputs vertexInputs;
-            // TODO: aliased uniforms in multiple shader stages/pipelines?
-            Uniforms vertexUniforms;
-            
-            Uniforms fragmentUniforms;
-            SubpassInputs subpassInputs; // fragment only
-            FragmentOutputs fragmentOutputs;
+            UniformAddresses _uniformAddresses;
+            Uniforms _uniforms;
 
-            WdImageResource depthStencilResource;
+            VertexInputs _vertexInputs;
+            SubpassInputs _subpassInputs; // fragment & Vulkan only
+            FragmentOutputs _fragmentOutputs;
+
+            WdImageResource _depthStencilResource;
 
             WdViewportProperties _viewportProperties
     };
