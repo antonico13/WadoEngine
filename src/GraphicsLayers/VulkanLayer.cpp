@@ -335,37 +335,8 @@ namespace Wado::GAL::Vulkan {
         uint8_t pipelineIndex;
     };
 
-    #define UPDATE_RESOURCES(PARAMS, STAGE) \
-    for (std::map<std::string, WdPipeline::ShaderParameter>::iterator it = PARAMS.begin(); it != PARAMS.end(); ++it) { \
-                WdPipeline::ShaderParameterType paramType = it->second.paramType; \
-                if (paramType & imageMask) { \
-                    WdImageHandle handle = it->second.resource.imageResource.image->handle;
-                    std::map<WdImageHandle, std::vector<ResourceInfo>>::iterator imgResInfo = imageResources.find(handle); \
-                    if (imgResInfo == imageResources.end()) { \
-                        std::vector<ResourceInfo> resInfos; \
-                        imageResources[handle] = resInfos; \
-                    } \
-                    ResourceInfo resInfo{}; \
-                    resInfo.type = paramType; \
-                    resInfo.stage = Stage::STAGE; \
-                    resInfo.pipelineIndex = pipelineIndex; \
-                    imageResources[handle].push_back(resInfo); \
-                } \
-                if (paramType & bufferMask) { \
-                    WdBufferHandle handle = it->second.resource.bufferResource.buffer->handle; \
-                    std::map<WdBufferHandle, std::vector<ResourceInfo>>::iterator bufResInfo = bufferResources.find(handle); \
-                    if (bufResInfo == bufferResources.end()) { \
-                        std::vector<ResourceInfo> resInfos; \
-                        bufferResources[handle] = resInfos; \
-                    }
-                    ResourceInfo resInfo{}; \
-                    resInfo.type = paramType; \
-                    resInfo.stage = Stage::STAGE; \
-                    resInfo.pipelineIndex = pipelineIndex; \
-                    bufferResources[handle].push_back(resInfo); \
-                } \
-            };
-
+    using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
+    using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
 
     // usually can just infer from the stage enum in ResourceInfo,
     // but attachments need special attention 
@@ -486,6 +457,72 @@ namespace Wado::GAL::Vulkan {
         }
     };
 
+    const uint32_t bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+    const uint32_t imageMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
+
+    // theres a bit of duplication here that needs refactoring
+    void updateUniformResources(const WdPipeline::Uniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, Stage stage, uint8_t pipelineIndex) {
+        for (WdPipeline::Uniforms::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
+            WdPipeline::ShaderParameterType paramType = it->second.paramType;
+                                                    
+            ResourceInfo resInfo{}; 
+            resInfo.type = paramType; 
+            resInfo.stage = stage; 
+            resInfo.pipelineIndex = pipelineIndex; 
+
+            if (paramType & imageMask) {
+                // need to do this for every resource 
+                for (const WdPipeline::ShaderResource& res : it->second.resources) {
+                    WdImageHandle handle = res.imageResource.image->handle;
+                    ImageResources::iterator imgResInfo = imageResources.find(handle); 
+
+                    if (imgResInfo == imageResources.end()) { 
+                        std::vector<ResourceInfo> resInfos; 
+                        imageResources[handle] = resInfos; 
+                    }
+                    imageResources[handle].push_back(resInfo); 
+                }
+            }
+
+            if (paramType & bufferMask) {
+                // need to do for every resource
+                for (const WdPipeline::ShaderResource& res : it->second.resources) {
+                    WdBufferHandle handle = res.bufferResource.buffer->handle; 
+                    BufferResources::iterator bufResInfo = bufferResources.find(handle); 
+                    
+                    if (bufResInfo == bufferResources.end()) { 
+                        std::vector<ResourceInfo> resInfos; 
+                        bufferResources[handle] = resInfos;
+                    }
+
+                    bufferResources[handle].push_back(resInfo); 
+                } 
+            }
+    };
+
+    template <class T>
+    void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, uint8_t pipelineIndex) {
+        for (T::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
+            WdPipeline::ShaderParameterType paramType = it->second.paramType;
+
+            ResourceInfo resInfo{}; 
+            resInfo.type = paramType; 
+            resInfo.stage = Stage::Fragment; 
+            resInfo.pipelineIndex = pipelineIndex; 
+            
+            WdImageHandle handle = it->second.resource.image->handle;
+            ImageResources::iterator imgResInfo = imageResources.find(handle); 
+            
+            if (imgResInfo == imageResources.end()) { 
+                // not found, init array
+                std::vector<ResourceInfo> resInfos; 
+                imageResources[handle] = resInfos; 
+            } 
+
+            imageResources[handle].push_back(resInfo); 
+        }
+    };
+
     void VulkanRenderPass::init() {
         AttachmentMap attachments;
 
@@ -514,7 +551,7 @@ namespace Wado::GAL::Vulkan {
             
             VkSubpassDescription subpass{};
             subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            
+            //TODO: deal with unused attachments here
             subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
             subpass.pColorAttachments = colorRefs.data();
 
@@ -531,7 +568,7 @@ namespace Wado::GAL::Vulkan {
 
         std::vector<VkAttachmentDescription> attachmentDescs(attachments.size());
 
-        for (std::map<WdImageHandle, AttachmentInfo>::iterator it = attachments.begin(); it != attachments.end(); ++it) {
+        for (AttachmentMap::iterator it = attachments.begin(); it != attachments.end(); ++it) {
             // need to check first and last ref. 
             // if first ref is subpass input, we want to *keep* the values at the end of the renderpass, so the 
             // initial layout should be the same as the final layout and the load op should be load with store op store,
@@ -544,8 +581,8 @@ namespace Wado::GAL::Vulkan {
 
             AttachmentInfo info = it->second;
 
-            VkAttachmentReference& firstRef = info.refs.front().ref;
-            VkAttachmentReference& lastRef = info.refs.back().ref;
+            VkAttachmentReference& firstRef = info.refs.front();
+            VkAttachmentReference& lastRef = info.refs.back();
 
             VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -567,33 +604,32 @@ namespace Wado::GAL::Vulkan {
             it->second.attachmentDesc.finalLayout = finalLayout;
 
             attachmentDescs[info.attachmentIndex] = it->second.attachmentDesc;
-
-            /*for (const AttachmentRef& ref : info.refs) {
-
-            }*/
         } 
         
         // need to generate all deps now 
 
-        std::map<WdImageHandle, std::vector<ResourceInfo>> imageResources;
-        std::map<WdBufferHandle, std::vector<ResourceInfo>> bufferResources;
+        ImageResources imageResources;
+        BufferResources bufferResources;
 
         uint8_t pipelineIndex = 0;
-
-        uint32_t bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
-        uint32_t imageMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
 
         // generate resource maps now 
         for (const WdPipeline& pipeline : _pipelines) {
             // resources are updated in order of pipeline and stage 
-            WdPipeline::ShaderParams vertexParams = pipeline._vertexParams;
-            UPDATE_RESOURCES(vertexParams.uniforms, Vertex);
-            UPDATE_RESOURCES(vertexParams.subpassInputs, Vertex);
 
-            WdPipeline::ShaderParams fragmentParams = pipeline._fragmentParams;
-            UPDATE_RESOURCES(fragmentParams.uniforms, Fragment);
-            UPDATE_RESOURCES(fragmentParams.subpassInputs, Fragment);
-            UPDATE_RESOURCES(fragmentParams.outputs, Fragment);
+            WdPipeline::Uniforms vertexUniforms = pipeline.vertexUniforms;
+            updateUniformResources(vertexUniforms, imageResources, bufferResources, Stage::Vertex, pipelineIndex);
+
+            // Fragment
+            WdPipeline::Uniforms fragmentUniforms = pipeline.fragmentUniforms;
+            updateUniformResources(fragmentUniforms, imageResources, bufferResources, Stage::Fragment, pipelineIndex);
+
+            // Fragment-only subpass inputs and outs
+            WdPipeline::SubpassInputs fragmentInputs = pipeline.subpassInputs;
+            WdPipeline::FragmentOutputs fragmentOutputs = pipeline.fragmentOutputs;
+
+            updateAttachmentResources<WdPipeline::SubpassInputs>(fragmentInputs, imageResources, pipelineIndex);
+            updateAttachmentResources<WdPipeline::FragmentOutputs>(fragmentOutputs, imageResources, pipelineIndex);
 
             pipelineIndex++;
         }
