@@ -58,7 +58,7 @@ namespace Wado::GAL {
             uniform.resources.resize(uniform.resourceCount); 
 
             UniformAddress address(uniform.decorationSet, uniform.decorationBinding, uniform.decorationLocation); 
-            _uniformAddresses[resource.name + std::to_string(stage)] = address; 
+            _uniformAddresses[{resource.name, stage}] = address; 
             // This could be an unnecessary write, but it's probably better than doing a std::find since that is log n 
             _uniforms[address] = uniform;
         };
@@ -136,71 +136,55 @@ namespace Wado::GAL {
     };
 
     // subpass inputs handled in setUniform 
-    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, ShaderResource resource);
+    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, ShaderResource resource) {
+        // if fragment, look first in subpassInputs before going to the general case 
+        if (stage == WdStage::Fragment) {
+            SubpassInputs::iterator it = _subpassInputs.find(paramName);
+            if (it != _subpassInputs.end()) { // is a subpass input 
+                it->second.resource = resource.imageResource;
+                return;
+            }
+        }
+        // if above fails, go to the general case 
+        setUniform(stage, paramName, {resource});
+    }
 
     // for array params
-    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, std::vector<ShaderResource>& resources);
-
-    void WdPipeline::addToUniform(const WdStage stage, const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
-
-
-    // TODO: error handling here 
-    void WdPipeline::setVertexUniform(const std::string& paramName, ShaderResource resource) {
-        setUniform(vertexUniforms, paramName, {resource});
-    };
-    
-    void WdPipeline::setFragmentUniform(const std::string& paramName, ShaderResource resource) {
-        setUniform(fragmentUniforms, paramName, {resource});
-    };
-
-    void WdPipeline::setVertexUniform(const std::string& paramName, std::vector<ShaderResource>& resources) {
-        setUniform(vertexUniforms, paramName, resources);
-    };
-    
-    void WdPipeline::setFragmentUniform(const std::string& paramName, std::vector<ShaderResource>& resources) {
-        setUniform(fragmentUniforms, paramName, resources);
-    };
-
-    void WdPipeline::setUniform(Uniforms& uniforms, const std::string& paramName, std::vector<ShaderResource>& resources) {
-        // TODO: need to handle uniform aliasing here
-        Uniforms::iterator it = uniforms.find(paramName);
-        if (it != uniforms.end()) { // found, can set resource 
-            if (it->second.resourceCount < resources.size()) {
+    void WdPipeline::setUniform(const WdStage stage, const std::string& paramName, std::vector<ShaderResource>& resources) {
+        UniformAddresses::iterator it = _uniformAddresses.find({paramName, stage});
+        if (it != _uniformAddresses.end()) { // found, can set resource 
+            UniformAddress address = it->second;
+            Uniforms::iterator uniform = _uniforms.find(address);
+            // this should never fail, TODO : add check here just in case (assert?)
+            if (uniform->second.resourceCount < resources.size()) {
                 // throw error here...
                 return;
             }
-            it->second.resources = resources; // need to handle uniform aliasing here too
+            uniform->second.resources = resources;
         }
         // need to throw error here
     };
 
-    void WdPipeline::addToVertexUniform(const std::string& paramName, ShaderResource resource, int index) {
-        addToUniform(vertexUniforms, paramName, resource, index);
-    };
-    
-    void WdPipeline::addToFragmentUniform(const std::string& paramName, ShaderResource resource, int index) {
-        addToUniform(fragmentUniforms, paramName, resource, index);
-    };
-
-    void WdPipeline::addToUniform(Uniforms& uniforms, const std::string& paramName, ShaderResource resource, int index) {
-        // TODO: need to handle uniform aliasing here
-        Uniforms::iterator it = uniforms.find(paramName);
-        if (it != uniforms.end()) { // found, can set resource 
-            if (it->second.resourceCount < index) {
+    void WdPipeline::addToUniform(const WdStage stage, const std::string& paramName, ShaderResource resource, int index) {
+        UniformAddresses::iterator it = _uniformAddresses.find({paramName, stage});
+        if (it != _uniformAddresses.end()) { // found, can add to resource 
+            UniformAddress address = it->second;
+            Uniforms::iterator uniform = _uniforms.find(address);
+            if (uniform->second.resourceCount < index) {
                 // throw error here...
                 return;
             }
             if (index == UNIFORM_END) {
-                if (it->second.resourceCount <= it->second.resources.size) {
-                    // throw error here...
+                if (uniform->second.resourceCount == uniform->second.resources.size) {
+                    // throw error here, can't add at the end 
                     return; 
                 }
-                it->second.resources.push_back(resource);
+                uniform->second.resources.push_back(resource);
             } else {
-                if (it->second.resources.size() <= index) {
-                    it->second.resources.resize(index + 1);
+                if (uniform->second.resources.size() <= index) {
+                    uniform->second.resources.resize(index + 1);
                 }
-                it->second.resources[index] = resource; // need to handle uniform aliasing here too, as well as typing
+                uniform->second.resources[index] = resource; 
             }
         // need to throw error here 
         }

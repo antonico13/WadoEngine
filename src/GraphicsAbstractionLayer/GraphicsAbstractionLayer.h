@@ -369,14 +369,12 @@ namespace Wado::GAL {
             using SubpassInputs = std::map<std::string, SubpassInput>;
             using FragmentOutputs = std::map<std::string, FragmentOutput>;
 
+            WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdViewportProperties viewportProperties);
+
             void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const std::vector<spirv_cross::Resource>& resources, const ShaderParameterType paramType, const WdStage stage);
 
             void generateVertexParams();
             void generateFragmentParams();
-            void setUniform(Uniforms& uniforms, const std::string& paramName, std::vector<ShaderResource>& resources);
-            void addToUniform(Uniforms& uniforms, const std::string& paramName, ShaderResource resource, int index);
-
-            WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdViewportProperties viewportProperties);
             
             Shader::ShaderByteCode _vertexShader;
             Shader::ShaderByteCode _fragmentShader;
