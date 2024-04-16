@@ -5,21 +5,51 @@
 #include "spirv_cross.hpp"
 
 // get layout decorations for uniforms 
-#define ADD_PARAM_DESC(RESTYPE, PARAMTYPE) \
+// TODO: make this NOT a macro 
+#define ADD_UNIFORM_DESC(RESTYPE, PARAMTYPE) \
 for (const spirv_cross::Resource &resource : resources.RESTYPE) { \
             if ( ((ShaderParameterType::PARAMTYPE == ShaderParameterType::WD_SAMPLED_BUFFER) || (ShaderParameterType::PARAMTYPE == ShaderParameterType::WD_BUFFER_IMAGE)) && \
                     (spirvCompiler.get_type(resource.type_id).image.dim != Dim::DimBuffer) ) { \
                 continue; \
             } \
-            ShaderParameter param; \
-            param.paramType = ShaderParameterType::PARAMTYPE; \
-            param.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); \
-            param.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); \
-            param.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); \
-            params.uniforms[resource.name.c_str()] = param; \
+            Uniform uniform; \
+            uniform.paramType = ShaderParameterType::PARAMTYPE; \
+            uniform.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet); \
+            uniform.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); \
+            uniform.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); \
+            uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; \
+            uniform.resources.resize(uniform.resourceCount); \
+            uniforms[resource.name] = uniform; \
         };
 
 namespace Wado::GAL { 
+
+    // index by vec size first, then by base type 
+    const WdFormat SPIRVtoWdFormat[][] = {
+        {WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_R8_UNORM, WdFormat::WD_FORMAT_R8_SINT, WdFormat::WD_FORMAT_R8_UINT, WdFormat::WD_FORMAT_R16_SINT, WdFormat::WD_FORMAT_R16_UINT, WdFormat::WD_FORMAT_R32_SINT, WdFormat::WD_FORMAT_R32_UINT, WdFormat::WD_FORMAT_R64_SINT, WdFormat::WD_FORMAT_R64_UINT, WdFormat::WD_FORMAT_R32_UINT, WdFormat::WD_FORMAT_R16_SFLOAT, WdFormat::WD_FORMAT_R32_SFLOAT, WdFormat::WD_FORMAT_R64_SFLOAT,}, // size 1
+        {WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_R8G8_UNORM, WdFormat::WD_FORMAT_R8G8_SINT, WdFormat::WD_FORMAT_R8G8_UINT, WdFormat::WD_FORMAT_R16G16_SINT, WdFormat::WD_FORMAT_R16G16_UINT, WdFormat::WD_FORMAT_R32G32_SINT, WdFormat::WD_FORMAT_R32G32_UINT, WdFormat::WD_FORMAT_R64G64_SINT, WdFormat::WD_FORMAT_R64G64_UINT, WdFormat::WD_FORMAT_R32G32_UINT, WdFormat::WD_FORMAT_R16G16_SFLOAT, WdFormat::WD_FORMAT_R32G32_SFLOAT, WdFormat::WD_FORMAT_R64G64_SFLOAT,}, // size 2
+        {WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_R8G8B8_UNORM, WdFormat::WD_FORMAT_R8G8B8_SINT, WdFormat::WD_FORMAT_R8G8B8_UINT, WdFormat::WD_FORMAT_R16G16B16_SINT, WdFormat::WD_FORMAT_R16G16B16_UINT, WdFormat::WD_FORMAT_R32G32B32_SINT, WdFormat::WD_FORMAT_R32G32B32_UINT, WdFormat::WD_FORMAT_R64G64B64_SINT, WdFormat::WD_FORMAT_R64G64B64_UINT, WdFormat::WD_FORMAT_R32G32B32_UINT, WdFormat::WD_FORMAT_R16G16B16_SFLOAT, WdFormat::WD_FORMAT_R32G32B32_SFLOAT, WdFormat::WD_FORMAT_R64G64B64_SFLOAT,}, // size 3
+        {WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_UNDEFINED, WdFormat::WD_FORMAT_R8G8B8A8_UNORM, WdFormat::WD_FORMAT_R8G8B8A8_SINT, WdFormat::WD_FORMAT_R8G8B8A8_UINT, WdFormat::WD_FORMAT_R16G16B16A16_SINT, WdFormat::WD_FORMAT_R16G16B16A16_UINT, WdFormat::WD_FORMAT_R32G32B32A32_SINT, WdFormat::WD_FORMAT_R32G32B32A32_UINT, WdFormat::WD_FORMAT_R64G64B64A64_SINT, WdFormat::WD_FORMAT_R64G64B64A64_UINT, WdFormat::WD_FORMAT_R32G32B32A32_UINT, WdFormat::WD_FORMAT_R16G16B16A16_SFLOAT, WdFormat::WD_FORMAT_R32G32B32A32_SFLOAT, WdFormat::WD_FORMAT_R64G64B64A64_SFLOAT,}, // size 4
+    };
+
+    // size in bytes 
+    const size_t SPIRVBaseToSize[] = {
+        0, // Unknown
+		0, // Void
+		4, //Boolean
+		4, //SByte,
+		4, //UByte,
+		4, //Short,
+		4, //UShort,
+		4, //Int,
+		4, //UInt,
+		8, //Int64,
+		8, //UInt64,
+		4, //AtomicCounter,
+		4, //Half,
+		4, //Float,
+		8, //Double,
+    };
 
     WdPipeline::WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) {
         _vertexShader = vertexShader;
@@ -29,22 +59,56 @@ namespace Wado::GAL {
         _viewportProperties = viewportProperties;
     };
 
-    ShaderParams WdPipeline::generateShaderParams(Shader::ShaderByteCode byteCode) {
-        ShaderParams params;
+    void WdPipeline::generateVertexParams(Shader::ShaderByteCode byteCode, VertexInputs& inputs, Uniforms& uniforms) {
         // create compiler object for the SPIR-V bytecode
         spirv_cross::Compiler spirvCompiler(move(byteCode));
         spirv_cross::ShaderResources resources = comp.get_shader_resources();
 
-        // Check all non-subpass input or attachment params 
+        // Check all non-subpass input uniforms 
+        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_IMAGE);
+        ADD_UNIFORM_DESC(separate_images, WD_TEXTURE_IMAGE);
+        ADD_UNIFORM_DESC(storage_images, WD_BUFFER_IMAGE);
+        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_BUFFER);
+        ADD_UNIFORM_DESC(separate_samplers, WD_SAMPLER);
+        ADD_UNIFORM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
+        ADD_UNIFORM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
+        ADD_UNIFORM_DESC(storage_buffer, WD_STORAGE_BUFFER);
 
-        ADD_PARAM_DESC(sampled_images, WD_SAMPLED_IMAGE);
-        ADD_PARAM_DESC(separate_images, WD_TEXTURE_IMAGE);
-        ADD_PARAM_DESC(storage_images, WD_BUFFER_IMAGE);
-        ADD_PARAM_DESC(sampled_images, WD_SAMPLED_BUFFER);
-        ADD_PARAM_DESC(separate_samplers, WD_SAMPLER);
-        ADD_PARAM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
-        ADD_PARAM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
-        ADD_PARAM_DESC(storage_buffer, WD_STORAGE_BUFFER);
+        // process vertex input now 
+        for (const spirv_cross::Resource &resource : resources.stage_inputs) {
+            VertexInput vertexInput;
+            vertexInput.paramType = ShaderParameterType::WD_STAGE_INPUT;
+            vertexInput.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
+            vertexInput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
+            vertexInput.offset = spirvCompiler.get_decoration(resource.id, spv::DecorationOffset); 
+
+            const spirv_cross::SPIRType& type = spirvCompiler.get_type(resource.type_id);
+            uint32_t vecSize = type.vecsize;
+            spirv_cross::BaseType baseType = type.basetype;
+
+            vertexInput.size = vecSize * SPIRVBaseToSize[baseType];
+            vertexInput.format = SPIRVtoWdFormat[vecSize - 1][baseType];
+
+            inputs.push_back(vertexInput);
+        };
+    };
+    
+    void WdPipeline::generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs) {
+        
+        // Check all non-subpass input uniforms 
+        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_IMAGE);
+        ADD_UNIFORM_DESC(separate_images, WD_TEXTURE_IMAGE);
+        ADD_UNIFORM_DESC(storage_images, WD_BUFFER_IMAGE);
+        ADD_UNIFORM_DESC(sampled_images, WD_SAMPLED_BUFFER);
+        ADD_UNIFORM_DESC(separate_samplers, WD_SAMPLER);
+        ADD_UNIFORM_DESC(uniform_buffers, WD_UNIFORM_BUFFER);
+        ADD_UNIFORM_DESC(push_constant_buffers, WD_PUSH_CONSTANT);
+        ADD_UNIFORM_DESC(storage_buffer, WD_STORAGE_BUFFER);
+    };
+
+
+    ShaderParams WdPipeline::generateShaderParams(Shader::ShaderByteCode byteCode) {
+        ShaderParams params;
 
         // add all attachments/outputs (only fragment) 
         for (const spirv_cross::Resource &resource : resources.stage_outputs) {

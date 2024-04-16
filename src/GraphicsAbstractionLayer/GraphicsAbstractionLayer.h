@@ -35,20 +35,57 @@ namespace Wado::GAL {
         uint32_t depth;
     };
 
+    // matches Vulkan
     enum WdFormat {
-        WD_FORMAT_R8G8B8A8_UINT,
-        WD_FORMAT_R8G8B8A8_SINT,
-        WD_FORMAT_R8G8B8A8_SRGB,
         WD_FORMAT_UNDEFINED,
-        WD_FORMAT_R32G32B32A32_UINT,
-        WD_FORMAT_R32G32B32A32_SINT,
-        WD_FORMAT_R32G32B32A32_SFLOAT,
-        WD_FORMAT_R32G32B32_SFLOAT,
-        WD_FORMAT_R32G32_SFLOAT,
+        WD_FORMAT_R8_UNORM,
+        WD_FORMAT_R8_SINT,
+        WD_FORMAT_R8_UINT,
+        WD_FORMAT_R8G8_UNORM,
+        WD_FORMAT_R8G8_SINT,
+        WD_FORMAT_R8G8_UINT,
+        WD_FORMAT_R8G8B8_UNORM,
+        WD_FORMAT_R8G8B8_SINT,
+        WD_FORMAT_R8G8B8_UINT,
+        WD_FORMAT_R8G8B8A8_UNORM,
+        WD_FORMAT_R8G8B8A8_SINT,
+        WD_FORMAT_R8G8B8A8_UINT,
+        WD_FORMAT_R16_SINT,
+        WD_FORMAT_R16_UINT,
+        WD_FORMAT_R16_SFLOAT,
+        WD_FORMAT_R16G16_SINT,
+        WD_FORMAT_R16G16_UINT,
+        WD_FORMAT_R16G16_SFLOAT,
+        WD_FORMAT_R16G16B16_SINT,
+        WD_FORMAT_R16G16B16_UINT,
+        WD_FORMAT_R16G16B16_SFLOAT,
+        WD_FORMAT_R16G16B16A16_SINT,
+        WD_FORMAT_R16G16B16A16_UINT,
+        WD_FORMAT_R16G16B16A16_SFLOAT,
         WD_FORMAT_R32_SINT,
-        WD_FORMAT_D32_SFLOAT,
-        WD_FORMAT_D32_SFLOAT_S8_UINT,
-        WD_FORMAT_D24_UNORM_S8_UINT,
+        WD_FORMAT_R32_UINT,
+        WD_FORMAT_R32_SFLOAT,
+        WD_FORMAT_R32G32_SINT,
+        WD_FORMAT_R32G32_UINT,
+        WD_FORMAT_R32G32_SFLOAT,
+        WD_FORMAT_R32G32B32_SINT,
+        WD_FORMAT_R32G32B32_UINT,
+        WD_FORMAT_R32G32B32_SFLOAT,
+        WD_FORMAT_R32G32B32A32_SINT,
+        WD_FORMAT_R32G32B32A32_UINT,
+        WD_FORMAT_R32G32B32A32_SFLOAT,
+        WD_FORMAT_R64_SINT,
+        WD_FORMAT_R64_UINT,
+        WD_FORMAT_R64_SFLOAT,
+        WD_FORMAT_R64G64_SINT,
+        WD_FORMAT_R64G64_UINT,
+        WD_FORMAT_R64G64_SFLOAT,
+        WD_FORMAT_R64G64B64_SINT,
+        WD_FORMAT_R64G64B64_UINT,
+        WD_FORMAT_R64G64B64_SFLOAT,
+        WD_FORMAT_R64G64B64A64_SINT,
+        WD_FORMAT_R64G64B64A64_UINT,
+        WD_FORMAT_R64G64B64A64_SFLOAT,
     };
 
     using WdBufferUsageFlags = uint32_t;
@@ -316,7 +353,7 @@ namespace Wado::GAL {
                 uint8_t decorationBinding;
                 uint8_t decorationLocation;
                 uint8_t resourceCount;
-                std::vector<ShaderResourc>e resources;
+                std::vector<ShaderResource> resources;
             };
 
             using SubpassInput = struct SubpassInput { // Vulkan only 
@@ -334,23 +371,29 @@ namespace Wado::GAL {
                 WdImageResource resource; // should always be img resource
             }; 
 
+            using VertexInputs = std::vector<VertexInput>;
+            using Uniforms = std::map<std::string, Uniform>;
+            using SubpassInputs = std::map<std::string, SubpassInput>;
+            using FragmentOutputs = std::map<std::string, FragmentOutput>;
+
         private:
-            ShaderParams generateShaderParams(Shader::ShaderByteCode byteCode);
+            void generateVertexParams(Shader::ShaderByteCode byteCode, VertexInputs& inputs, Uniforms& uniforms);
+            void generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs);
 
             WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
             
             Shader::ShaderByteCode _vertexShader;
             Shader::ShaderByteCode _fragmentShader;
 
-            std::vector<VertexInput> vertexInputs;
-            std::map<std::string, Uniform> vertexUniforms;
+            VertexInputs vertexInputs;
+            // TODO: aliased uniforms in multiple shader stages/pipelines?
+            Uniforms vertexUniforms;
             
-            std::map<std::string, Uniform> fragmentUniforms;
-            std::map<std::string, SubpassInput> subpassInputs; // fragment only
+            Uniforms fragmentUniforms;
+            SubpassInputs subpassInputs; // fragment only
+            FragmentOutputs fragmentOutputs;
 
-            std::map<std::string, SubpassInput> fragmentOutputs;
-
-            ShaderResource depthStencilResource;
+            WdImageResource depthStencilResource;
 
             WdViewportProperties _viewportProperties
     };
