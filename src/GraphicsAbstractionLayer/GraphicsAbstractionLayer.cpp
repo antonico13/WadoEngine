@@ -130,46 +130,79 @@ namespace Wado::GAL {
         };
     };
 
-    void WdPipeline::setVertexUniform(std::string paramName, ShaderResource resource) {
-        std::map<std::string, ShaderParameter>::iterator it = _vertexParams.uniforms.find(paramName);
-        if (it == _vertexParams.uniforms.end()) {
-            it = _vertexParams.subpassInputs.find(paramName);
-            if (it != _vertexParams.subpassInputs.end()) {
-                it->second.resource = resource;
-            }
-        } else {
-            it->second.resource = resource;
-        }
-        // error, param not found bla bla 
-        // can also type check here (later)
+    // TODO: error handling here 
+    void WdPipeline::setVertexUniform(const std::string& paramName, ShaderResource resource) {
+        setUniform(vertexUniforms, paramName, {resource});
+    };
+    
+    void WdPipeline::setFragmentUniform(const std::string& paramName, ShaderResource resource) {
+        setUniform(fragmentUniforms, paramName, {resource});
     };
 
-    void WdPipeline::setFragmentUniform(std::string paramName, ShaderResource resource) {
-        std::map<std::string, ShaderParameter>::iterator it = _fragmentParams.uniforms.find(paramName);
-        if (it == _fragmentParams.uniforms.end()) {
-            it = _fragmentParams.subpassInputs.find(paramName);
-            if (it != _fragmentParams.subpassInputs.end()) {
-                it->second.resource = resource;
-            }
-        } else {
-            it->second.resource = resource;
-        }
-        // error, param not found bla bla 
-        // can also type check here (later)
+    void WdPipeline::setVertexUniform(const std::string& paramName, std::vector<ShaderResource>& resources) {
+        setUniform(vertexUniforms, paramName, resources);
+    };
+    
+    void WdPipeline::setFragmentUniform(const std::string& paramName, std::vector<ShaderResource>& resources) {
+        setUniform(fragmentUniforms, paramName, resources);
     };
 
-    void WdPipeline::setFragmentOutput(std::string paramName, ShaderResource resource) {
-        std::map<std::string, ShaderParameter>::iterator it = _fragmentParams.outputs.find(paramName);
-        if (it != _fragmentParams.outputs.end()) {
+    void WdPipeline::setUniform(Uniforms& uniforms, const std::string& paramName, std::vector<ShaderResource>& resources) {
+        // TODO: need to handle uniform aliasing here
+        Uniforms::iterator it = uniforms.find(paramName);
+        if (it != uniforms.end()) { // found, can set resource 
+            if (it->second.resourceCount < resources.size()) {
+                // throw error here...
+                return;
+            }
+            it->second.resources = resources; // need to handle uniform aliasing here too
+        }
+        // need to throw error here
+    };
+
+    void WdPipeline::addToVertexUniform(const std::string& paramName, ShaderResource resource, int index) {
+        addToUniform(vertexUniforms, paramName, resource, index);
+    };
+    
+    void WdPipeline::addToFragmentUniform(const std::string& paramName, ShaderResource resource, int index) {
+        addToUniform(fragmentUniforms, paramName, resource, index);
+    };
+
+    void WdPipeline::addToUniform(Uniforms& uniforms, const std::string& paramName, ShaderResource resource, int index) {
+        // TODO: need to handle uniform aliasing here
+        Uniforms::iterator it = uniforms.find(paramName);
+        if (it != uniforms.end()) { // found, can set resource 
+            if (it->second.resourceCount < index) {
+                // throw error here...
+                return;
+            }
+            if (index == UNIFORM_END) {
+                if (it->second.resourceCount <= it->second.resources.size) {
+                    // throw error here...
+                    return; 
+                }
+                it->second.resources.push_back(resource);
+            } else {
+                if (it->second.resources.size() <= index) {
+                    it->second.resources.resize(index + 1);
+                }
+                it->second.resources[index] = resource; // need to handle uniform aliasing here too, as well as typing
+            }
+        // need to throw error here 
+        }
+    };
+
+    void WdPipeline::setFragmentOutput(const std::string& paramName, WdImageResource resource) {
+        FragmentOutputs::iterator it = fragmentOutputs.find(paramName);
+        if (it != fragmentOutputs.end()) {
             it->second.resource = resource;
         }
         // error, param not found bla bla 
         // can also type check here (later)
     };
     
-
     void WdPipeline::setDepthStencilResource(ShaderResource resource) {
-        // should do some checks here for formats and what not 
+        // should do some checks here for formats and what not, aliasing, etc.
         depthStencilResource = resource;
     };
 

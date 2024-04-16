@@ -300,16 +300,21 @@ namespace Wado::GAL {
                 };
             };
 
+            static const int UNIFORM_END = -1;
+
             // subpass inputs handled in setUniform 
-            void setVertexUniform(std::string paramName, ShaderResource resource);
-            void setFragmentUniform(std::string paramName, ShaderResource resource);
+            void setVertexUniform(const std::string& paramName, ShaderResource resource);
+            void setFragmentUniform(const std::string& paramName, ShaderResource resource);
 
             // for array params
-            void setVertexUniform(std::string paramName, std::vector<ShaderResource> resources);
-            void setFragmentUniform(std::string paramName, std::vector<ShaderResource> resources);
+            void setVertexUniform(const std::string& paramName, std::vector<ShaderResource>& resources);
+            void setFragmentUniform(const std::string& paramName, std::vector<ShaderResource>& resources);
+
+            void addToVertexUniform(const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
+            void addToFragmentUniform(const std::string& paramName, ShaderResource resource, int index = UNIFORM_END);
 
             // special case, since it relates to the framebuffer
-            void setFragmentOutput(std::string paramName, WdImageResource resource);
+            void setFragmentOutput(const std::string& paramName, WdImageResource resource);
 
             void setDepthStencilResource(WdImageResource resource);
 
@@ -379,6 +384,8 @@ namespace Wado::GAL {
         private:
             void generateVertexParams(Shader::ShaderByteCode byteCode, VertexInputs& inputs, Uniforms& uniforms);
             void generateFragmentParams(Shader::ShaderByteCode byteCode, SubpassInputs& inputs, Uniforms& uniforms, FragmentOutputs& outputs);
+            void setUniform(Uniforms& uniforms, const std::string& paramName, std::vector<ShaderResource>& resources);
+            void addToUniform(Uniforms& uniforms, const std::string& paramName, ShaderResource resource, int index);
 
             WdPipeline(Shader::ShaderByteCode vertexShader, Shader::ShaderByteCode fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties);
             
