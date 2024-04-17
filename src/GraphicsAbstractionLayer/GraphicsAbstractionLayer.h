@@ -321,18 +321,18 @@ namespace Wado::GAL {
         private:
         // Util types 
             enum ShaderParameterType {
-                WD_SAMPLED_IMAGE = 0, // sampler2D
-                WD_TEXTURE_IMAGE = 1, // just texture2D
-                WD_STORAGE_IMAGE = 2, // read-write
-                WD_SAMPLED_BUFFER = 3,
-                WD_BUFFER_IMAGE = 4,
-                WD_UNIFORM_BUFFER = 5,
-                WD_SUBPASS_INPUT = 6, // only supported by Vulkan
-                WD_STORAGE_BUFFER = 7, 
-                WD_STAGE_OUTPUT = 8, // used for outs 
-                WD_SAMPLER = 9,
-                WD_PUSH_CONSTANT, // only supported by Vulkan backend
-                WD_STAGE_INPUT, // used for ins 
+                WD_SAMPLED_IMAGE = 0x00000000, // sampler2D
+                WD_TEXTURE_IMAGE = 0x00000001, // just texture2D
+                WD_STORAGE_IMAGE = 0x00000002, // read-write
+                WD_SAMPLED_BUFFER = 0x00000004,
+                WD_BUFFER_IMAGE = 0x00000008,
+                WD_UNIFORM_BUFFER = 0x00000010,
+                WD_SUBPASS_INPUT = 0x00000020, // only supported by Vulkan
+                WD_STORAGE_BUFFER = 0x00000040, 
+                WD_STAGE_OUTPUT = 0x00000080, // used for outs 
+                WD_SAMPLER = 0x00000100,
+                WD_PUSH_CONSTANT = 0x00000200, // only supported by Vulkan backend
+                WD_STAGE_INPUT = 0x00000400, // used for ins 
             };
 
             using VertexInput = struct VertexInput {

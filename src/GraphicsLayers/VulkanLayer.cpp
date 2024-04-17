@@ -604,14 +604,93 @@ namespace Wado::GAL::Vulkan {
             throw std::runtime_error("Failed to create render pass");
         }
 
+        createDescriptorPool(); // create descriptor pool first, then allocate sets when creating pipeline 
+
         // create all Vulkan pipelines now 
         uint8_t index = 0;
         for (const WdPipeline& pipeline : _pipelines) {
-            _vkPipelines.push_back(createVulkanPipeline());
+            VulkanPipeline vkPipeline = createVulkanPipeline(pipeline, index);
+            writeDescriptorSets(vkPipeline.descriptorSets, pipeline._uniforms, pipeline._subpassInputs);
+            _vkPipelines.push_back(vkPipeline);
+            index++;
         }
     };
 
     // Vulkan Pipeline, layout and descriptor set creation 
+
+    void VulkanRenderPass::writeDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets, const WdPipeline::Uniforms& uniforms, const WdPipeline::SubpassInputs& subpassInputs) const {
+        for (const VkDescriptorSet& descriptorSet : descriptorSets) {
+            std::vector<VkWriteDescriptorSet> descriptorWrites{};
+
+            for (const WdPipeline::Uniform& uniform : uniforms) {
+                
+                uint8_t arrayIndex = 0;
+                for (const WdPipeline::ShaderResource& shaderResource : uniform.resources) {
+                    VkWriteDescriptorSet descriptorWrite{};
+                    
+                    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    descriptorWrite.dstSet = descriptorSet; // TODO: can handle multiple frames in flight this way ?
+                    descriptorWrite.dstBinding = uniform.decorationBinding;
+                    descriptorWrite.dstArrayElement = arrayIndex; // set elements 1 by 1 
+                    descriptorWrite.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
+                    descriptorWrite.descriptorCount = 1; // static_cast<uint32_t>(uniform.resources.size());
+                    descriptorWrite.pBufferInfo = nullptr;
+                    descriptorWrite.pImageInfo = nullptr;
+                    descriptorWrite.pTexelBufferView = nullptr;
+
+                    if (uniform.paramType & _imageMask) {
+                        VkDescriptorImageInfo imageInfo{};
+                        imageInfo.sampler = static_cast<VkSampler>(shaderResource.imageResource.sampler);
+                        imageInfo.imageView = static_cast<VkImageView>(shaderResource.imageResource.image->target); // TODO:: write translate function for this 
+                        imageInfo.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO:: i think this needs fixing as well 
+
+                        descriptorWrite.pImageInfo = &imageInfo;
+                    }
+
+                    if (uniform.paramType & _bufferMask) {
+                        if (uniform.paramType == WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE || uniform.paramType == WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER) {
+                            descriptorWrite.pTexelBufferView = &(shaderResource.bufferResource.bufferTarget); // this might be a problem, might have to cast first to a variable then pass reference 
+                        } else {
+                            VkDescriptorBufferInfo bufferInfo{};
+                            bufferInfo.buffer = static_cast<VkBuffer>(shaderResource.bufferResource.buffer->handle);
+                            bufferInfo.offset = 0; //TODO: idk when it wouldn't be 
+                            bufferInfo.range = static_cast<VkDeviceSize>(shaderResource.bufferResource.buffer->size); 
+
+                            descriptorWrite.pBufferInfo = &bufferInfo;
+                        }
+                    }
+
+                    descriptorWrites.push_back(descriptorWrite);
+
+                    arrayIndex++;
+                }
+            }
+
+            for (const WdPipeline::SubpassInput& subpassInput : subpassInputs) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.sampler = nullptr; // no sampler 
+                imageInfo.imageView = static_cast<VkImageView>(subpassInput.resource.image->target); // TODO:: write translate function for this 
+                imageInfo.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; 
+
+                VkWriteDescriptorSet descriptorWrite{};
+
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = descriptorSet; // TODO: can handle multiple frames in flight this way ?
+                descriptorWrite.dstBinding = uniform.decorationBinding;
+                descriptorWrite.dstArrayElement = 0; // subpass inputs can't be in an array 
+                descriptorWrite.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
+                descriptorWrite.descriptorCount = 1; // static_cast<uint32_t>(uniform.resources.size());
+                descriptorWrite.pBufferInfo = nullptr;
+                descriptorWrite.pImageInfo = &imageInfo;
+                descriptorWrite.pTexelBufferView = nullptr;
+
+                descriptorWrites.push_back(descriptorWrite);
+            }
+
+            vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
+    };
+
     
     VkShaderStageFlagBits VulkanRenderPass::WdStagesToVkStages(const WdStageMask stages) const {
         VkShaderStageFlagBits shaderStages = 0;
@@ -700,6 +779,17 @@ namespace Wado::GAL::Vulkan {
         VulkanPipeline vkPipeline{};
         vkPipeline.descriptorSetLayouts.push_back(createDescriptorSetLayout(pipeline._uniforms, pipeline._subpassInputs)); // support only one layout for now 
         
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = _descriptorPool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(vkPipeline.descriptorSetLayouts.size()); // TODO: Max frames in flight thing here 
+        allocInfo.pSetLayouts = vkPipeline.descriptorSetLayouts.data();
+
+        vkPipeline.descriptorSets.resize(vkPipeline.descriptorSetLayouts.size());
+        if (vkAllocateDescriptorSets(_device, &allocInfo, vkPipeline.descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate descriptor sets when creating VK pipelines!");
+        }
+
         VkShaderModule vertShaderModule = createShaderModule(pipeline._vertexShader);
         VkShaderModule fragShaderModule = createShaderModule(pipeline._fragmentShader);
 
@@ -878,52 +968,40 @@ namespace Wado::GAL::Vulkan {
 
     // Create descriptor pool 
 
-    // too much duplication, will be fixed when dealing with uniform aliasing 
-    void addDescriptorPoolSizes(const WdPipeline& pipeline, std::vector<VkDescriptorPoolSize>& poolSizes) {
+    void VulkanRenderPass::addDescriptorPoolSizes(const WdPipeline& pipeline, std::vector<VkDescriptorPoolSize>& poolSizes) const {
         // according to Vulkan spec this is fine to do 
-        for (WdPipeline::Uniforms::iterator it = pipeline.vertexUniforms.begin(), it != pipeline.vertexUniforms.end(); ++it) {
+        for (WdPipeline::Uniforms::iterator it = pipeline._uniforms.begin(); it != pipeline._uniforms.end(); ++it) {
             VkDescriptorPoolSize poolSize{};
             poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
             poolSize.descriptorCount = static_cast<uint32_t>(it->second.resourceCount);
             poolSizes.push_back(poolSize);
         };
 
-        for (WdPipeline::Uniforms::iterator it = pipeline.fragmentUniforms.begin(), it != pipeline.fragmentUniforms.end(); ++it) {
+        for (WdPipeline::SubpassInputs::iterator it = pipeline._subpassInputs.begin(); it != pipeline._subpassInputs.end(); ++it) {
             VkDescriptorPoolSize poolSize{};
             poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
-            poolSize.descriptorCount = static_cast<uint32_t>(it->second.resourceCount);
-            poolSizes.push_back(poolSize);
-        };
-
-        for (WdPipeline::SubpassInputs::iterator it = pipeline.subpassInputs.begin(), it != pipeline.subpassInputs.end(); ++it) {
-            VkDescriptorPoolSize poolSize{};
-            poolSize.type = WdParamTypeToVkDescriptorType[it->second.paramType];
-            poolSize.descriptorCount = 1;
+            poolSize.descriptorCount = 1; // Fixed to 1 
             poolSizes.push_back(poolSize);
         };
     };
     
-    VkDescriptorPool createDescriptorPool(const std::vector<WdPipeline>& pipelines) {
-        VkDescriptorPool descriptorPool;
-
+    void VulkanRenderPass::createDescriptorPool() {
         std::vector<VkDescriptorPoolSize> poolSizes{};
 
-        for (const WdPipeline& pipeline : pipelines) {
-            std::array<VkDescriptorPoolSize, 3> poolSizes{};
+        for (const WdPipeline& pipeline : _pipelines) {
             addDescriptorPoolSizes(pipeline, poolSizes);
         }
+
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(pipelines.size()); // as many as pipelines?
+        poolInfo.maxSets = static_cast<uint32_t>(pipelines.size()); // as many as pipelines, what does that mean?
         poolInfo.flags = 0;
 
-        if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create descriptor pool");
         }
-
-        return descriptorPool;
     }
 
 }

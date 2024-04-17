@@ -231,6 +231,12 @@ namespace Wado::GAL::Vulkan {
             
             static VertexInputDesc createVertexAttributeDescriptionsAndBinding(const WdPipeline::VertexInputs& vertexInputs) const;
 
+            static void addDescriptorPoolSizes(const WdPipeline& pipeline, std::vector<VkDescriptorPoolSize>& poolSizes) const;
+
+            void writeDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets, const WdPipeline::Uniforms& uniforms, const WdPipeline::SubpassInputs& subpassInputs) const;
+
+            void createDescriptorPool();
+
             VulkanRenderPass(std::vector<WdPipeline> pipelines, GraphicsLayer* vulkanLayer);
             void init() override;
             VulkanPipeline createVulkanPipeline(WdPipeline pipeline, uint8_t index);
