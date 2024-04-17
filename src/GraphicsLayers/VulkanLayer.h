@@ -53,7 +53,7 @@ namespace Wado::GAL::Vulkan {
             VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
             VkDevice _device;
 
-            static VkFormat WdFormatToVkFormat[] = {
+            static const VkFormat WdFormatToVkFormat[] = {
                 VK_FORMAT_UNDEFINED,
                 VK_FORMAT_R8_UNORM,
                 VK_FORMAT_R8_SINT,
@@ -149,21 +149,97 @@ namespace Wado::GAL::Vulkan {
     class VulkanRenderPass : public WdRenderPass {
         public:
             friend class GraphicsLayer;
+            friend class VulkanLayer;
+
         private:
             using VulkanPipeline = struct VulkanPipeline {
                 VkPipeline pipeline;
                 VkPipelineLayout pipelineLayout;
-                VkDescriptorSetLayout descriptorSetLayout;
-                VkDescriptorSet descriptorSet;
+                std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+                std::vector<VkDescriptorSet> descriptorSets;
             };
+
+            using AttachmentInfo = struct AttachmentInfo {
+                VkAttachmentDescription attachmentDesc;            
+                std::vector<VkAttachmentReference> refs;
+                uint8_t attachmentIndex;
+                bool presentSrc;
+            };
+
+            using AttachmentMap = std::map<WdImageHandle, AttachmentInfo>;
+
+            using ResourceInfo = struct ResourceInfo {
+                WdPipeline::ShaderParamType type;
+                WdStageMask stages;
+                uint8_t pipelineIndex;
+            };
+
+            using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
+            using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
+
+            using VertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>
+
+            static const uint32_t _imgReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT;
+            static const uint32_t _imgWriteMask = WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
+
+            static const uint32_t _bufReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+            static const uint32_t _bufWriteMask = WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+
+            static const uint32_t _bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
+            static const uint32_t _imageMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
+
+            static const VkAccessFlags paramTypeToAccess[] = {
+                VK_ACCESS_SHADER_READ_BIT, 
+                VK_ACCESS_SHADER_READ_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_UNIFORM_READ_BIT,
+                VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            };
+
+            static const VkDescriptorType WdParamTypeToVkDescriptorType[] = {
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, // this is temp only 
+                VK_DESCRIPTOR_TYPE_SAMPLER,
+            };
+
+            static VkShaderStageFlagBits WdStagesToVkStages(const WdStageMask stages) const;
+
+            static VkPipelineStageFlags ResInfoToVkStage(const ResourceInfo& resInfo) const;
+
+            static void addDependencies(std::vector<VkSubpassDependency>& dependencies, std::vector<ResourceInfo>& resInfos, uint32_t readMask, uint32_t writeMask);
+
+            template <class T>
+            static void updateAttachements(const T& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& subpassRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
+
+            static void updateUniformResources(const WdPipeline::Uniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, uint8_t pipelineIndex);
+            
+            template <class T>
+            static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, uint8_t pipelineIndex);
+            
+            VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::Uniforms& uniforms, const WdPipeline::SubpassInputs& subpassInputs);
+            
+            static VertexInputDesc createVertexAttributeDescriptionsAndBinding(const WdPipeline::VertexInputs& vertexInputs) const;
 
             VulkanRenderPass(std::vector<WdPipeline> pipelines, GraphicsLayer* vulkanLayer);
             void init() override;
             VulkanPipeline createVulkanPipeline(WdPipeline pipeline, uint8_t index);
 
-            GraphicsLayer* _vulkanLayer;
+            VulkanLayer* _vulkanLayer;
+            VkDevice _device;
             
             VkRenderPass _renderPass;
+            std::vector<VkImageView> _framebuffer;
             VkDescriptorPool _descriptorPool;
             
             std::vector<WdPipeline> _pipelines

@@ -256,7 +256,7 @@ namespace Wado::GAL::Vulkan {
             throw std::runtime_error("Failed to create texture sampler!");
         }
 
-        liveSamplers.push_back(static_cast<WdSamplerHandle>(textureSampler));
+        liveSamplers.push_back(textureSampler);
 
         return static_cast<WdSamplerHandle>(textureSampler);
     };
@@ -274,7 +274,6 @@ namespace Wado::GAL::Vulkan {
     void VulkanLayer::closeBuffer(WdBuffer& buffer) {
         vkUnmapMemory(device, buffer.memory); 
     };
-
 
     WdFenceHandle VulkanLayer::createFence(bool signaled) {
         VkFence fence;
@@ -313,75 +312,32 @@ namespace Wado::GAL::Vulkan {
 
     // Render pass creation & utils 
 
-    // types 
-    using AttachmentInfo = struct AttachmentInfo {
-            VkAttachmentDescription attachmentDesc;            
-            std::vector<VkAttachmentReference> refs;
-            uint8_t attachmentIndex;
-            bool presentSrc;
-    };
-
-    using AttachmentMap = std::map<WdImageHandle, AttachmentInfo>;
-
-    enum Stage {
-        Undefined,
-        Vertex,
-        Fragment,
-    };
-
-    using ResourceInfo = struct ResourceInfo {
-        WdPipeline::ShaderParamType type;
-        Stage stage;
-        uint8_t pipelineIndex;
-    };
-
-    using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
-    using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
-
     // usually can just infer from the stage enum in ResourceInfo,
     // but attachments need special attention 
-    VkPipelineStageFlags ResInfoToVkStage(ResourceInfo resInfo) {
-        if (resInfo.type == WdPipeline::ShaderParamType::WD_STAGE_OUTPUT) {
-            return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkPipelineStageFlags VulkanRenderPass::ResInfoToVkStage(const ResourceInfo& resInfo) const {
+        VkPipelineStageFlags stageFlags = 0;
+        if (resInfo.type == WdPipeline::ShaderParamType::WD_STAGE_OUTPUT) { // color attachment cant really be both used in fragment and output to in fragment
+            stageFlags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        } else if (resInfo.stage & WdStage::Vertex) {
+            stageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
         }
-        if (resInfo.stage == Stage::Vertex) {
-            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        if (resInfo.stage == WdStage::Fragment) { // but it could be read in vertex
+            stageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         }
-        if (resInfo.stage == Stage::Fragment) {
-            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        }
-        return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT; // this should throw an error maybe 
+        return stageFlags;
     };
 
-    const VkAccessFlags paramTypeToAccess[] = {
-            VK_ACCESS_SHADER_READ_BIT, 
-            VK_ACCESS_SHADER_READ_BIT,
-            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_ACCESS_SHADER_READ_BIT,
-            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_ACCESS_UNIFORM_READ_BIT,
-            VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
-            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    };           
-
-    const uint32_t imgReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT;
-    const uint32_t imgWriteMask = WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
-
-    const uint32_t bufReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
-    const uint32_t bufWriteMask = WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
-
     // need to refactor the duplication here 
-    void addDependencies(std::vector<VkSubpassDependency>& dependencies, std::vector<ResourceInfo>& resInfos, uint32_t readMask, uint32_t writeMask) {
+    void VulkanRenderPass::addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos, const uint32_t readMask, const uint32_t writeMask) const {
         ResourceInfo lastRead{};
         ResourceInfo lastWrite{};
-        lastRead.stage = Stage::Undefined;
-        lastWrite.stage = Stage::Undefined;
+        lastRead.stage = WdStage::Unknown;
+        lastWrite.stage = WdStage::Unknown;
         // Go over every usage of every resource 
         // ugly, need to fix later 
         for (const ResourceInfo& resInfo : resInfos) {
             if (resInfo.type & readMask) {
-                if (lastWrite != resInfo && lastWrite.stage != Stage::Undefined) {
+                if (lastWrite != resInfo && lastWrite.stage != WdStage::Unknown) {
                     // this means there is a write happening before this read, need to 
                     // add a dependency 
                     VkSubpassDependency dependency{};
@@ -399,7 +355,7 @@ namespace Wado::GAL::Vulkan {
                 lastRead = resInfo;
             }
             if (resInfo.type & writeMask) {
-                if (lastRead != resInfo && lastRead.stage != Stage::Undefined) {
+                if (lastRead != resInfo && lastRead.stage != WdStage::Unknown) {
                     // this means there is a write happening before this read, need to 
                     // add a dependency 
                     VkSubpassDependency dependency{};
@@ -420,7 +376,7 @@ namespace Wado::GAL::Vulkan {
     };
 
     template <class T>
-    void updateAttachements(const T& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& subpassRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout) {
+    void VulkanRenderPass::updateAttachements(const T& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& subpassRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout) {
         for (T::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             WdImageHandle attachmentHandle = it->second.resource.image->handle;
             uint8_t index = it->second.decorationIndex;
@@ -457,18 +413,15 @@ namespace Wado::GAL::Vulkan {
         }
     };
 
-    const uint32_t bufferMask = WdPipeline::ShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::ShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::ShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::ShaderParameterType::WD_STORAGE_BUFFER;
-    const uint32_t imageMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
-
     // theres a bit of duplication here that needs refactoring
-    void updateUniformResources(const WdPipeline::Uniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, Stage stage, uint8_t pipelineIndex) {
+    void VulkanRenderPass::updateUniformResources(const WdPipeline::Uniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, uint8_t pipelineIndex) {
         for (WdPipeline::Uniforms::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             WdPipeline::ShaderParameterType paramType = it->second.paramType;
                                                     
             ResourceInfo resInfo{}; 
             resInfo.type = paramType; 
-            resInfo.stage = stage; 
             resInfo.pipelineIndex = pipelineIndex; 
+            resInfo.stages = it->second.stages; 
 
             if (paramType & imageMask) {
                 // need to do this for every resource 
@@ -498,16 +451,17 @@ namespace Wado::GAL::Vulkan {
                     bufferResources[handle].push_back(resInfo); 
                 } 
             }
+        }
     };
 
     template <class T>
-    void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, uint8_t pipelineIndex) {
+    void VulkanRenderPass::updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, uint8_t pipelineIndex) {
         for (T::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             WdPipeline::ShaderParameterType paramType = it->second.paramType;
 
             ResourceInfo resInfo{}; 
             resInfo.type = paramType; 
-            resInfo.stage = Stage::Fragment; 
+            resInfo.stages = WdStage::Fragment; 
             resInfo.pipelineIndex = pipelineIndex; 
             
             WdImageHandle handle = it->second.resource.image->handle;
@@ -528,8 +482,6 @@ namespace Wado::GAL::Vulkan {
 
         uint8_t attachmentIndex = 0;
 
-        std::vector<VkImageView> framebuffer;
-
         std::vector<VkSubpassDescription> subpasses;
 
         // create subpass descriptions, attachment refs and framebuffer view array 
@@ -540,14 +492,14 @@ namespace Wado::GAL::Vulkan {
 
             // resolve, depth, & preserve attachments, idk how to deal with yet 
 
-            WdPipeline::SubpassInputs fragmentInputs = pipeline.subpassInputs;
-            WdPipeline::FragmentOutputs fragmentOutputs = pipeline.fragmentOutputs;
+            WdPipeline::SubpassInputs fragmentInputs = pipeline._subpassInputs;
+            WdPipeline::FragmentOutputs fragmentOutputs = pipeline._fragmentOutputs;
 
             std::vector<VkAttachmentReference> inputRefs(fragmentInputs.size());
             std::vector<VkAttachmentReference> colorRefs(fragmentOutputs.size());
 
-            updateAttachements<WdPipeline::SubpassInputs>(fragmentInputs, attachments, attachmentIndex, inputRefs, framebuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            updateAttachements<WdPipeline::FragmentOutputs>(fragmentOutputs, attachments, attachmentIndex, colorRefs, framebuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            updateAttachements<WdPipeline::SubpassInputs>(fragmentInputs, attachments, attachmentIndex, inputRefs, _framebuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            updateAttachements<WdPipeline::FragmentOutputs>(fragmentOutputs, attachments, attachmentIndex, colorRefs, _framebuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             
             VkSubpassDescription subpass{};
             subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -558,6 +510,7 @@ namespace Wado::GAL::Vulkan {
             subpass.inputAttachmentCount = static_cast<uint32_t>(inputRefs.size());
             subpass.pInputAttachments = inputRefs.data();
 
+            // TODO: depth here 
             //subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
             subpasses.push_back(subpass);
@@ -612,21 +565,13 @@ namespace Wado::GAL::Vulkan {
         BufferResources bufferResources;
 
         uint8_t pipelineIndex = 0;
-
         // generate resource maps now 
         for (const WdPipeline& pipeline : _pipelines) {
-            // resources are updated in order of pipeline and stage 
-
-            WdPipeline::Uniforms vertexUniforms = pipeline.vertexUniforms;
-            updateUniformResources(vertexUniforms, imageResources, bufferResources, Stage::Vertex, pipelineIndex);
-
-            // Fragment
-            WdPipeline::Uniforms fragmentUniforms = pipeline.fragmentUniforms;
-            updateUniformResources(fragmentUniforms, imageResources, bufferResources, Stage::Fragment, pipelineIndex);
+            updateUniformResources(pipeline._uniforms, imageResources, bufferResources, pipelineIndex);
 
             // Fragment-only subpass inputs and outs
-            WdPipeline::SubpassInputs fragmentInputs = pipeline.subpassInputs;
-            WdPipeline::FragmentOutputs fragmentOutputs = pipeline.fragmentOutputs;
+            WdPipeline::SubpassInputs fragmentInputs = pipeline._subpassInputs;
+            WdPipeline::FragmentOutputs fragmentOutputs = pipeline._fragmentOutputs;
 
             updateAttachmentResources<WdPipeline::SubpassInputs>(fragmentInputs, imageResources, pipelineIndex);
             updateAttachmentResources<WdPipeline::FragmentOutputs>(fragmentOutputs, imageResources, pipelineIndex);
@@ -658,65 +603,56 @@ namespace Wado::GAL::Vulkan {
         if (vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create render pass");
         }
-    };
 
-    const VkDescriptorType WdParamTypeToVkDescriptorType[] = {
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-        VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
-        VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
-        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, // this is temp only 
-        VK_DESCRIPTOR_TYPE_SAMPLER,
+        // create all Vulkan pipelines now 
+        uint8_t index = 0;
+        for (const WdPipeline& pipeline : _pipelines) {
+            _vkPipelines.push_back(createVulkanPipeline());
+        }
     };
 
     // Vulkan Pipeline, layout and descriptor set creation 
-    VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::Uniforms& vertexUniforms, const WdPipeline::Uniforms& fragmentUniforms, const WdPipeline::SubpassInputs& fragmentInputs) {
+    
+    VkShaderStageFlagBits VulkanRenderPass::WdStagesToVkStages(const WdStageMask stages) const {
+        VkShaderStageFlagBits shaderStages = 0;
+        if (stages & WdStage::Vertex) {
+            shaderStages |= VK_SHADER_STAGE_VERTEX_BIT;
+        }
+        if (stages & WdStage::Fragment) {
+            shaderStages |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
+        return shaderStages;
+    };
+
+
+    VkDescriptorSetLayout VulkanRenderPass::createDescriptorSetLayout(const WdPipeline::Uniforms& uniforms, const WdPipeline::SubpassInputs& subpassInputs) {
         VkDescriptorSetLayout layout;
         
         std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-        // TODO:: lots of duplication here
-
-        for (WdPipeline::Uniforms::iterator it = vertexUniforms.begin(); it != vertexUniforms.end(); ++it) {
+        for (WdPipeline::Uniforms::iterator it = uniforms.begin(); it != uniforms.end(); ++it) {
             WdPipeline::Uniform uniform = it->second;
             
             VkDescriptorSetLayoutBinding binding;
             binding.binding = uniform.decorationBinding;
             binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
             binding.descriptorCount = uniform.resourceCount;
-            binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
-            binding.pImmutableSamplers = nullptr;
+            binding.stageFlags = WdStagesToVkStages(uniform.stages);
+            binding.pImmutableSamplers = nullptr; // TODO
 
             bindings.push_back(binding);
         }
-
-        for (WdPipeline::Uniforms::iterator it = fragmentUniforms.begin(); it != fragmentUniforms.end(); ++it) {
-            WdPipeline::Uniform uniform = it->second;
-            
-            VkDescriptorSetLayoutBinding binding;
-            binding.binding = uniform.decorationBinding;
-            binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
-            binding.descriptorCount = uniform.resourceCount;
-            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
-            binding.pImmutableSamplers = nullptr; // no immutable sampler support either
-
-            bindings.push_back(binding);
-        }
-
         
-        for (WdPipeline::SubpassInputs::iterator it = fragmentInputs.begin(); it != fragmentInputs.end(); ++it) {
+        // This is a bit of duplication...
+        for (WdPipeline::SubpassInputs::iterator it = subpassInputs.begin(); it != subpassInputs.end(); ++it) {
             WdPipeline::SubpassInput subpassInput = it->second;
             
             VkDescriptorSetLayoutBinding binding;
             binding.binding = uniform.decorationBinding;
             binding.descriptorType = WdParamTypeToVkDescriptorType[uniform.paramType];
-            binding.descriptorCount = 1;
-            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // support single stage only right now, need to fix for multi-stage / aliasing
-            binding.pImmutableSamplers = nullptr; // no immutable sampler support either
+            binding.descriptorCount = 1; // Fixed size 1 
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // subpass inputs are fragment only 
+            binding.pImmutableSamplers = nullptr; // TODO
 
             bindings.push_back(binding);
         }
@@ -735,12 +671,21 @@ namespace Wado::GAL::Vulkan {
 
     // TODO: using vector a lot everywhere, I should look into performance characteristics,
     // maybe arrays or other stack-based collections are better
-    // TODO: combine these so that we don't have to iterate twice over vertex inputs
-    std::vector<VkVertexInputAttributeDescription> createVertexAttributeDescription(const WdPipeline::VertexInputs& vertexInputs) {
+    VertexInputDesc VulkanRenderPass::createVertexAttributeDescriptionsAndBinding(const WdPipeline::VertexInputs& vertexInputs) const {
         std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+        
+        VkVertexInputBindingDescription bindingDescription{};
+
+        bindingDescription.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // when is this instance?
+        bindingDescription.stride = 0;
+
         for (const WdPipeline::VertexInput& vertexInput : vertexInputs) { 
+            
+            bindingDescription.stride += vertexInput.size; // TODO: more in depth calculations might be needed here because of alignment and offsets, can query with SPIRV reflect 
+
             VkVertexInputAttributeDescription attributeDescription;
-            attributeDescription.binding = 0; // TODO: same as below
+            attributeDescription.binding = 0; // TODO: same as above
             attributeDescription.location = vertexInput.decorationLocation;
             attributeDescription.format = WdFormatToVkFormat[vertexInput.format];
             attributeDescription.offset = vertexInput.offset;
@@ -748,25 +693,12 @@ namespace Wado::GAL::Vulkan {
             attributeDescriptions.push_back(attributeDescription);
         }
 
-        return attributeDescriptions;
+        return {attributeDescriptions, bindingDescription};
     };
 
-    VkVertexInputBindingDescription getBindingDescription(const WdPipeline::VertexInputs& vertexInputs) {
-        VkVertexInputBindingDescription bindingDescription{};
-        bindingDescription.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
-        uint32_t stride = 0;
-        for (const WdPipeline::VertexInput& vertexInput : vertexInputs) {
-            stride += vertexInput.size; // TODO: more in depth calculations might be needed here because of alignment and offsets, can query with SPIRV reflect 
-        }
-        bindingDescription.stride = stride;
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // when is this instance?
-        return bindingDescription;
-    };
-
-
-    VulkanPipeline VulkanRenderPass::createVulkanPipeline(const WdPipeline& pipeline, uint8_t index, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts) {
+    VulkanPipeline VulkanRenderPass::createVulkanPipeline(const WdPipeline& pipeline, const uint8_t index) {
         VulkanPipeline vkPipeline{};
-        vkPipeline.descriptorSetLayouts = descriptorSetLayouts;
+        vkPipeline.descriptorSetLayouts.push_back(createDescriptorSetLayout(pipeline._uniforms, pipeline._subpassInputs)); // support only one layout for now 
         
         VkShaderModule vertShaderModule = createShaderModule(pipeline._vertexShader);
         VkShaderModule fragShaderModule = createShaderModule(pipeline._fragmentShader);
@@ -789,14 +721,14 @@ namespace Wado::GAL::Vulkan {
             vertShaderStageInfo, fragShaderStageInfo
         };
 
-        std::vector<VkVertexInputAttributeDescription> attributeDescriptions = createVertexAttributeDescription(pipeline.vertexInputs);
+        VertexInputDesc vertexInputDesc = createVertexAttributeDescriptionsAndBinding(pipeline._vertexInputs;);
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: same as in binding desc function
-        vertexInputInfo.pVertexBindingDescriptions = &getBindingDescription(pipeline.vertexInputs);
-        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+        vertexInputInfo.pVertexBindingDescriptions = &std::get<1>(vertexInputDesc);
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(std::get<0>(vertexInputDesc).size());
+        vertexInputInfo.pVertexAttributeDescriptions = std::get<0>(vertexInputDesc).data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
         inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -872,8 +804,8 @@ namespace Wado::GAL::Vulkan {
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
         // Add color blend here for every color output
-
-        std::vector<VkPipelineColorBlendAttachmentState> blendStates(pipeline.fragmentOutputs.size(), colorBlendAttachment);
+        // TODO: color blending for depth here?
+        std::vector<VkPipelineColorBlendAttachmentState> blendStates(pipeline._fragmentOutputs.size(), colorBlendAttachment);
 
         // Color Blend State, for all framebuffers 
 
@@ -890,8 +822,8 @@ namespace Wado::GAL::Vulkan {
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()); // TODO: when would you have more than 1?
-        pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(vkPipeline.descriptorSetLayouts.size()); // TODO: when would you have more than 1?
+        pipelineLayoutInfo.pSetLayouts = vkPipeline.descriptorSetLayouts.data();
         pipelineLayoutInfo.pushConstantRangeCount = 0; // TODO: work push constants into the workflow
         pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -910,6 +842,7 @@ namespace Wado::GAL::Vulkan {
         depthStencil.minDepthBounds = 0.0f;
         depthStencil.maxDepthBounds = 1.0f;
 
+        // TODO: figure out stencil usage 
         depthStencil.stencilTestEnable = VK_FALSE;
         depthStencil.front = {};
         depthStencil.back = {};
@@ -927,7 +860,7 @@ namespace Wado::GAL::Vulkan {
         pipelineInfo.pDepthStencilState = &depthStencil;
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamicState;
-        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.layout = vkPipeline.pipelineLayout;
         pipelineInfo.renderPass = _renderPass;
         pipelineInfo.subpass = index;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // TODO: deal with this during pipeline caching
@@ -940,7 +873,7 @@ namespace Wado::GAL::Vulkan {
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);    
 
-        return VulkanPipeline;    
+        return VulkanPipeline;
     };
 
     // Create descriptor pool 
