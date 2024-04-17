@@ -119,7 +119,7 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkSemaphore> _liveSemaphores;
             std::vector<VkCommandPool> _liveCommandPools;
             std::vector<VkPipeline> _livePipelines;
-            std::vector<VkRenderPass> _liveRenderPasses;
+            std::vector<VulkanRenderPass*> _liveRenderPasses;
 
             // needed in order to determine resource sharing mode and queues to use
             const VkImageUsageFlags transferUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -237,18 +237,17 @@ namespace Wado::GAL::Vulkan {
 
             void createDescriptorPool();
 
-            VulkanRenderPass(std::vector<WdPipeline> pipelines, GraphicsLayer* vulkanLayer);
+            VulkanRenderPass(const std::vector<WdPipeline>& pipelines, VkDevice device);
             void init() override;
             VulkanPipeline createVulkanPipeline(WdPipeline pipeline, uint8_t index);
 
-            VulkanLayer* _vulkanLayer;
             VkDevice _device;
             
             VkRenderPass _renderPass;
             std::vector<VkImageView> _framebuffer;
             VkDescriptorPool _descriptorPool;
             
-            std::vector<WdPipeline> _pipelines
+            const std::vector<WdPipeline>& _pipelines
             std::vector<VulkanPipeline> _vkPipelines;
             
     };

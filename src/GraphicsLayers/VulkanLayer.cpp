@@ -306,11 +306,17 @@ namespace Wado::GAL::Vulkan {
     };
 
     // creates render pass and all subpasses 
-    WdRenderPass VulkanLayer::createRenderPass(std::vector<WdPipeline> pipelines, std::vector<WdImage> attachments) {
-        
+    WdRenderPass VulkanLayer::createRenderPass(const std::vector<WdPipeline>& pipelines) {
+        VulkanRenderPass *renderPass = new VulkanRenderPass(pipelines, device);
+        renderPass->init();
+        _liveRenderPasses.push_back(renderPass);
+
+        return *renderPass;
     };
 
     // Render pass creation & utils 
+
+    VulkanRenderPass::VulkanRenderPass(const std::vector<WdPipeline>& pipelines, VkDevice device) : _pipelines(pipelines), _device(device) {};
 
     // usually can just infer from the stage enum in ResourceInfo,
     // but attachments need special attention 
