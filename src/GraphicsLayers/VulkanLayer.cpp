@@ -1014,12 +1014,22 @@ namespace Wado::GAL::Vulkan {
 
     // Command list functions 
 
-    void VulkanCommandList::beginCommandList() {
-
+    void VulkanCommandList::resetCommandList() {
+        if (vkResetCommandBuffer(_graphicsCommandBuffer, 0) != VK_SUCCESS) { // TOOD: when should I release resources back to the command pool? the reset flag controls this 
+            throw std::runtime_error("Failed to reset command buffer!");
+        }
     };
-    
+
     void VulkanCommandList::beginCommandList() {
-                
+        // TODO: should throw error here if command buffer has already been started and not reset?
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = 0; // TODO: for this one since it's graphics, no flags, but for transfer and present i think this should be set 
+        beginInfo.pInheritanceInfo = nullptr; // TODO: this 
+
+        if (vkBeginCommandBuffer(_graphicsCommandBuffer, &beginInfo) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to begin recording command buffer!");
+        }
     };
     
     void VulkanCommandList::setRenderPass(const WdRenderPass& renderPass) {
