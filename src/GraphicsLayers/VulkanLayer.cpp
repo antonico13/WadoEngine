@@ -1032,12 +1032,56 @@ namespace Wado::GAL::Vulkan {
         }
     };
     
+    // might not be needed 
+    VkClearValue VulkanCommandList::WdClearValueToVkClearValue(WdClearValue clearValue, bool isDepthStencil) const {
+        VkClearValue vkClearValue{};
+        if (isDepthStencil) {
+            vkClearValue.depthStencil = clearValue.depthStencil; // direct translation
+        } else {
+            vkClearValue.color = {{clearValue.color.r, clearValue.color.g, clearValue.color.b, clearValue.color.a}};
+        }
+        return vkClearValue;
+    };
+    
     void VulkanCommandList::setRenderPass(const WdRenderPass& renderPass) {
-        
+        // TODO: This has to be safe every time, need to ensure with destruction of all objects 
+        // when switching backend layers.
+        _vkRenderPass = dynamic_cast<const VulkanRenderPass&>(renderPass);
+
+        VkRenderPassBeginInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = _vkRenderPass._renderPass;
+        renderPassInfo.framebuffer = _vkRenderPass._framebuffer.framebuffer; // TODO: how to handle multiple frames in flight here?
+        renderPassInfo.renderArea.offset = _vkRenderPass._renderArea.offset;
+        renderPassInfo.renderArea.extent = _vkRenderPass._renderArea.extent;
+
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(_vkRenderPass._framebuffer.clearValues.size());
+        renderPassInfo.pClearValues = _vkRenderPass._framebuffer.clearValues.data();
+
+        if (vkCmdBeginRenderPass(_graphicsCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE) != VK_SUCCESS) { // TODO: this might not always be inline? Not sure 
+            throw std::runtime_error("Failed to begin render pass command buffer!");
+        };
+
+        _currentPipeline = _vkRenderPass._pipelines.begin();
     };
     
     void VulkanCommandList::nextPipeline() {
+        // TODO: should throw error here if render pass not set, if it's last pipeline, etc 
+        if (_currentPipeline != _vkRenderPass._pipelines.begin()) { // might be a bad check idk 
+            if(vkCmdNextSubpass(_graphicsCommandBuffer, VK_SUBPASS_CONTENTS_INLINE) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to set pipeline!");
+            };
+        };
         
+        if (vkCmdBindPipeline(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipeline) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to set pipeline!");
+        };
+
+        if (vkCmdBindDescriptorSets(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSets[0], 0, nullptr) != VK_SUCCESS) { // TODO: handle multi-frame here 
+            throw std::runtime_error("Failed to set pipeline shader parameters!");
+        }; 
+        
+        _currentPipeline++;
     };
 
     void VulkanCommandList::setVertexBuffers(const std::vector<WdBuffer>& vertexBuffer) {

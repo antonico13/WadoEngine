@@ -150,6 +150,7 @@ namespace Wado::GAL::Vulkan {
         public:
             friend class GraphicsLayer;
             friend class VulkanLayer;
+            friend class VulkanCommandList;
 
         private:
             using VulkanPipeline = struct VulkanPipeline {
@@ -177,7 +178,18 @@ namespace Wado::GAL::Vulkan {
             using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
             using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
 
-            using VertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>
+            using VertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>;
+
+            using Framebuffer = struct Framebuffer {
+                std::vector<VkImageView> attachmentViews;
+                std::vector<VkClearValue> clearValues;
+                VkFramebuffer framebuffer;
+            };
+
+            using RenderArea = struct RenderArea {
+                WdExtent2D offset;
+                WdExtent2D extent;
+            };
 
             static const uint32_t _imgReadMask = WdPipeline::ShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::ShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_SUBPASS_INPUT;
             static const uint32_t _imgWriteMask = WdPipeline::ShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::ShaderParameterType::WD_STAGE_OUTPUT;
@@ -244,7 +256,8 @@ namespace Wado::GAL::Vulkan {
             VkDevice _device;
             
             VkRenderPass _renderPass;
-            std::vector<VkImageView> _framebuffer;
+            Framebuffer _framebuffer; // TODO: need to actually create the framebuffer object
+            RenderArea _renderArea;
             VkDescriptorPool _descriptorPool;
             
             const std::vector<WdPipeline>& _pipelines
@@ -275,7 +288,13 @@ namespace Wado::GAL::Vulkan {
         private:
             VulkanCommandList();
 
-            VkCommandBuffer _graphicsCommandBuffer;
+            VkClearValue WdClearValueToVkClearValue(WdClearValue clearValue, bool isDepthStencil) const;
+
+            VkCommandBuffer _graphicsCommandBuffer; 
+
+            const VulkanRenderPass& _vkRenderPass;
+            std::vector<VulkanRenderPass::VulkanPipeline>::iterator _currentPipeline;
+    }
 }
 
 #endif
