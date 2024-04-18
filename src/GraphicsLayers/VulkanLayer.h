@@ -251,6 +251,31 @@ namespace Wado::GAL::Vulkan {
             std::vector<VulkanPipeline> _vkPipelines;
             
     };
+
+    class VulkanCommandList : public WdCommandList {
+        public:
+            friend class GraphicsLayer;
+            friend class Vulkan::VulkanLayer;
+
+            void resetCommandList() override;
+            void beginCommandList() override;
+            void setRenderPass(const WdRenderPass& renderPass) override;
+            void nextPipeline() override;
+            void setVertexBuffers(const std::vector<WdBuffer>& vertexBuffer) override;
+            void setIndexBuffer(const WdBuffer& indexBuffer) override;
+            void setViewport(const WdViewportProperties& WdViewportProperties) override;
+            void drawIndexed() override;
+            void drawVertices(uint32_t vertexCount) override;
+            void endRenderPass() override;
+            void endCommandList() override;
+            void execute(WdFenceHandle fenceToSignal) override;
+            // non-immediate versions 
+            void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) override;
+            void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) override;
+        private:
+            VulkanCommandList();
+
+            VkCommandBuffer _graphicsCommandBuffer;
 }
 
 #endif

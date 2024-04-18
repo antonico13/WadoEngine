@@ -307,7 +307,7 @@ namespace Wado::GAL::Vulkan {
 
     // creates render pass and all subpasses 
     WdRenderPass VulkanLayer::createRenderPass(const std::vector<WdPipeline>& pipelines) {
-        VulkanRenderPass *renderPass = new VulkanRenderPass(pipelines, device);
+        VulkanRenderPass *renderPass = new VulkanRenderPass(pipelines, _device);
         renderPass->init();
         _liveRenderPasses.push_back(renderPass);
 
@@ -1009,5 +1009,66 @@ namespace Wado::GAL::Vulkan {
             throw std::runtime_error("Failed to create descriptor pool");
         }
     }
+
+    
+
+    // Command list functions 
+
+    void VulkanCommandList::beginCommandList() {
+
+    };
+    
+    void VulkanCommandList::beginCommandList() {
+                
+    };
+    
+    void VulkanCommandList::setRenderPass(const WdRenderPass& renderPass) {
+        
+    };
+    
+    void VulkanCommandList::nextPipeline() {
+        
+    };
+
+    void VulkanCommandList::setVertexBuffers(const std::vector<WdBuffer>& vertexBuffer) {
+        
+    };
+    
+    void VulkanCommandList::setIndexBuffer(const WdBuffer& indexBuffer) {
+                
+    };
+    
+    void VulkanCommandList::setViewport(const WdViewportProperties& WdViewportProperties) {
+        
+    };
+    
+    void VulkanCommandList::drawIndexed() {
+        
+    };
+    
+    void VulkanCommandList::drawVertices(uint32_t vertexCount) {
+        
+    };
+    
+    void VulkanCommandList::endRenderPass() {
+
+    };
+    
+    void VulkanCommandList::endCommandList() {
+
+    };
+    
+    void VulkanCommandList::execute(WdFenceHandle fenceToSignal) {
+
+    };
+    
+    // non-immediate versions 
+    void VulkanCommandList::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) {
+
+    };
+    
+    void VulkanCommandList::copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) {
+        
+    };
 
 }
