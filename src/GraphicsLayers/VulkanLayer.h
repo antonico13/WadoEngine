@@ -277,7 +277,7 @@ namespace Wado::GAL::Vulkan {
             void setVertexBuffers(const std::vector<WdBuffer>& vertexBuffer) override;
             void setIndexBuffer(const WdBuffer& indexBuffer) override;
             void setViewport(const WdViewportProperties& WdViewportProperties) override;
-            void drawIndexed() override;
+            void drawIndexed(uint32_t indexCount) override;
             void drawVertices(uint32_t vertexCount) override;
             void endRenderPass() override;
             void endCommandList() override;

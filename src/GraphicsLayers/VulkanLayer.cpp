@@ -1088,36 +1088,58 @@ namespace Wado::GAL::Vulkan {
         // assuming all offsets are 0 for now 
         std::vector<VkBuffer> vkBuffers(vertexBuffers.size());
         std::vector<VkDeviceSize> offsets(vertexBuffers.size());
+
         for (const WdBuffer& wdBuffer : vertexBuffers) {
             vkBuffers.push_back(static_cast<VkBuffer>(wdBuffer.handle));
             offsets.push_back(0);
-        }
+        };
+
         // TODO: look into if handling multiple vertex bindings is needed 
         vkCmdBindVertexBuffers(_graphicsCommandBuffer, 0, static_cast<uint32_t>(vkBuffers.size()), vkBuffers.data(), offsets.data());
     };
     
     void VulkanCommandList::setIndexBuffer(const WdBuffer& indexBuffer) {
-                
+        vkCmdBindIndexBuffer(_graphicsCommandBuffer, static_cast<VkBuffer>(indexBuffer.handle), 0, VK_INDEX_TYPE_UINT32); // TODO: look into if I need to address the offset 
     };
     
-    void VulkanCommandList::setViewport(const WdViewportProperties& WdViewportProperties) {
-        
+    void VulkanCommandList::setViewport(const WdViewportProperties& viewportProperties) {
+        VkViewport viewport{};
+        viewport.x = static_cast<float>(viewportProperties.startCoords.width);
+        viewport.y = static_cast<float>(viewportProperties.startCoords.height);
+        viewport.width = static_cast<float>(viewportProperties.endCoords.width);
+        viewport.height = static_cast<float>(viewportProperties.endCoords.height);
+        viewport.minDepth = viewportProperties.depth.min;
+        viewport.maxDepth = viewportProperties.depth.max;
+
+        vkCmdSetViewport(_graphicsCommandBuffer, 0, 1, &viewport); // support only one right now 
+
+        VkRect2D scissor{};
+        scissor.offset = viewportProperties.scissor.offset;
+        scissor.extent = viewportProperties.scissor.extent;;
+
+        vkCmdSetScissor(_graphicsCommandBuffer, 0, 1, &scissor);
     };
     
-    void VulkanCommandList::drawIndexed() {
-        
+    void VulkanCommandList::drawIndexed(uint32_t indexCount) {
+        // TODO: throw error if draw is called without setting viewport, index, vertex buffer etc first 
+        vkCmdDrawIndexed(_graphicsCommandBuffer, indexCount, 1, 0, 0, 0); // TODO for all of the params, idk if they should be customizable or not 
     };
     
     void VulkanCommandList::drawVertices(uint32_t vertexCount) {
-        
+        // TODO: throw error if draw is called without setting viewport first 
+        // TODO: throw error if trying to call this with index buffer set 
+        vkCmdDraw(_graphicsCommandBuffer, vertexCount, 1, 0, 0); // TODO: as with draw index, find out if these params should be user-set
     };
     
     void VulkanCommandList::endRenderPass() {
-
+        // TODO: check if all subpasses have finished 
+        vkCmdEndRenderPass(_graphicsCommandBuffer);
     };
     
     void VulkanCommandList::endCommandList() {
-
+        if (vkEndCommandBuffer(_graphicsCommandBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to end command list!");
+        }
     };
     
     void VulkanCommandList::execute(WdFenceHandle fenceToSignal) {

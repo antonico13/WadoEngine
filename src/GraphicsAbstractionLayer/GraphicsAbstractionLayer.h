@@ -184,7 +184,7 @@ namespace Wado::GAL {
 
     using WdDepthStencilValue = struct WdDepthStencilValue {
         float depth;
-        int stencil;
+        uint32_t stencil;
     };
 
     using WdClearValue = union WdClearValue {
@@ -245,11 +245,11 @@ namespace Wado::GAL {
         struct depth {
             float min = 0.0f;
             float max = 1.0f;
-        };
+        } depth;
         struct scissor {
             WdExtent2D offset;
             WdExtent2D extent;
-        };
+        } scissor;
     };
 
     enum WdStage = {
@@ -423,7 +423,7 @@ namespace Wado::GAL {
             virtual void setVertexBuffers(std::vector<WdBuffer> vertexBuffer) = 0;
             virtual void setIndexBuffer(WdBuffer indexBuffer) = 0;
             virtual void setViewport(WdViewportProperties WdViewportProperties) = 0;
-            virtual void drawIndexed() = 0;
+            virtual void drawIndexed(uint32_t indexCount) = 0;
             virtual void drawVertices(uint32_t vertexCount) = 0;
             virtual void endRenderPass() = 0;
             virtual void endCommandList() = 0;
