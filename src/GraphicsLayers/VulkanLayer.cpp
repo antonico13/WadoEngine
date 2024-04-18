@@ -1072,11 +1072,11 @@ namespace Wado::GAL::Vulkan {
                 throw std::runtime_error("Failed to set pipeline!");
             };
         };
-        
+
         if (vkCmdBindPipeline(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipeline) != VK_SUCCESS) {
             throw std::runtime_error("Failed to set pipeline!");
         };
-
+        // TODO: binding multiple decsriptor sets 
         if (vkCmdBindDescriptorSets(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSets[0], 0, nullptr) != VK_SUCCESS) { // TODO: handle multi-frame here 
             throw std::runtime_error("Failed to set pipeline shader parameters!");
         }; 
@@ -1084,8 +1084,16 @@ namespace Wado::GAL::Vulkan {
         _currentPipeline++;
     };
 
-    void VulkanCommandList::setVertexBuffers(const std::vector<WdBuffer>& vertexBuffer) {
-        
+    void VulkanCommandList::setVertexBuffers(const std::vector<WdBuffer>& vertexBuffers) {
+        // assuming all offsets are 0 for now 
+        std::vector<VkBuffer> vkBuffers(vertexBuffers.size());
+        std::vector<VkDeviceSize> offsets(vertexBuffers.size());
+        for (const WdBuffer& wdBuffer : vertexBuffers) {
+            vkBuffers.push_back(static_cast<VkBuffer>(wdBuffer.handle));
+            offsets.push_back(0);
+        }
+        // TODO: look into if handling multiple vertex bindings is needed 
+        vkCmdBindVertexBuffers(_graphicsCommandBuffer, 0, static_cast<uint32_t>(vkBuffers.size()), vkBuffers.data(), offsets.data());
     };
     
     void VulkanCommandList::setIndexBuffer(const WdBuffer& indexBuffer) {
