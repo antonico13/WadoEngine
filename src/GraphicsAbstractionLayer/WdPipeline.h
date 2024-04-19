@@ -136,6 +136,12 @@ namespace Wado::GAL {
             using WdUniformAddresses = std::map<WdUniformIdent, WdUniformAddress>;
             using WdSubpassInputs = std::map<std::string, WdSubpassInput>;
             using WdFragmentOutputs = std::map<std::string, WdFragmentOutput>;
+            
+            // Convert shader byte code form bytes to SPIR-V words
+            using SPIRVShaderByteCode = struct SPIRVShaderByteCode {
+                const uint32_t* spirvWords;
+                size_t wordCount;
+            };
 
             WdPipeline(Shader::WdShaderByteCode vertexShader, Shader::WdShaderByteCode fragmentShader, const WdViewportProperties& viewportProperties);
 
@@ -145,6 +151,8 @@ namespace Wado::GAL {
             void generateVertexParams();
             void generateFragmentParams();
             
+            SPIRVShaderByteCode _spirvVertexShader;
+            SPIRVShaderByteCode _spirvFragmentShader;
             Shader::WdShaderByteCode _vertexShader;
             Shader::WdShaderByteCode _fragmentShader;
 

@@ -156,7 +156,10 @@ namespace Wado::GAL {
 
     void WdPipeline::generateVertexParams() {
         // create compiler object for the SPIR-V bytecode
-        spirv_cross::Compiler spirvCompiler(reinterpret_cast<const uint32_t*>(_vertexShader.data()), _vertexShader.size());
+        // Init SPIRV shader code 
+        _spirvVertexShader.spirvWords = reinterpret_cast<const uint32_t*>(_vertexShader.data());
+        _spirvVertexShader.wordCount = _vertexShader.size();
+        spirv_cross::Compiler spirvCompiler( _spirvVertexShader.spirvWords, _spirvVertexShader.wordCount);
         spirv_cross::ShaderResources resources = spirvCompiler.get_shader_resources();
 
         // Check all non-subpass input uniforms 
@@ -189,8 +192,11 @@ namespace Wado::GAL {
     };
 
     void WdPipeline::generateFragmentParams() {
+        _spirvFragmentShader.spirvWords = reinterpret_cast<const uint32_t*>(_vertexShader.data());
+        _spirvFragmentShader.wordCount = _vertexShader.size();
+        
         // create compiler object for the SPIR-V bytecode
-        spirv_cross::Compiler spirvCompiler(reinterpret_cast<const uint32_t*>(_fragmentShader.data()), _fragmentShader.size());
+        spirv_cross::Compiler spirvCompiler( _spirvFragmentShader.spirvWords, _spirvFragmentShader.wordCount);
         spirv_cross::ShaderResources resources = spirvCompiler.get_shader_resources();
 
         // Check all non-subpass input uniforms 
