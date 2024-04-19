@@ -1142,10 +1142,6 @@ namespace Wado::GAL::Vulkan {
         }
     };
     
-    void VulkanCommandList::execute(WdFenceHandle fenceToSignal) {
-
-    };
-    
     // non-immediate versions 
     void VulkanCommandList::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) {
 

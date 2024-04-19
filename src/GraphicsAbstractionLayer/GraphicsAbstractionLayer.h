@@ -427,7 +427,6 @@ namespace Wado::GAL {
             virtual void drawVertices(uint32_t vertexCount) = 0;
             virtual void endRenderPass() = 0;
             virtual void endCommandList() = 0;
-            virtual void execute(WdFenceHandle fenceToSignal) = 0;
             // non-immediate versions 
             virtual void copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) = 0;
             virtual void copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) = 0;
@@ -468,6 +467,8 @@ namespace Wado::GAL {
             virtual WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) = 0;
 
             virtual WdRenderPass createRenderPass(const std::vector<WdPipeline>& pipelines) = 0;
+
+            virtual void executeCommandList(const WdCommandList& commandList) = 0;
 
             virtual std::unique_ptr<WdCommandList> createCommandList() = 0;
 

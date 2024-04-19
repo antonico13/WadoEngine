@@ -281,7 +281,6 @@ namespace Wado::GAL::Vulkan {
             void drawVertices(uint32_t vertexCount) override;
             void endRenderPass() override;
             void endCommandList() override;
-            void execute(WdFenceHandle fenceToSignal) override;
             // non-immediate versions 
             void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) override;
             void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) override;
