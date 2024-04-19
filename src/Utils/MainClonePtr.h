@@ -13,20 +13,40 @@ namespace Wado::Memory {
     template <class T>
     class WdMainPtr;
 
+    // TODO: add default constructor for unsafe ptr 
     // TODO: these are non-thread safe at the moment    
     template <class T>
     class WdClonePtr final { // Final, don't want people to inherit this class and access the ptr after it's been invalidated 
         public:
             friend class WdMainPtr<T>;
+
             T& operator* ();
             T* operator-> ();
             ~WdClonePtr();
-            WdClonePtr(WdClonePtr&& other); // for move constructors 
+
+            WdClonePtr(); // Empty clone pointer can be initialized without a main pointer, always invalid but useful for default values
+
+            explicit operator bool() const noexcept; // Returns whether pointer is valid or not 
+
+            // copy assignment operator
+            WdClonePtr& operator=(const WdClonePtr& other);
+            // move assignemnt operator
+            WdClonePtr& operator=(WdClonePtr&& other);
+
+            // copy constructor
+            WdClonePtr(const WdClonePtr& other);
+            // move constructor 
+            WdClonePtr(WdClonePtr&&  other);
+            // move assignment operator 
+            //WdClonePtr(WdClonePtr&& other); // for move constructors 
+            //WdClonePtr operator=(WdClonePtr other); 
+            //WdClonePtr operator=(WdClonePtr& other); 
+            //WdClonePtr operator=(const WdClonePtr& other); 
+            //WdClonePtr(WdClonePtr& other);
         private:
             WdClonePtr(T* const ptr, PtrValidity* _validity);
-            WdClonePtr(WdClonePtr& other); // Don't want to be able to create clone pointer from another ref
-            WdClonePtr& operator=(WdClonePtr& other); // or assign without move  
-            WdClonePtr  operator=(WdClonePtr other); 
+            //WdClonePtr& operator=(WdClonePtr& other); // or assign without move  
+            //WdClonePtr  operator=(WdClonePtr other); 
 
             PtrValidity* _validity;
             T* const _ptr;
