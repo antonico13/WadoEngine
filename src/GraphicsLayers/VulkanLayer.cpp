@@ -624,7 +624,11 @@ namespace Wado::GAL::Vulkan {
         _swapchainImageExtent = extent;
 
         _swapchainImageViews.resize(imageCount);
-        for (size_t i = 0; i < swapChainImages.size(); i++) {
+
+        WdClearValue clearValue;
+        clearValue.color = defaultColorClear;
+        
+        for (size_t i = 0; i < imageCount; i++) {
             // bad repetition but needed rn 
             VkImageViewCreateInfo viewInfo{};
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -646,7 +650,31 @@ namespace Wado::GAL::Vulkan {
             if (vkCreateImageView(_device, &viewInfo, nullptr, &_swapchainImageViews[i]) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create display image view!");
             }
+
+            // TODO: deal with multiple frames in flight problem here too
+            WdImage* img = new WdImage(static_cast<WdImageHandle>(_swapchainImages[i]), 
+                                   static_cast<WdMemoryPointer>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
+                                   static_cast<WdRenderTarget>(_swapchainImageViews[i]), 
+                                   WdFormat::WD_FORMAT_R8G8B8A8_SRGB, // TODO: conversion here 
+                                   {_swapchainImageExtent.height, _swapchainImageExtent.width, 1}, // TODO:: check ordering here 
+                                   WdImageUsage::WD_COLOR_ATTACHMENT,
+                                   clearValue);
+
+            _swapchainWdImages.push_back(img);
         }
+
+        // create semaphores for render synch 
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        _imageAvailableSemaphores.resize(imageCount);
+        _renderFinishedSemaphores.resize(imageCount);
+
+        for (size_t i = 0; i < imageCount; i++) {
+            if (vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_imageAvailableSemaphores[i]) != VK_SUCCESS ||
+                vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_renderFinishedSemaphores[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create Vulkan semaphores for rendering!");
+            } 
     };
 
     void VulkanLayer::init() {
@@ -663,21 +691,10 @@ namespace Wado::GAL::Vulkan {
     // GAL functions:
 
     WdImage& VulkanLayer::getDisplayTarget() {
-        WdClearValue clearValue;
-        clearValue.color = defaultColorClear;
-        // TODO: deal with multiple frames in flight problem here too
-        WdImage* img = new WdImage(static_cast<WdImageHandle>(_swapchainImages[0]), 
-                                   static_cast<WdMemoryPointer>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
-                                   static_cast<WdRenderTarget>(_swapchainImageViews[0]), 
-                                   WdFormat::WD_FORMAT_R8G8B8A8_SRGB,,
-                                   {_swapchainImageExtent.height, _swapchainImageExtent.width, 1}, // TODO:: check ordering here 
-                                   WdImageUsage::WD_COLOR_ATTACHMENT,
-                                   clearValue);
-        // error check etc (will do with cutom allocator in own new operator)
+        // TODO: deal with multiple frames in flight here 
+        VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _imageAvailableSemaphores[0], VK_NULL_HANDLE, &_currentSwapchainImageIndex);
 
-        liveImages.push_back(img); // keep track of this image, not sure if swapchain images should be handled here 
-
-        return *img;
+        return _swapchainWdImages[_currentSwapchainImageIndex];
     };
 
     WdImage& VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
@@ -971,6 +988,56 @@ namespace Wado::GAL::Vulkan {
 
         endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);          
     };
+
+    std::unique_ptr<WdCommandList> VulkanLayer::createCommandList() {
+        return move(std::make_unique<VulkanCommandList>(););
+    };
+
+    void VulkanLayer::executeCommandList(const WdCommandList& commandList, WdFenceHandle fenceToSignal) {
+        
+        const VulkanCommandList& vkCommandList = dynamic_cast<const VulkanCommandList&>(commandList);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        // wait until the image is available 
+        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[0]}; // TODO: multiple frames in flight 
+        // wait for the color attachment output stage to finish 
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &vkCommandList._graphicsCommandBuffer; // TODO: multiple frames in flight 
+
+        // signal that rendering for this frame is finished 
+        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[0]}; // TODO: multiple frames in flight 
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        // signal the in flight fence when we are done so the CPU can work with this frame again
+        VkResult submitResult = vkQueueSubmit(_graphicsQueue, 1, &submitInfo, static_cast<VkFence>(fenceToSignal));
+        if (submitResult != VK_SUCCESS) {
+            throw std::runtime_error("Failed to execute graphics Vulkan command list!");
+        }
+    };
+
+    void VulkanLayer::displayCurrentTarget() {
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        // only present when the rendering is finished 
+        presentInfo.pWaitSemaphores = &_renderFinishedSemaphores[0]; // TODO: deal with multiple frames in flight here 
+
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &_swapchain;
+        presentInfo.pImageIndices = &_currentSwapchainImageIndex;
+        presentInfo.pResults = nullptr;
+
+        result = vkQueuePresentKHR(_presentQueue, &presentInfo);
+    };
+
 
     // Skeleton for now, needs to be expanded 
     WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) {
@@ -1818,11 +1885,11 @@ namespace Wado::GAL::Vulkan {
     
     // non-immediate versions 
     void VulkanCommandList::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) {
-
+        // TODO
     };
     
     void VulkanCommandList::copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) {
-        
+        // TODO
     };
 
 }

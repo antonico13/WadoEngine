@@ -50,6 +50,12 @@ namespace Wado::GAL::Vulkan {
             WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) override;
             WdRenderPass createRenderPass(const std::vector<WdPipeline>& pipelines) override;
 
+            std::unique_ptr<WdCommandList> createCommandList();
+
+            void executeCommandList(const WdCommandList& commandList) override;
+
+            void displayCurrentTarget() override;
+
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer(GLFWwindow* window, bool debugEnabled);
@@ -127,7 +133,14 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkImage> _swapchainImages;
             VkFormat _swapchainImageFormat;
             VkExtent2D _swapchainImageExtent;
+
+            std::vector<WdImage*> _swapchainWdImages;
+
             std::vector<VkImageView> _swapchainImageViews;
+            std::vector<VkSemaphore> _imageAvailableSemaphores;
+            std::vector<VkSemaphore> _renderFinishedSemaphores;
+
+            uint32_t _currentSwapchainImageIndex;
 
             static const VkFormat WdFormatToVkFormat[] = {
                 VK_FORMAT_UNDEFINED,

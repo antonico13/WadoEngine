@@ -482,7 +482,7 @@ namespace Wado::GAL {
             // this is also immediate
             virtual void prepareImageFor(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
-            virtual void presentCurrentFrame() = 0;
+            virtual void displayCurrentTarget() = 0;
     };
 }
 
