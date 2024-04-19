@@ -3,6 +3,7 @@
 
 #include <map>
 #include <string>
+#include <iostream>
 
 
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
@@ -77,8 +78,461 @@ namespace Wado::GAL::Vulkan {
     };
 
 
+    void VulkanLayer::getSupportedValidationLayers() {
+        vkEnumerateInstanceLayerProperties(&_layerCount, nullptr);
+
+        _layers = std::vector<VkLayerProperties>(_layerCount);
+        vkEnumerateInstanceLayerProperties(&_layerCount, _layers.data());
+
+        #ifdef NDEBUG
+        #else
+            std::cout << "Available layers:\n";
+
+            for (const VkLayerProperties& layer : _layers) {
+                std::cout << '\t' << layer.layerName << '\n';
+            }
+        #endif
+    };
+
+    void VulkanLayer::getSupportedExtensions() {
+        vkEnumerateInstanceExtensionProperties(nullptr, &_extensionCount, nullptr);
+
+        _extensions = std::vector<VkExtensionProperties>(_extensionCount);
+        vkEnumerateInstanceExtensionProperties(nullptr, &_extensionCount, _extensions.data());
+
+        #ifdef NDEBUG
+        #else
+            std::cout << "Available extensions:\n";
+
+            for (const VkExtensionProperties& extension : _extensions) {
+                std::cout << '\t' << extension.extensionName << '\n';
+            }
+        #endif
+    }
+
+    std::vector<const char *> VulkanLayer::getRequiredExtensions() {
+        uint32_t glfwExtensionCount = 0;
+        const char** glfwExtensions;
+        glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+        std::vector<const char *> requiredExtensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+        if (_enableValidationLayers) {
+            requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        }
+
+        requiredExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+        
+        return requiredExtensions;
+    };
+
+    bool VulkanLayer::checkStringSubset(const char** superSet, uint32_t superSetCount, const char** subSet, uint32_t subSetCount) {
+        bool bFoundAll = true;
+        for (int i = 0; i < subSetCount; i++) {
+            const char* subElement = *(subSet + i);
+            bool bElementFound = false;
+
+            for (int j = 0; j < superSetCount; j++) {
+                const char* superElement = *(superSet + j);
+
+                if (strcmp(subElement, superElement) == 0) {
+                    bElementFound = true;
+                    break;
+                }
+            }
+
+            #ifdef NDEBUG 
+                if (!bElementFound) {
+                    std::cout << "\tNot found: " << subElement << '\n'; 
+                }
+            #else
+            #endif
+            
+            bFoundAll &= bElementFound;
+        }
+        return bFoundAll;
+    };
+
+    bool VulkanLayer::checkRequiredExtensions(const std::vector<const char*>& requiredExtensions) {
+        getSupportedExtensions();
+        std::vector<const char*> supportedExtensionNames(_extensionCount);
+
+        for (int i = 0; i < _extensionCount; i++) {
+            supportedExtensionNames[i] = _extensions[i].extensionName;
+        }
+
+        return checkStringSubset(supportedExtensionNames.data(), _extensionCount, requiredExtensions.data(), requiredExtensions.size());
+    };
+
+    bool VulkanLayer::checkRequiredLayers() {
+        getSupportedValidationLayers();
+        std::vector<const char*> supportedLayerNames(_layerCount);
+
+        for (int i = 0; i < _layerCount; i++) {
+            supportedLayerNames[i] = _layers[i].layerName;
+        }
+
+        return checkStringSubset(supportedLayerNames.data(), _layerCount, _validationLayers.data(), _validationLayers.size());
+    };
 
 // END OF UTILS
+
+// Init functions 
+
+    void VulkanLayer::createInstance() {
+        if (_enableValidationLayers && !checkRequiredLayers()) {
+            throw std::runtime_error("Validation layers requested, but not available.");
+        }
+
+        // Need to make this library agnostic with a windowing library translator
+        // eg, in the future get this running on closed platforms as well. 
+        // decouple even API from windowing?
+        VkApplicationInfo appInfo{};
+        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+        appInfo.pEngineName = "Wado Engine"; // TODO: make this a global const along with version and app name, etc 
+        appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
+        appInfo.apiVersion = VK_API_VERSION_1_3;
+
+        VkInstanceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        createInfo.pApplicationInfo = &appInfo;
+
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+
+        if (_enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(_validationLayers.size());
+            createInfo.ppEnabledLayerNames = _validationLayers.data();
+
+            populateDebugMessengerCreateInfo(debugCreateInfo);
+            // Debug broken on dzn
+            createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+        } else {
+            createInfo.enabledLayerCount = 0;
+            createInfo.pNext = nullptr;
+        }
+
+        std::vector<const char*> requiredExtensions = getRequiredExtensions();
+
+        if(!checkRequiredExtensions(requiredExtensions)) {
+            throw std::runtime_error("Could not find required extensions.");
+        }
+
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
+        createInfo.ppEnabledExtensionNames = requiredExtensions.data();
+        createInfo.enabledLayerCount = 0;
+
+        if (vkCreateInstance(&createInfo, nullptr, &_instance) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan instance");
+        };
+
+    };
+
+    // Debug Messenger utils
+
+    static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void* pUserData) {
+
+            std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+
+            return VK_FALSE;
+    };
+
+    static VkResult CreateDebugUitlsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, 
+        const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+            auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+            if (func != nullptr) {
+                return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+            } else {
+                return VK_ERROR_EXTENSION_NOT_PRESENT;
+            }
+    };
+
+    static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, 
+        const VkAllocationCallbacks* pAllocator) {
+            auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+            if (func != nullptr) {
+                func(instance, debugMessenger, pAllocator);
+            }
+    };
+
+    void VulkanLayer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
+        createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+
+        createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        createInfo.pfnUserCallback = debugCallback;
+        createInfo.pUserData = nullptr;
+    };
+    
+    void VulkanLayer::setupDebugMessenger() {
+        if (!_enableValidationLayers) {
+            return;
+        }
+
+        VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+        populateDebugMessengerCreateInfo(createInfo);
+
+        if (CreateDebugUitlsMessengerEXT(_instance, &createInfo, nullptr, &_debugMessenger) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to set up debug messenger");
+        }
+    };
+
+    void VulkanLayer::createSurface() {
+        if (glfwCreateWindowSurface(_instance, _window, nullptr, &_surface) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create a GLFW Vulkan Window Surface");
+        }
+    };
+
+    bool VulkanLayer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+        uint32_t extensionCount;
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+        
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+        
+        std::vector<const char*> supportedExtensionNames(extensionCount);
+        for (int i = 0; i < extensionCount; i++) {
+            supportedExtensionNames[i] = availableExtensions[i].extensionName;
+        }
+        return checkStringSubset(supportedExtensionNames.data(), extensionCount, _deviceExtensions.data(), _deviceExtensions.size());
+    };
+
+    SwapChainSupportDetails VulkanLayer::querySwapChainSupport(VkPhysicalDevice device) {
+        SwapChainSupportDetails details;
+
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, _surface, &details.capabilities);
+
+        uint32_t formatCount;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &formatCount, nullptr);
+
+        if (formatCount != 0) {
+            details.formats.resize(formatCount);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &formatCount, details.formats.data());
+        }
+
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentModeCount, nullptr);
+
+        if (presentModeCount != 0) {
+            details.presentModes.resize(presentModeCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentModeCount, details.presentModes.data());
+        }
+
+        return details;
+    };
+
+    QueueFamilyIndices VulkanLayer::findQueueFamilies(VkPhysicalDevice device) {
+        QueueFamilyIndices indices;
+        uint32_t queueFamilyCount;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilyProperties.data());
+        int i = 0;
+        for (const VkQueueFamilyProperties& familyProperties : queueFamilyProperties) {
+            if (familyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphicsFamily = i;
+                // look specifically for a non-graphics transfer queue.
+            } else if (familyProperties.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+                indices.transferFamily = i;
+            } /*else if (familyProperties.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                indices.computeFamily = i;
+            } */
+
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, _surface, &presentSupport);
+
+            if (presentSupport) {
+                indices.presentFamily = i;
+            }
+
+            if (indices.isComplete()) {
+                break;
+            }
+            i++;
+        }
+        return indices;
+    };
+
+    bool VulkanLayer::isDeviceSuitable(VkPhysicalDevice device) {
+        VkPhysicalDeviceProperties deviceProperties;
+        vkGetPhysicalDeviceProperties(device, &deviceProperties);
+        
+        #ifdef NDEBUG
+        #else
+            std::cout << deviceProperties.deviceName << std::endl;
+        #endif
+
+        VkPhysicalDeviceFeatures deviceFeatures;
+        vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+        bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+        bool swapChainAdequate = false;
+        if (extensionsSupported) {
+            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+            swapChainAdequate = !swapChainSupport.formats.empty() && 
+                                !swapChainSupport.presentModes.empty();
+        }
+
+        QueueFamilyIndices indices = findQueueFamilies(device);
+        return indices.isComplete() && extensionsSupported && swapChainAdequate && deviceFeatures.samplerAnisotropy;
+    };
+
+    VkSampleCountFlagBits VulkanLayer::getMaxUsableSampleCount() {
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(_physicalDevice, &physicalDeviceProperties);
+
+        VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts &
+                                    physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+
+        if (counts & VK_SAMPLE_COUNT_64_BIT) {
+            return VK_SAMPLE_COUNT_64_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_32_BIT) {
+            return VK_SAMPLE_COUNT_32_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_16_BIT) {
+            return VK_SAMPLE_COUNT_16_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_8_BIT) {
+            return VK_SAMPLE_COUNT_8_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_4_BIT) {
+            return VK_SAMPLE_COUNT_4_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_2_BIT) {
+            return VK_SAMPLE_COUNT_2_BIT;
+        }
+
+        return VK_SAMPLE_COUNT_1_BIT;
+    };
+            
+    void VulkanLayer::pickPhysicalDevice() {
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
+
+        if (deviceCount == 0) {
+            throw std::runtime_error("Failed to find any GPU with Vulkan support.");
+        }
+
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
+
+        for (const VkPhysicalDevice& device: devices) {
+            if (isDeviceSuitable(device)) {
+                _physicalDevice = device;
+                _msaaSamples = getMaxUsableSampleCount();
+                _queueIndices = findQueueFamilies(device);
+                break;
+            } 
+        }
+
+        #ifdef NDEBUG
+        #else
+            VkPhysicalDeviceProperties deviceProperties;
+            vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+            std::cout << "Chosen device " << deviceProperties.deviceName << std::endl;
+        #endif
+
+        if (_physicalDevice == VK_NULL_HANDLE) {
+            throw std::runtime_error("Could not find a suitable GPU");
+        }
+    };
+    
+    void VulkanLayer::createLogicalDevice() {
+
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        std::set<uint32_t> uniqueQueueFamilies = {
+            _queueIndices.graphicsFamily.value(), 
+            _queueIndices.presentFamily.value(),
+            _queueIndices.transferFamily.value()
+        };
+
+        float queuePriority = 1.0f;
+
+        for (uint32_t queueFamily : uniqueQueueFamilies) {
+            VkDeviceQueueCreateInfo queueCreateInfo{};
+
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = queueFamily;
+            queueCreateInfo.queueCount = 1;
+            queueCreateInfo.pQueuePriorities = &queuePriority;
+            queueCreateInfos.push_back(queueCreateInfo);
+        }
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+        deviceFeatures.samplerAnisotropy = true;
+        //deviceFeatures.robustBufferAccess = true; // debug only
+
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(_deviceExtensions.size());
+        createInfo.ppEnabledExtensionNames = _deviceExtensions.data();
+
+        if (_enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(_validationLayers.size());
+            createInfo.ppEnabledLayerNames = _validationLayers.data();
+        } else {
+            createInfo.enabledLayerCount = 0;
+        }
+
+        if (vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device) != VK_SUCCESS) {
+            throw std::runtime_error("Could not create logical Vulkan device");
+        }
+
+        vkGetDeviceQueue(_device, _queueIndices.graphicsFamily.value(), 0, &_graphicsQueue);
+        vkGetDeviceQueue(_device, _queueIndices.presentFamily.value(), 0, &_presentQueue);
+        vkGetDeviceQueue(_device, _queueIndices.transferFamily.value(), 0, &_transferQueue);
+        //vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &computeQueue);
+    };
+    
+    void VulkanLayer::createGraphicsCommandPool() {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = _queueIndices.graphicsFamily.value();
+
+        if (vkCreateCommandPool(_device, &poolInfo, nullptr, &_graphicsCommandPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create graphics command pool");
+        }
+    };
+    
+    void VulkanLayer::createTransferCommandPool() {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        poolInfo.queueFamilyIndex = _queueIndices.transferFamily.value();
+
+        if (vkCreateCommandPool(_device, &poolInfo, nullptr, &_transferCommandPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create transfer command pool");
+        }
+    };
+
+    void VulkanLayer::init() {
+        createInstance();
+        setupDebugMessenger();
+        createSurface();
+        pickPhysicalDevice();
+        createLogicalDevice();
+        createGraphicsCommandPool();
+        createTransferCommandPool();
+    };
+
+    // GAL functions:
 
     WdImage& VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
         VkImage image; // image handle, 1-to-1 translation to GAL 

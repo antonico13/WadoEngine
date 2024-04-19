@@ -436,8 +436,6 @@ namespace Wado::GAL {
 
     class GraphicsLayer {
         public:
-            virtual void init() = 0;
-
             virtual WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 

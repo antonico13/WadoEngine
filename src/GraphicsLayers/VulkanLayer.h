@@ -28,7 +28,7 @@ namespace Wado::GAL::Vulkan {
     };
 
     class VulkanLayer : public GraphicsLayer {
-        public:
+        public:            
             WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
             WdBuffer& createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
             WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
@@ -46,12 +46,75 @@ namespace Wado::GAL::Vulkan {
 
             static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
-            VulkanLayer();
+            VulkanLayer(GLFWwindow* window, bool debugEnabled);
+            void init();
+            
             static std::shared_ptr<VulkanLayer> _layer;
+
+            // Init functions 
+            void createInstance();
+            void createSurface();
+            void setupDebugMessenger();
+            void pickPhysicalDevice();
+            void createLogicalDevice();
+            void createGraphicsCommandPool();
+            void createTransferCommandPool();
+
+            // Init utils
+
+            static const std::vector<const char*> _validationLayers = {
+                "VK_LAYER_KHRONOS_validation",
+                "VK_LAYER_LUNARG_monitor"
+            };
+
+            static const std::vector<const char*> _deviceExtensions = {
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME/*,
+                VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,*/
+            };
+
+            using SwapChainSupportDetails = struct SwapChainSupportDetails {
+                VkSurfaceCapabilitiesKHR capabilities;
+                std::vector<VkSurfaceFormatKHR> formats;
+                std::vector<VkPresentModeKHR> presentModes;
+            };
+
+            const bool _enableValidationLayers;
+
+            uint32_t _extensionCount = 0;
+            std::vector<VkExtensionProperties> _extensions;
+            uint32_t _layerCount = 0;
+            std::vector<VkLayerProperties> _layers;
+
+            VkInstance _instance;
+            GLFWwindow* _window;
+            VkDebugUtilsMessengerEXT _debugMessenger;
+            VkSurfaceKHR _surface;
+
+            void getSupportedValidationLayers();
+            void getSupportedExtensions();
+            std::vector<const char *> getRequiredExtensions();
+            bool checkStringSubset(const char** superSet, uint32_t superSetCount, const char** subSet, uint32_t subSetCount);
+            bool checkRequiredExtensions(const std::vector<const char*>& requiredExtensions);
+            bool checkRequiredLayers();
+            bool isDeviceSuitable(VkPhysicalDevice device);
+            bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+            SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+            QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+            VkSampleCountFlagBits getMaxUsableSampleCount();
+
+            void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 
             // Internal components 
             VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
             VkDevice _device;
+            VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+            VkQueue _graphicsQueue;
+            VkQueue _presentQueue;
+            VkQueue _transferQueue;
+
+            VkCommandPool _graphicsCommandPool;
+            VkCommandPool _transferCommandPool;
 
             static const VkFormat WdFormatToVkFormat[] = {
                 VK_FORMAT_UNDEFINED,
