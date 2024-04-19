@@ -43,15 +43,19 @@ namespace Wado::GAL {
         WD_FORMAT_R8_UNORM,
         WD_FORMAT_R8_SINT,
         WD_FORMAT_R8_UINT,
+        WD_FORMAT_R8_SRGB,
         WD_FORMAT_R8G8_UNORM,
         WD_FORMAT_R8G8_SINT,
         WD_FORMAT_R8G8_UINT,
+        WD_FORMAT_R8G8_SRGB,
         WD_FORMAT_R8G8B8_UNORM,
         WD_FORMAT_R8G8B8_SINT,
         WD_FORMAT_R8G8B8_UINT,
+        WD_FORMAT_R8G8B8_SRGB,
         WD_FORMAT_R8G8B8A8_UNORM,
         WD_FORMAT_R8G8B8A8_SINT,
         WD_FORMAT_R8G8B8A8_UINT,
+        WD_FORMAT_R8G8B8A8_SRGB,
         WD_FORMAT_R16_SINT,
         WD_FORMAT_R16_UINT,
         WD_FORMAT_R16_SFLOAT,
@@ -436,6 +440,9 @@ namespace Wado::GAL {
 
     class GraphicsLayer {
         public:
+            // Returns ref to a WdImage that represents the screen, can only be used as a fragment output!
+            virtual WdImage& getDisplayTarget() = 0;
+            
             virtual WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, 
                     WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
 
@@ -476,8 +483,6 @@ namespace Wado::GAL {
             virtual void prepareImageFor(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
             virtual void presentCurrentFrame() = 0;
-
-            virtual void createRenderingSurfaces() = 0;
     };
 }
 

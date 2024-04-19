@@ -433,6 +433,7 @@ namespace Wado::GAL::Vulkan {
                 _physicalDevice = device;
                 _msaaSamples = getMaxUsableSampleCount();
                 _queueIndices = findQueueFamilies(device);
+                _swapChainSupportDetails = querySwapChainSupport(device);
                 break;
             } 
         }
@@ -522,6 +523,132 @@ namespace Wado::GAL::Vulkan {
         }
     };
 
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+        for (const VkSurfaceFormatKHR& availableFormat : availableFormats) {
+            if (availableFormat.format == VK_FORMAT_R8G8B8A8_SRGB &&
+                availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                    return availableFormat;
+                }
+        }
+        return availableFormats[0];
+    };
+
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+        for (const VkPresentModeKHR& availablePresentMode : availablePresentModes) {
+            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                return availablePresentMode;
+            }
+        }
+        return VK_PRESENT_MODE_FIFO_KHR;
+    };
+
+    VkExtent2D chooseSwapExtent(GLFWwindow* window, const VkSurfaceCapabilitiesKHR& capabilities) {
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+            return capabilities.currentExtent;
+        } else {
+            int width, height;
+            glfwGetFramebufferSize(window, &width, &height);
+
+            VkExtent2D actualExtent = {
+                static_cast<uint32_t>(width),
+                static_cast<uint32_t>(height)
+            };
+
+            actualExtent.width = std::clamp(actualExtent.width, 
+                                    capabilities.minImageExtent.width, 
+                                    capabilities.maxImageExtent.width);
+
+            actualExtent.width = std::clamp(actualExtent.height, 
+                                    capabilities.minImageExtent.height, 
+                                    capabilities.maxImageExtent.height);
+
+            return actualExtent;
+        }
+    };
+
+    void VulkanLayer::createSwapchain() {        
+        VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(_swapChainSupportDetails.formats);
+        VkPresentModeKHR presentMode = chooseSwapPresentMode(_swapChainSupportDetails.presentModes);
+        VkExtent2D extent = chooseSwapExtent(_window, _swapChainSupportDetails.capabilities);
+
+        uint32_t imageCount = _swapChainSupportDetails.capabilities.minImageCount + 1;
+
+        if (_swapChainSupportDetails.capabilities.maxImageCount > 0 && imageCount > _swapChainSupportDetails.capabilities.maxImageCount) {
+            imageCount = _swapChainSupportDetails.capabilities.maxImageCount;
+        }
+
+        VkSwapchainCreateInfoKHR createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        createInfo.surface = _surface;
+
+        createInfo.minImageCount = imageCount;
+        createInfo.imageFormat = surfaceFormat.format;
+        createInfo.imageColorSpace = surfaceFormat.colorSpace;
+        createInfo.imageExtent = extent;
+        createInfo.imageArrayLayers = 1;
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // display targets can only be used as fragment outputs 
+
+        uint32_t queueFamilyIndices[] = {_queueIndices.graphicsFamily.value(), _queueIndices.presentFamily.value()};
+
+        if (_queueIndices.graphicsFamily != _queueIndices.presentFamily) {
+            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+            createInfo.queueFamilyIndexCount = 2;
+            createInfo.pQueueFamilyIndices = queueFamilyIndices;
+        } else {
+            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            createInfo.queueFamilyIndexCount = 0;
+            createInfo.pQueueFamilyIndices = nullptr;
+        }
+        // No transformations, otherwise pull from supportedTransforms
+        createInfo.preTransform = _swapChainSupportDetails.capabilities.currentTransform;
+        // Blending with other windows in the windowing system, turn off. 
+        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+        createInfo.presentMode = presentMode;
+        // clip obscured pixels from rendering, should be false for full screen
+        // space effects in windowed mode? 
+        createInfo.clipped = VK_TRUE;
+        // whens swapping swapchains due to changes in program execution
+        // ie settings or window size or whatever 
+        createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+        if (vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapchain) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create display targets");
+        }
+        // Get handles for all swap chain images to use in the application 
+        vkGetSwapchainImagesKHR(_device, _swapchain, &imageCount, nullptr);
+        _swapchainImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(_device, _swapchain, &imageCount, _swapchainImages.data());
+
+        _swapchainImageFormat = surfaceFormat.format;
+        _swapchainImageExtent = extent;
+
+        _swapchainImageViews.resize(imageCount);
+        for (size_t i = 0; i < swapChainImages.size(); i++) {
+            // bad repetition but needed rn 
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = _swapchainImages[i];
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = _swapchainImageFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+            //viewInfo.components to be explicit.
+        
+            viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+       
+            if (vkCreateImageView(_device, &viewInfo, nullptr, &_swapchainImageViews[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create display image view!");
+            }
+        }
+    };
+
     void VulkanLayer::init() {
         createInstance();
         setupDebugMessenger();
@@ -530,9 +657,28 @@ namespace Wado::GAL::Vulkan {
         createLogicalDevice();
         createGraphicsCommandPool();
         createTransferCommandPool();
+        createSwapchain();
     };
 
     // GAL functions:
+
+    WdImage& VulkanLayer::getDisplayTarget() {
+        WdClearValue clearValue;
+        clearValue.color = defaultColorClear;
+        // TODO: deal with multiple frames in flight problem here too
+        WdImage* img = new WdImage(static_cast<WdImageHandle>(_swapchainImages[0]), 
+                                   static_cast<WdMemoryPointer>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
+                                   static_cast<WdRenderTarget>(_swapchainImageViews[0]), 
+                                   WdFormat::WD_FORMAT_R8G8B8A8_SRGB,,
+                                   {_swapchainImageExtent.height, _swapchainImageExtent.width, 1}, // TODO:: check ordering here 
+                                   WdImageUsage::WD_COLOR_ATTACHMENT,
+                                   clearValue);
+        // error check etc (will do with cutom allocator in own new operator)
+
+        liveImages.push_back(img); // keep track of this image, not sure if swapchain images should be handled here 
+
+        return *img;
+    };
 
     WdImage& VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
         VkImage image; // image handle, 1-to-1 translation to GAL 

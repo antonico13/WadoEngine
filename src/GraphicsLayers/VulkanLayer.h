@@ -28,7 +28,9 @@ namespace Wado::GAL::Vulkan {
     };
 
     class VulkanLayer : public GraphicsLayer {
-        public:            
+        public:
+            // Returns ref to a WdImage that represents the screen, can only be used as a fragment output!
+            WdImage& getDisplayTarget() override;
             WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
             WdBuffer& createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
             WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
@@ -59,6 +61,7 @@ namespace Wado::GAL::Vulkan {
             void createLogicalDevice();
             void createGraphicsCommandPool();
             void createTransferCommandPool();
+            void createSwapchain();
 
             // Init utils
 
@@ -116,20 +119,30 @@ namespace Wado::GAL::Vulkan {
             VkCommandPool _graphicsCommandPool;
             VkCommandPool _transferCommandPool;
 
+            VkSwapchainKHR _swapchain;
+            std::vector<VkImage> _swapchainImages;
+            VkFormat _swapchainImageFormat;
+            VkExtent2D _swapchainImageExtent;
+            std::vector<VkImageView> _swapchainImageViews;
+
             static const VkFormat WdFormatToVkFormat[] = {
                 VK_FORMAT_UNDEFINED,
                 VK_FORMAT_R8_UNORM,
                 VK_FORMAT_R8_SINT,
                 VK_FORMAT_R8_UINT,
+                VK_FORMAT_R8_SRGB,
                 VK_FORMAT_R8G8_UNORM,
                 VK_FORMAT_R8G8_SINT,
                 VK_FORMAT_R8G8_UINT,
+                VK_FORMAT_R8G8_SRGB,
                 VK_FORMAT_R8G8B8_UNORM,
                 VK_FORMAT_R8G8B8_SINT,
                 VK_FORMAT_R8G8B8_UINT,
+                VK_FORMAT_R8G8B8_SRGB,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 VK_FORMAT_R8G8B8A8_SINT,
                 VK_FORMAT_R8G8B8A8_UINT,
+                VK_FORMAT_R8G8B8A8_SRGB,
                 VK_FORMAT_R16_SINT,
                 VK_FORMAT_R16_UINT,
                 VK_FORMAT_R16_SFLOAT,
@@ -194,6 +207,7 @@ namespace Wado::GAL::Vulkan {
             const VkBufferUsageFlags bufferIndirectUsage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
             QueueFamilyIndices _queueIndices;
+            SwapChainSupportDetails _swapChainSupportDetails;
 
             VkSampleCountFlagBits WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const;
 
