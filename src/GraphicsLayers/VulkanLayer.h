@@ -39,6 +39,10 @@ namespace Wado::GAL::Vulkan {
             void openBuffer(WdBuffer& buffer) override;
             void closeBuffer(WdBuffer& buffer) override;
 
+            // Immediate functions
+            void copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) override;
+            void copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) override;
+
             WdFenceHandle createFence(bool signaled = true) override;
             void waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
             void resetFences(const std::vector<WdFenceHandle>& fences) override;
@@ -221,6 +225,10 @@ namespace Wado::GAL::Vulkan {
 
             VkFilter WdFilterToVkFilter(WdFilterMode filter) const;
             VkSamplerAddressMode WdAddressModeToVkAddressMode(WdAddressMode addressMode) const;
+
+            VkCommandBuffer beginSingleTimeCommands(VkCommandPool commandPool) const;
+            void endSingleTimeCommands(VkCommandBuffer commandBuffer, VkCommandPool commandPool, VkQueue queue) const;
+
     };
 
     class VulkanRenderPass : public WdRenderPass {

@@ -900,6 +900,78 @@ namespace Wado::GAL::Vulkan {
         vkResetFences(_device, static_cast<uint32_t>(fences.size()), fences.data());
     };
 
+    VkCommandBuffer VulkanLayer::beginSingleTimeCommands(VkCommandPool commandPool) const {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = commandPool;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer commandBuffer;
+        vkAllocateCommandBuffers(_device, &allocInfo, &commandBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+        return commandBuffer;
+    };
+
+    void VulkanLayer::endSingleTimeCommands(VkCommandBuffer commandBuffer, VkCommandPool commandPool, VkQueue queue) const {
+        vkEndCommandBuffer(commandBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+
+        //TODO: This is pretty bad, should change 
+        vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(queue);
+        vkFreeCommandBuffers(_device, commandPool, 1, &commandBuffer);
+    };
+
+    void VulkanLayer::copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) {
+        VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+
+        region.imageSubresource.aspectMask = getImageAspectFlags(WdImageUsageToVkImageUsage(image.usage));// VK_IMAGE_ASPECT_COLOR_BIT;//| VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+
+        region.imageOffset = {0, 0, 0};
+        region.imageExtent = {
+            image.extent.width, 
+            image.extent.height, 
+            1
+        };
+
+        vkCmdCopyBufferToImage(commandBuffer, static_cast<VkBuffer>(buffer.handle), static_cast<VkImage>(image.handle), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        
+        //std::cout << "Submitted copy buffer to image command" << std::endl;
+        
+        endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);       
+    };
+
+    void VulkanLayer::copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) {
+        VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = 0;
+        copyRegion.size = size;
+
+        vkCmdCopyBuffer(commandBuffer, static_cast<VkBuffer>(srcBuffer.handle), static_cast<VkBuffer>(dstBuffer.handle), 1, &copyRegion);
+
+        endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);          
+    };
+
     // Skeleton for now, needs to be expanded 
     WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) {
         return WdPipeline(vertexShader, fragmentShader, vertexBuilder, viewportProperties);
@@ -913,6 +985,8 @@ namespace Wado::GAL::Vulkan {
 
         return *renderPass;
     };
+
+
 
     // Render pass creation & utils 
 
