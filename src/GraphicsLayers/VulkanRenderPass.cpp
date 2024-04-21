@@ -199,10 +199,16 @@ namespace Wado::GAL::Vulkan {
     };
     // END OF UTILS 
 
-    void VulkanRenderPass::updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex) {
+    void VulkanRenderPass::updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex, DescriptorCounts& descriptorCounts) {
         for (VulkanPipeline::VkUniforms::const_iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             VkDescriptorType descType = it->second.descType;
+            // We are checking every uniform in a pipeline here, so it's worth also updating descriptor counts
+            // for pool creation later on.
 
+            if (descriptorCounts.find(descType) == descriptorCounts.end()) {
+                descriptorCounts[descType] = 0;
+            };
+            descriptorCounts[descType] += it->second.resourceCount;
             // This is analogous to the attachment ref earlier      
             ResourceInfo resInfo{}; 
             resInfo.type = descType; 
@@ -379,6 +385,29 @@ namespace Wado::GAL::Vulkan {
             dependencies.push_back(dependency); 
         };
     };
+    
+    void VulkanRenderPass::createDescriptorPool() {
+        std::vector<VkDescriptorPoolSize> poolSizes{};
+
+        for (DescriptorCounts::const_iterator it = _descriptorCounts.begin(); it != _descriptorCounts.end(); ++it) {
+            VkDescriptorPoolSize poolSize{};
+            poolSize.type = it->first;
+            poolSize.descriptorCount = it->second;
+
+            poolSizes.push_back(poolSize);
+        };
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+        poolInfo.maxSets = static_cast<uint32_t>(_pipelines.size()); // as many as pipelines, if we do 1 set per pipeline
+        poolInfo.flags = 0;
+
+        if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor pool");
+        }
+    };
 
     // Init functions 
 
@@ -476,7 +505,8 @@ namespace Wado::GAL::Vulkan {
         uint8_t pipelineIndex = 0;
         // Generate uniform resource maps now, for synchronisation 
         for (const VulkanPipeline& pipeline : _pipelines) {
-            updateUniformResources(pipeline._uniforms, imageResources, bufferResources, pipelineIndex);
+            // Update uniform resource usage and also descriptor counts 
+            updateUniformResources(pipeline._uniforms, imageResources, bufferResources, pipelineIndex, _descriptorCounts);
 
             // Fragment-only subpass inputs and outs
             // TODO : repetetition of loop code with above ref code ^

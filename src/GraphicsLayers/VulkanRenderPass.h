@@ -62,6 +62,8 @@ namespace Wado::GAL::Vulkan {
                 VkExtent2D extent;
             };
 
+            using DescriptorCounts = std::map<VkDescriptorType, uint32_t>;
+
             static const VkDescriptorType FRAGMENT_OUTPUT_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MAX_ENUM; 
             static const VkDescriptorType DEPTH_STENCIL_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MUTABLE_VALVE; // TODO: this is very not good, not sure how to extend desc types in a better way...
 
@@ -95,12 +97,12 @@ namespace Wado::GAL::Vulkan {
             static void updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
             static void updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
             static void updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkImageView>& framebuffer, VkSubpassDescription& subpass);
-            static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex);
+            static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex, DescriptorCounts& descriptorCounts);
             template <class T>
             static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
             static void addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos);
 
-
+            void createDescriptorPool();
             /*VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs);
             
             static VertexInputDesc createVertexAttributeDescriptionsAndBinding(const WdPipeline::WdVertexInputs& vertexInputs);
@@ -122,6 +124,8 @@ namespace Wado::GAL::Vulkan {
             Framebuffer _framebuffer; // TODO: need to actually create the framebuffer object
             RenderArea _renderArea;
             VkDescriptorPool _descriptorPool;
+
+            DescriptorCounts _descriptorCounts;
             
             const std::vector<VulkanPipeline>& _pipelines;
             std::vector<VulkanPipelineInfo> _vkPipelines;
