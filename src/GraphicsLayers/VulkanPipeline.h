@@ -18,10 +18,12 @@
 namespace Wado::GAL::Vulkan {
     // Forward declaration
     class VulkanLayer;
+    class VulkanRenderPass;
 
     class VulkanPipeline : public WdPipeline {
         public:
             friend class VulkanLayer;
+            friend class VulkanRenderPass;
 
             void setUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource) override;
 
@@ -85,14 +87,19 @@ namespace Wado::GAL::Vulkan {
 
             using VkFragmentOutputs = std::map<std::string, VkFragmentOutput>;
 
+            using VkVertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>;
+
             void generateVertexParams();
             void generateFragmentParams();
 
             void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const VkDescriptorType descType, const VkShaderStageFlagBits stageFlag);
+            void createVertexAttributeDescriptionsAndBinding();
 
             VkUniformAddresses _uniformAddresses;
             VkUniforms _uniforms;
             VkVertexInputs _vertexInputs;
+            VkVertexInputDesc _vertexInputDesc;
+
             VkSubpassInputs _subpassInputs; // These are fragment only
             VkFragmentOutputs _fragmentOutputs;
 

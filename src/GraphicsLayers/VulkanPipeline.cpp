@@ -131,6 +131,7 @@ namespace Wado::GAL::Vulkan {
         
         generateVertexParams();
         generateFragmentParams();
+        createVertexAttributeDescriptionsAndBinding();
     };
 
     void VulkanPipeline::addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const VkDescriptorType descType, const VkShaderStageFlagBits stageFlag) {
@@ -169,6 +170,30 @@ namespace Wado::GAL::Vulkan {
             VkUniformIdent stageIdent = std::to_string(stageFlag) + resource.name;
             _uniformAddresses[stageIdent] = address; 
         };
+    };
+
+    // TODO: using vector a lot everywhere, I should look into performance characteristics,
+    // maybe arrays or other stack-based collections are better
+    void VulkanPipeline::createVertexAttributeDescriptionsAndBinding() {
+        std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+        
+        VkVertexInputBindingDescription bindingDescription{};
+
+        bindingDescription.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: when is this instance?
+        bindingDescription.stride = _vertexInputs.totalSize;
+
+        for (const VkVertexInput& vertexInput : _vertexInputs.inputs) { 
+            VkVertexInputAttributeDescription attributeDescription;
+            attributeDescription.binding = 0; // TODO: same as above
+            attributeDescription.location = vertexInput.decorationLocation;
+            attributeDescription.format = vertexInput.format;
+            attributeDescription.offset = vertexInput.offset;
+
+            attributeDescriptions.push_back(attributeDescription);
+        };
+
+        _vertexInputDesc = VkVertexInputDesc(attributeDescriptions, bindingDescription);
     };
 
     void VulkanPipeline::generateVertexParams() {
