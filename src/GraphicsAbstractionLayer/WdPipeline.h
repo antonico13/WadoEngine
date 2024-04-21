@@ -55,6 +55,6 @@ namespace Wado::GAL {
 
             virtual void setDepthStencilResource(Memory::WdClonePtr<WdImage> image) = 0;            
     };    
-}
+};
 
 #endif

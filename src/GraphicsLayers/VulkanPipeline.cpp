@@ -1,6 +1,102 @@
 #include "VulkanPipeline.h"
 
+#include <assert.h> 
+#include <stdexcept>
+
 namespace Wado::GAL::Vulkan {
+
+    void VulkanPipeline::setUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource) {
+        // If fragment, look first in subpassInputs before going to the general case 
+        if (stage == WdStage::Fragment) {
+
+            VkSubpassInputs::iterator it = _subpassInputs.find(paramName);
+            
+            if (it != _subpassInputs.end()) { // not a subpass input, continue
+                it->second.resource = resource.imageResource.image;
+                return;
+            };
+        };
+
+        // If above fails, go to the general uniform case 
+        setUniform(stage, paramName, {resource}); 
+    };
+
+    static const VkShaderStageFlagBits WdShaderStageToVkShaderStage[] = {
+        VK_SHADER_STAGE_ALL, // Corresponds to WdStage::Unknown
+        VK_SHADER_STAGE_VERTEX_BIT, // Corresponds to WdStage::Vertex
+        VK_SHADER_STAGE_FRAGMENT_BIT, // Corresponds to WdStage::Fragment
+    };
+
+    void VulkanPipeline::setUniform(const WdStage stage, const std::string& paramName, const std::vector<WdShaderResource>& resources) {
+        VkUniformIdent uniformIdent = std::to_string(WdShaderStageToVkShaderStage[stage]) + paramName;
+        VkUniformAddresses::iterator it = _uniformAddresses.find(uniformIdent);
+
+        if (it != _uniformAddresses.end()) { // Found, can set resource 
+            VkUniformAddress address = it->second;
+            VkUniforms::iterator uniform = _uniforms.find(address);
+            
+            assert(uniform != _uniforms.end()); // This should never fail by construction.
+
+            if (uniform->second.resourceCount < resources.size()) {
+                throw std::runtime_error("Cannot set uniform " + paramName + " values since provided resource array has greater size than the maximum resoucre count for this uniform.");
+            };
+            // TODO: type check here 
+            uniform->second.resources = resources;
+        };
+
+        throw std::runtime_error("Uniform " + paramName + "not found.");
+    };
+    
+    // Only for array uniforms 
+    void VulkanPipeline::addToUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource, int index) {
+        VkUniformIdent uniformIdent = std::to_string(WdShaderStageToVkShaderStage[stage]) + paramName;
+        VkUniformAddresses::iterator it = _uniformAddresses.find(uniformIdent);
+        
+        if (it != _uniformAddresses.end()) { // found, can add to resource 
+            VkUniformAddress address = it->second;
+            VkUniforms::iterator uniform = _uniforms.find(address);
+            // Checks here
+            if (uniform->second.resourceCount == 1) {
+                throw std::runtime_error("Cannot add to uniform " + paramName + ", since it is of non-array type.");
+            };
+
+            if (uniform->second.resourceCount < index) {
+                throw std::runtime_error("Cannot add to uniform " + paramName + ", since provided index is out of bounds.");
+                return;
+            };
+
+            if (index == UNIFORM_END) {
+                // Need to push back in this case 
+
+                if (uniform->second.resourceCount == uniform->second.resources.size()) {
+                    throw std::runtime_error("Cannot add to uniform " + paramName + ", all of its values have already been set.");
+                };
+
+                uniform->second.resources.push_back(resource);
+            } else {
+                // TODO: this is terrible but it might work, fix pls 
+                std::replace(uniform->second.resources.begin() + index, uniform->second.resources.begin() + index + 1, uniform->second.resources[index], resource); 
+            }
+        };
+        
+        throw std::runtime_error("Uniform " + paramName + "not found.");
+    };
+
+    void VulkanPipeline::setFragmentOutput(const std::string& paramName, Memory::WdClonePtr<WdImage> image) {
+        VkFragmentOutputs::iterator it = _fragmentOutputs.find(paramName);
+        
+        if (it != _fragmentOutputs.end()) {
+            it->second.resource = image;
+        };
+
+        throw std::runtime_error("There is no fragment output argument with the name " + paramName);
+    };
+
+    void VulkanPipeline::setDepthStencilResource(Memory::WdClonePtr<WdImage> image) {
+        _depthStencilResource = image;
+    };
+        
+    // Internal functions and helpers
 
     // index by vec size first, then by base type 
     static const VkFormat SPIRVtoVkFormat[4][15] = {
