@@ -189,6 +189,83 @@ namespace Wado::GAL::Vulkan {
         subpass.pDepthStencilAttachment = &attachmentRef; // TODO: I'm pretty sure the ref dies? 
     };
 
+    // UTILS, move to VkLayer
+    static inline bool isImageDescriptor(VkDescriptorType descType) {
+        return descType >= VK_DESCRIPTOR_TYPE_SAMPLER && descType <= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    };
+
+    static inline bool isBufferDescriptor(VkDescriptorType descType) {
+        return descType >= VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && descType <= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    };
+    // END OF UTILS 
+
+    void VulkanRenderPass::updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex) {
+        for (VulkanPipeline::VkUniforms::const_iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
+            VkDescriptorType descType = it->second.descType;
+
+            // This is analogous to the attachment ref earlier      
+            ResourceInfo resInfo{}; 
+            resInfo.type = descType; 
+            resInfo.pipelineIndex = pipelineIndex; 
+            resInfo.stages = it->second.stages; 
+
+            if (isImageDescriptor(descType)) {
+                // Need to do this for every resource 
+                for (const WdShaderResource& res : it->second.resources) {
+                    WdImageHandle handle = res.imageResource.image->handle;
+                    ImageResources::iterator imgResInfo = imageResources.find(handle); 
+
+                    if (imgResInfo == imageResources.end()) { 
+                        // This resource has never been seen before
+                        std::vector<ResourceInfo> resInfos; 
+                        imageResources[handle] = resInfos; 
+                    };
+            
+                    imageResources[handle].push_back(resInfo); 
+                };
+            };
+            // TODO: the two if's here are quite ugly, find a better way
+            // Idea: might not need to differentiate resource types..., just need handle to stage usage and Read/Write. 
+            if (isBufferDescriptor(descType)) {
+                // need to do for every resource
+                for (const WdShaderResource& res : it->second.resources) {
+                    WdBufferHandle handle = res.bufferResource.buffer->handle; 
+                    BufferResources::iterator bufResInfo = bufferResources.find(handle); 
+                    
+                    if (bufResInfo == bufferResources.end()) {
+                        // This resource has never been seen before 
+                        std::vector<ResourceInfo> resInfos; 
+                        bufferResources[handle] = resInfos;
+                    };
+
+                    bufferResources[handle].push_back(resInfo); 
+                };
+            };
+        }        
+    };
+
+    template <class T>
+    void VulkanRenderPass::updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex) {
+        for (T::iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
+
+            ResourceInfo resInfo{}; 
+            resInfo.type = type;
+            resInfo.stages = VK_SHADER_STAGE_FRAGMENT_BIT; 
+            resInfo.pipelineIndex = pipelineIndex; 
+            
+            WdImageHandle handle = it->second.resource->handle;
+            ImageResources::iterator imgResInfo = imageResources.find(handle); 
+            
+            if (imgResInfo == imageResources.end()) { 
+                // not found, init array
+                std::vector<ResourceInfo> resInfos; 
+                imageResources[handle] = resInfos; 
+            };
+
+            imageResources[handle].push_back(resInfo); 
+        };
+    };
+
     // Init functions 
 
     VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device) : _pipelines(pipelines), _device(device) {}; 
@@ -277,7 +354,7 @@ namespace Wado::GAL::Vulkan {
             attachmentDescs[info.attachmentIndex] = it->second.attachmentDesc;
         };
         
-        // need to generate all deps now 
+        // Need to generate all subpass dependencies now 
 
         ImageResources imageResources;
         BufferResources bufferResources;
@@ -288,14 +365,15 @@ namespace Wado::GAL::Vulkan {
             updateUniformResources(pipeline._uniforms, imageResources, bufferResources, pipelineIndex);
 
             // Fragment-only subpass inputs and outs
-            WdPipeline::SubpassInputs fragmentInputs = pipeline._subpassInputs;
-            WdPipeline::FragmentOutputs fragmentOutputs = pipeline._fragmentOutputs;
+            // TODO : repetetition of loop code with above ref code ^
+            VulkanPipeline::VkSubpassInputs fragmentInputs = pipeline._subpassInputs;
+            VulkanPipeline::VkFragmentOutputs fragmentOutputs = pipeline._fragmentOutputs;
 
-            updateAttachmentResources<WdPipeline::SubpassInputs>(fragmentInputs, imageResources, pipelineIndex);
-            updateAttachmentResources<WdPipeline::FragmentOutputs>(fragmentOutputs, imageResources, pipelineIndex);
+            updateAttachmentResources<VulkanPipeline::VkSubpassInputs>(fragmentInputs, imageResources, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pipelineIndex);
+            updateAttachmentResources<VulkanPipeline::VkFragmentOutputs>(fragmentOutputs, imageResources, FRAGMENT_OUTPUT_DESC, pipelineIndex);
 
             pipelineIndex++;
-        }
+        };
 
         std::vector<VkSubpassDependency> dependencies;
 

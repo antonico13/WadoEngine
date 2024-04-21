@@ -62,6 +62,8 @@ namespace Wado::GAL::Vulkan {
                 VkExtent2D extent;
             };
 
+            static const VkDescriptorType FRAGMENT_OUTPUT_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MAX_ENUM; 
+
             // Wd to Vk Translation utils
 
             /*inline static const WdPipeline::WdShaderParameterTypeMask _imgReadMask = WdPipeline::WdShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::WdShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::WdShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::WdShaderParameterType::WD_SUBPASS_INPUT;
@@ -85,13 +87,12 @@ namespace Wado::GAL::Vulkan {
 
             static void updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
             static void updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
-
-            /*static void updateUniformResources(const WdPipeline::WdUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, uint8_t pipelineIndex);
-            
+            static void updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkImageView>& framebuffer, VkSubpassDescription& subpass);
+            static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex);
             template <class T>
-            static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, uint8_t pipelineIndex);
-            
-            VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs);
+            static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
+
+            /*VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs);
             
             static VertexInputDesc createVertexAttributeDescriptionsAndBinding(const WdPipeline::WdVertexInputs& vertexInputs);
 
