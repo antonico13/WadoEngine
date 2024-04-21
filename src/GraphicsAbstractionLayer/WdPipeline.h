@@ -5,21 +5,12 @@
 #include "WdImage.h"
 #include "WdBuffer.h"
 
-#include "Shader.h"
-
 #include "MainClonePtr.h"
-
-#include "spirv.h"
-#include "spirv_cross.hpp"
 
 #include <string>
 #include <vector>
-#include <map>
 
 namespace Wado::GAL {
-    // Forward declaration
-    class WdLayer;
-    class WdRenderPass;
 
     using WdImageResource = struct WdImageResource {
         Memory::WdClonePtr<WdImage> image;
@@ -42,130 +33,27 @@ namespace Wado::GAL {
         WdShaderResource(Memory::WdClonePtr<WdBuffer> buf, WdRenderTarget bufTarget);
 
         // copy assignment & constructor
-        //WdShaderResource& operator=(const WdShaderResource& other);
-        //WdShaderResource(const WdShaderResource& other);
+        // WdShaderResource& operator=(const WdShaderResource& other);
+        // WdShaderResource(const WdShaderResource& other);
         // move assignment & constructor 
-        //WdShaderResource& operator=(const WdShaderResource& other);
-        //WdShaderResource(const WdShaderResource& other);
+        // WdShaderResource& operator=(const WdShaderResource& other);
+        // WdShaderResource(const WdShaderResource& other);
     };
     
-
-    // WdPipeline along with the base resource types is the one 
-    // class that is not abstracted away. setting shader params and 
-    // creating the maps seems like it should be completely platform 
-    // and API agnostic 
-    class WdPipeline final {
+    class WdPipeline  {
         public:
-            friend class WdLayer;
-            friend class WdRenderPass;
+            inline static const int UNIFORM_END = -1;
 
-            //friend class Vulkan::VulkanLayer;
-            //friend class Vulkan::VulkanRenderPass;
+            virtual void setUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource) = 0;
 
-            static const int UNIFORM_END = -1;
+            virtual void setUniform(const WdStage stage, const std::string& paramName, const std::vector<WdShaderResource>& resources) = 0;
 
-            // subpass inputs handled in setUniform 
-            void setUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource);
-
-            // for array params
-            void setUniform(const WdStage stage, const std::string& paramName, const std::vector<WdShaderResource>& resources);
-
-            void addToUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource, int index = UNIFORM_END);
+            virtual void addToUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource, int index = UNIFORM_END) = 0;
 
             // These resources need to be handled separately compared to uniforms
-            void setFragmentOutput(const std::string& paramName, Memory::WdClonePtr<WdImage> resource);
+            virtual void setFragmentOutput(const std::string& paramName, Memory::WdClonePtr<WdImage> image) = 0;
 
-            void setDepthStencilResource(Memory::WdClonePtr<WdImage> resource);
-
-        private:
-            // Util types 
-            enum WdShaderParameterType {
-                WD_SAMPLED_IMAGE = 0x00000000, // sampler2D
-                WD_TEXTURE_IMAGE = 0x00000001, // just texture2D
-                WD_STORAGE_IMAGE = 0x00000002, // read-write
-                WD_SAMPLED_BUFFER = 0x00000004,
-                WD_BUFFER_IMAGE = 0x00000008,
-                WD_UNIFORM_BUFFER = 0x00000010,
-                WD_SUBPASS_INPUT = 0x00000020, // only supported by Vulkan
-                WD_STORAGE_BUFFER = 0x00000040, 
-                WD_STAGE_OUTPUT = 0x00000080, // used for outs 
-                WD_SAMPLER = 0x00000100,
-                WD_PUSH_CONSTANT = 0x00000200, // only supported by Vulkan backend
-                WD_STAGE_INPUT = 0x00000400, // used for ins 
-            };
-
-            using WdVertexInput = struct WdVertexInput {
-                WdShaderParameterType paramType;
-                uint8_t decorationLocation;
-                uint8_t decorationBinding; // I think this should be unused for now 
-                uint8_t offset;
-                uint8_t size;
-                WdFormat format;
-            };
-
-            using WdUniform = struct WdUniform {
-                WdShaderParameterType paramType;
-                uint8_t decorationSet;
-                uint8_t decorationBinding;
-                uint8_t decorationLocation;
-                uint8_t resourceCount;
-                WdStageMask stages;
-                std::vector<WdShaderResource> resources;
-            };
-
-            using WdSubpassInput = struct WdSubpassInput { // Vulkan only 
-                WdShaderParameterType paramType; // always subpass input, doesn't really matter 
-                uint8_t decorationSet;
-                uint8_t decorationBinding;
-                uint8_t decorationLocation;
-                uint8_t decorationIndex;
-                Memory::WdClonePtr<WdImage> resource;
-            }; 
-
-            using WdFragmentOutput = struct WdFragmentOutput { 
-                WdShaderParameterType paramType; // always stage output, doesn't really matter 
-                uint8_t decorationIndex; // Needed in order to create refs and layouts
-                Memory::WdClonePtr<WdImage> resource; 
-            }; 
-
-            using WdUniformAddress = std::tuple<uint8_t, uint8_t, uint8_t>; // (Set, Binding, Location)
-            using WdUniformIdent = std::tuple<std::string, WdStage>; // (uniform name, stage its in)
-
-            using WdVertexInputs = std::vector<WdVertexInput>;
-            using WdUniforms = std::map<WdUniformAddress, WdUniform>;
-            using WdUniformAddresses = std::map<WdUniformIdent, WdUniformAddress>;
-            using WdSubpassInputs = std::map<std::string, WdSubpassInput>;
-            using WdFragmentOutputs = std::map<std::string, WdFragmentOutput>;
-            
-            // Convert shader byte code form bytes to SPIR-V words
-            using SPIRVShaderByteCode = struct SPIRVShaderByteCode {
-                const uint32_t* spirvWords;
-                size_t wordCount;
-            };
-
-            WdPipeline(Shader::WdShaderByteCode vertexShader, Shader::WdShaderByteCode fragmentShader, const WdViewportProperties& viewportProperties);
-
-            // Util functions for building up the parameters and pipeline properties
-            void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const WdShaderParameterType paramType, const WdStage stage);
-
-            void generateVertexParams();
-            void generateFragmentParams();
-            
-            SPIRVShaderByteCode _spirvVertexShader;
-            SPIRVShaderByteCode _spirvFragmentShader;
-            Shader::WdShaderByteCode _vertexShader;
-            Shader::WdShaderByteCode _fragmentShader;
-
-            WdUniformAddresses _uniformAddresses;
-            WdUniforms _uniforms;
-
-            WdVertexInputs _vertexInputs;
-            WdSubpassInputs _subpassInputs; // fragment & Vulkan only
-            WdFragmentOutputs _fragmentOutputs;
-
-            Memory::WdClonePtr<WdImage> _depthStencilResource; // by default should be an invalid pointer?
-
-            const WdViewportProperties& _viewportProperties;
+            virtual void setDepthStencilResource(Memory::WdClonePtr<WdImage> image) = 0;            
     };    
 }
 
