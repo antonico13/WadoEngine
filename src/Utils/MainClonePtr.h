@@ -22,6 +22,10 @@ namespace Wado::Memory {
 
             T& operator* ();
             T* operator-> ();
+
+            const T& operator* () const;
+            const T* operator->() const;
+
             ~WdClonePtr();
 
             WdClonePtr(); // Empty clone pointer can be initialized without a main pointer, always invalid but useful for default values

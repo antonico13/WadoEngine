@@ -34,6 +34,29 @@ namespace Wado::Memory {
     };
 
     template <class T>
+    const T& WdClonePtr<T>::operator*() const {
+        if (!this) {
+            throw std::runtime_error("Attempted to access clone pointer resource that is uninitialized.");
+        }
+        if (!_validity->alive) {
+            throw std::runtime_error("Attempted to access clone pointer resource after main pointer was deleted.");
+        }
+        return *_ptr;
+    };
+
+    template <class T>
+    const T* WdClonePtr<T>::operator->() const {
+        if (!this) {
+            throw std::runtime_error("Attempted to access clone pointer resource that is uninitialized.");
+        }
+        if (!_validity->alive) {
+            throw std::runtime_error("Attempted to access clone pointer resource after main pointer was deleted.");
+        }
+        return _ptr; 
+    };
+
+
+    template <class T>
     WdClonePtr<T>& WdClonePtr<T>::operator=(const WdClonePtr<T>& other) {
         if (!other || !other._validity->alive) {
             throw std::runtime_error("Attempted to copy clone pointer that is invalid.");
