@@ -266,6 +266,120 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
+    // TODO: should util functions all be moved to VkLayer?
+    bool VulkanRenderPass::isWriteDescriptorType(VkDescriptorType type) {
+        return type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+            type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || 
+            type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+            type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
+            type == FRAGMENT_OUTPUT_DESC;
+    };
+
+    VkPipelineStageFlags VulkanRenderPass::resInfoToVkStage(const ResourceInfo& resInfo) {
+        VkPipelineStageFlags stageFlags = 0;
+
+        if (resInfo.type == FRAGMENT_OUTPUT_DESC) { // color attachment cant really be both used in fragment and output to in fragment
+            stageFlags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        } else if (resInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
+            stageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+
+        if (resInfo.stages == VK_SHADER_STAGE_VERTEX_BIT) { // but it could be read in vertex
+            stageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        }
+
+        return stageFlags;
+    };
+
+    // TODO: this doesn't want to be const becuase of return type
+    std::map<VkDescriptorType, VkAccessFlags> VulkanRenderPass::decriptorTypeToAccessType = {
+            {VK_DESCRIPTOR_TYPE_SAMPLER, VK_ACCESS_SHADER_READ_BIT}, 
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_ACCESS_SHADER_READ_BIT},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_ACCESS_SHADER_READ_BIT},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VK_ACCESS_SHADER_READ_BIT},
+            {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_ACCESS_UNIFORM_READ_BIT},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_ACCESS_UNIFORM_READ_BIT},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT},
+            {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VK_ACCESS_INPUT_ATTACHMENT_READ_BIT},
+            {FRAGMENT_OUTPUT_DESC, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT},
+        };
+
+    // need to refactor the duplication here 
+    void VulkanRenderPass::addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos) {
+        std::vector<ResourceInfo> previousReads{};
+        ResourceInfo lastWrite{};
+        lastWrite.stages = VkShaderStageFlagBits::VK_SHADER_STAGE_ALL; // TODO: Should I change it so every time I use enums I mention the scope?
+        lastWrite.pipelineIndex = -1;
+        // Go over every usage of every resource 
+        // All reads after a write must wait for the write to finish.
+        // A new write must wait for *all* previous reads inbetween it and the last write to finish
+        // Reset read vector when finding a new write.
+        for (const ResourceInfo& resInfo : resInfos) {
+            // All desc sets are read by default.
+            // Subpass inputs are read-only
+            // Fragment outputs are write-only
+            // Only storage image, storage texel and storage buffer are RW
+
+            if (isWriteDescriptorType(resInfo.type)) {
+                // If it is a write, it must wait for every read before it to finish
+                for (const ResourceInfo& readResInfo : previousReads) {
+                    // Need to add two dependencies here, make all reads 
+                    // wait for the previous write, then make this 
+                    // write wait for all reads. 
+                    // If the last stages are only reads, add them at the end. 
+                    VkSubpassDependency firstDependency{};
+                    firstDependency.srcSubpass = readResInfo.pipelineIndex;
+                    firstDependency.dstSubpass = resInfo.pipelineIndex;
+                            
+                    // Stage mask is obtained from resInfo's stage and param type 
+                    // Mask just from type
+                    firstDependency.srcStageMask = resInfoToVkStage(readResInfo);
+                    firstDependency.srcAccessMask = decriptorTypeToAccessType[readResInfo.type];
+
+                    firstDependency.dstStageMask = resInfoToVkStage(resInfo);
+                    firstDependency.dstAccessMask = decriptorTypeToAccessType[resInfo.type];
+
+                    VkSubpassDependency secondDependency{};
+                    secondDependency.srcSubpass = lastWrite.pipelineIndex;
+                    secondDependency.dstSubpass = readResInfo.pipelineIndex;
+                            
+                    // Stage mask is obtained from resInfo's stage and param type 
+                    // Mask just from type
+                    secondDependency.srcStageMask = resInfoToVkStage(lastWrite);
+                    secondDependency.srcAccessMask = decriptorTypeToAccessType[lastWrite.type];
+
+                    secondDependency.dstStageMask = resInfoToVkStage(readResInfo);
+                    secondDependency.dstAccessMask = decriptorTypeToAccessType[readResInfo.type];
+
+                    dependencies.push_back(firstDependency);
+                    dependencies.push_back(secondDependency);   
+                };
+
+                previousReads.clear();
+                lastWrite = resInfo;
+            };
+            // TODO: fragment output desc is the only write-only part, should that be treated differently?
+            previousReads.push_back(resInfo);
+        };
+        // Now, if there are any reads leftover they must wait for the previous write. 
+        for (const ResourceInfo& readResInfo : previousReads) {
+            VkSubpassDependency dependency{};
+            dependency.srcSubpass = lastWrite.pipelineIndex;
+            dependency.dstSubpass = readResInfo.pipelineIndex;
+                            
+            dependency.srcStageMask = resInfoToVkStage(lastWrite);
+            dependency.srcAccessMask = decriptorTypeToAccessType[lastWrite.type];
+
+            dependency.dstStageMask = resInfoToVkStage(readResInfo);
+            dependency.dstAccessMask = decriptorTypeToAccessType[readResInfo.type];
+
+            dependencies.push_back(dependency); 
+        };
+    };
+
     // Init functions 
 
     VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device) : _pipelines(pipelines), _device(device) {}; 
@@ -371,22 +485,22 @@ namespace Wado::GAL::Vulkan {
 
             updateAttachmentResources<VulkanPipeline::VkSubpassInputs>(fragmentInputs, imageResources, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pipelineIndex);
             updateAttachmentResources<VulkanPipeline::VkFragmentOutputs>(fragmentOutputs, imageResources, FRAGMENT_OUTPUT_DESC, pipelineIndex);
-
+            // TODO: depth should be handled here too.
             pipelineIndex++;
         };
 
         std::vector<VkSubpassDependency> dependencies;
 
         for (ImageResources::iterator it = imageResources.begin(); it != imageResources.end(); ++it) {
-            addDependencies(dependencies, it->second, imgReadMask, imgWriteMask);
-        }
+            addDependencies(dependencies, it->second);
+        };
 
         for (BufferResources::iterator it = bufferResources.begin(); it != bufferResources.end(); ++it) {
-            addDependencies(dependencies, it->second, bufReadMask, bufWriteMask);
-        }
-        // all dependencies except external dependencies should be added now 
+            addDependencies(dependencies, it->second);
+        };
+        // All dependencies except external should be added now.
 
-        // can create the actual render pass object now 
+        // Can create the actual render pass object now 
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         renderPassInfo.attachmentCount = static_cast<uint32_t>(attachmentDescs.size());
@@ -397,18 +511,18 @@ namespace Wado::GAL::Vulkan {
         renderPassInfo.pDependencies = dependencies.data();
 
         if (vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create render pass");
-        }
+            throw std::runtime_error("Failed to create Vulkan render pass!");
+        };
 
-        createDescriptorPool(); // create descriptor pool first, then allocate sets when creating pipeline 
+        createDescriptorPool(); // Create descriptor pool first, then allocate the sets and create writes when making the pipeline objects
 
-        // create all Vulkan pipelines now 
+        // Create all Vulkan pipelines now 
         uint8_t index = 0;
-        for (const WdPipeline& pipeline : _pipelines) {
-            VulkanPipeline vkPipeline = createVulkanPipeline(pipeline, index);
+        for (const VulkanPipeline& pipeline : _pipelines) {
+            /*VulkanPipeline vkPipeline = createVulkanPipeline(pipeline, index);
             writeDescriptorSets(vkPipeline.descriptorSets, pipeline._uniforms, pipeline._subpassInputs);
             _vkPipelines.push_back(vkPipeline);
-            index++;
-        }
+            index++; */
+        };
     };
 };

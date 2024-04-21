@@ -63,6 +63,13 @@ namespace Wado::GAL::Vulkan {
             };
 
             static const VkDescriptorType FRAGMENT_OUTPUT_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MAX_ENUM; 
+            static const VkDescriptorType DEPTH_STENCIL_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MUTABLE_VALVE; // TODO: this is very not good, not sure how to extend desc types in a better way...
+
+            static bool isWriteDescriptorType(VkDescriptorType type);
+            static VkPipelineStageFlags resInfoToVkStage(const ResourceInfo& resInfo);
+
+            static std::map<VkDescriptorType, VkAccessFlags> decriptorTypeToAccessType;
+
 
             // Wd to Vk Translation utils
 
@@ -91,6 +98,8 @@ namespace Wado::GAL::Vulkan {
             static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex);
             template <class T>
             static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
+            static void addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos);
+
 
             /*VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs);
             
