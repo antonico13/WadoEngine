@@ -740,10 +740,6 @@ namespace Wado::GAL::Vulkan {
     // GAL functions:
 
     Memory::WdClonePtr<WdImage> VulkanLayer::getDisplayTarget() {
-        // TODO: deal with multiple frames in flight here 
-        VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _imageAvailableSemaphores[0], VK_NULL_HANDLE, &_currentSwapchainImageIndex);
-        // TODO: this should be moved?
-        // TODO: deal with error here 
         return _swapchainImage.getClonePtr();
     };
 
@@ -1114,29 +1110,43 @@ namespace Wado::GAL::Vulkan {
         
         const VulkanCommandList& vkCommandList = dynamic_cast<const VulkanCommandList&>(commandList);
 
+        // Submitting graphics queue only right now 
+
+        VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _imageAvailableSemaphores[currentFrameIndex], VK_NULL_HANDLE, &_currentSwapchainIndex);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {// || bFramebufferResized) {
+            //bFramebufferResized = false;
+            //recreateSwapChain();
+            throw std::runtime_error("Vulkan display target is out of date!");
+            return;
+        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("Failed to acquire swap chain image!");
+        };
+
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
         // wait until the image is available 
-        VkSemaphore waitSemaphores[] = {_imageAvailableSemaphores[0]}; // TODO: multiple frames in flight 
+        VkSemaphore waitSemaphores[] = {_imageAvailableSemaphores[currentFrameIndex]};
         // wait for the color attachment output stage to finish 
+        // TODO: This can become more complicated with compute and other synchronisation 
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
 
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &vkCommandList._graphicsCommandBuffer; // TODO: multiple frames in flight 
+        submitInfo.pCommandBuffers = &vkCommandList._graphicsCommandBuffers[currentFrameIndex]; 
 
         // signal that rendering for this frame is finished 
-        VkSemaphore signalSemaphores[] = {_renderFinishedSemaphores[0]}; // TODO: multiple frames in flight 
+        VkSemaphore signalSemaphores[] = {_renderFinishedSemaphores[currentFrameIndex]};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
         // signal the in flight fence when we are done so the CPU can work with this frame again
         VkResult submitResult = vkQueueSubmit(_graphicsQueue, 1, &submitInfo, static_cast<VkFence>(fenceToSignal));
         if (submitResult != VK_SUCCESS) {
-            throw std::runtime_error("Failed to execute Vulkan command list!");
+            throw std::runtime_error("Failed to submit Vulkan graphics command list!");
         };
     };
 
@@ -1145,11 +1155,11 @@ namespace Wado::GAL::Vulkan {
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         // only present when the rendering is finished 
-        presentInfo.pWaitSemaphores = &_renderFinishedSemaphores[0]; // TODO: deal with multiple frames in flight here 
+        presentInfo.pWaitSemaphores = &_renderFinishedSemaphores[currentFrameIndex]; 
 
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &_swapchain;
-        presentInfo.pImageIndices = &_currentSwapchainImageIndex;
+        presentInfo.pImageIndices = &_currentSwapchainIndex;
         presentInfo.pResults = nullptr;
 
         VkResult result = vkQueuePresentKHR(_presentQueue, &presentInfo);

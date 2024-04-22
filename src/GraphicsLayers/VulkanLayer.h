@@ -212,11 +212,11 @@ namespace Wado::GAL::Vulkan {
             VkExtent2D _swapchainImageExtent;
             Memory::WdMainPtr<WdImage> _swapchainImage;
 
+            uint32_t _currentSwapchainIndex;
+
             std::vector<VkImageView> _swapchainImageViews;
             std::vector<VkSemaphore> _imageAvailableSemaphores;
             std::vector<VkSemaphore> _renderFinishedSemaphores;
-
-            uint32_t _currentSwapchainImageIndex;
 
             // used for global sampler and texture creation, based on device
             // properties and re-calculated every time device is set up.
