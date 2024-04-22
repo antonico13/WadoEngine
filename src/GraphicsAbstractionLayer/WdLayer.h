@@ -50,15 +50,19 @@ namespace Wado::GAL {
 
             virtual Memory::WdClonePtr<WdRenderPass> createRenderPass(const std::vector<WdPipeline>& pipelines) = 0;
 
-            virtual void executeCommandList(const WdCommandList& commandList) = 0;
-
             virtual Memory::WdClonePtr<WdCommandList> createCommandList() = 0;
+
+            virtual void executeCommandList(const WdCommandList& commandList) = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
 
             virtual void transitionImageUsage(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) = 0;
 
             virtual void displayCurrentTarget() = 0;
+
+        protected:
+            static WdImage* create2DImagePtr(WdImageHandle _handle, WdMemoryHandle _memory, WdRenderTarget _target, WdFormat _format, WdExtent3D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue);
+            static WdBuffer* createBufferPtr(WdBufferHandle _handle, WdMemoryHandle _memory, WdSize _size, WdBufferUsageFlags _usage);
     };   
 }
 #endif
