@@ -82,6 +82,20 @@ namespace Wado::GAL::Vulkan {
         return vkClearValue;
     };
 
+    VkPipelineStageFlags VulkanRenderPass::VkShaderStageFlagsToVkPipelineStageFlags(const VkShaderStageFlags stageFlags) {
+        VkPipelineStageFlags pipelineStages = 0;
+        
+        if (stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
+            pipelineStages |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        };
+
+        if (stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) {
+            pipelineStages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        };
+
+        return pipelineStages;
+    };
+
     // TODO: a bit of repetition in all the update functions 
     void VulkanRenderPass::updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, Framebuffer& framebuffer, VkImageLayout layout) {
         for (VulkanPipeline::VkFragmentOutputs::const_iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
@@ -174,7 +188,7 @@ namespace Wado::GAL::Vulkan {
         AttachmentMap::iterator attachment = attachments.find(attachmentHandle);
 
         if (attachment == attachments.end()) { // Not found, needs desc.
-             // First time seeing this resource used as an attachment, need to create new entry
+            // First time seeing this resource used as an attachment, need to create new entry
             VkAttachmentDescription attachmentDesc{};
             attachmentDesc.format = WdFormatToVkFormat[depthStencilAttachment->format];
             attachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT; // TODO :: Figure out how to deal with samples. 
@@ -230,6 +244,7 @@ namespace Wado::GAL::Vulkan {
             resInfo.type = descType; 
             resInfo.pipelineIndex = pipelineIndex; 
             resInfo.stages = it->second.stages; 
+            resInfo.pipelineStages = VkShaderStageFlagsToVkPipelineStageFlags(it->second.stages);
 
             if (isImageDescriptor(descType)) {
                 // Need to do this for every resource 
@@ -274,6 +289,7 @@ namespace Wado::GAL::Vulkan {
             resInfo.type = type;
             resInfo.stages = VK_SHADER_STAGE_FRAGMENT_BIT; 
             resInfo.pipelineIndex = pipelineIndex; 
+            resInfo.pipelineStages = type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; // TODO: Janky, needs fixing
             
             WdImageHandle handle = it->second.resource->handle;
             ImageResources::iterator imgResInfo = imageResources.find(handle); 
@@ -288,29 +304,36 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
+    void VulkanRenderPass::updateDepthStencilResource(Memory::WdClonePtr<WdImage> depthStencil, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex) {
+        if (!depthStencil) {
+            return; // Depth stencil not set 
+        };
+
+        ResourceInfo resInfo{}; 
+        resInfo.type = type;
+        resInfo.stages = VK_SHADER_STAGE_FRAGMENT_BIT; 
+        resInfo.pipelineStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        resInfo.pipelineIndex = pipelineIndex; 
+            
+        ImageResources::iterator imgResInfo = imageResources.find(depthStencil->handle); 
+            
+        if (imgResInfo == imageResources.end()) { 
+            // not found, init array
+            std::vector<ResourceInfo> resInfos; 
+            imageResources[depthStencil->handle] = resInfos; 
+        };
+
+        imageResources[depthStencil->handle].push_back(resInfo); 
+    };
+
+
     // TODO: should util functions all be moved to VkLayer?
     bool VulkanRenderPass::isWriteDescriptorType(VkDescriptorType type) {
         return type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
             type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || 
             type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
             type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
-            type == FRAGMENT_OUTPUT_DESC;
-    };
-
-    VkPipelineStageFlags VulkanRenderPass::resInfoToVkStage(const ResourceInfo& resInfo) {
-        VkPipelineStageFlags stageFlags = 0;
-
-        if (resInfo.type == FRAGMENT_OUTPUT_DESC) { // color attachment cant really be both used in fragment and output to in fragment
-            stageFlags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        } else if (resInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
-            stageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        }
-
-        if (resInfo.stages == VK_SHADER_STAGE_VERTEX_BIT) { // but it could be read in vertex
-            stageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-        }
-
-        return stageFlags;
+            type == FRAGMENT_OUTPUT_DESC || type == DEPTH_STENCIL_DESC;
     };
 
     // TODO: this doesn't want to be const becuase of return type
@@ -327,14 +350,19 @@ namespace Wado::GAL::Vulkan {
             {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT},
             {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VK_ACCESS_INPUT_ATTACHMENT_READ_BIT},
             {FRAGMENT_OUTPUT_DESC, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT},
+            {DEPTH_STENCIL_DESC, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT},
         };
 
     // need to refactor the duplication here 
     void VulkanRenderPass::addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos) {
         std::vector<ResourceInfo> previousReads{};
+        // TODO: This effectively adds an external dep on the color attachments, but this is for every 
+        // resource. I don't think this will work.
         ResourceInfo lastWrite{};
         lastWrite.stages = VkShaderStageFlagBits::VK_SHADER_STAGE_ALL; // TODO: Should I change it so every time I use enums I mention the scope?
-        lastWrite.pipelineIndex = -1;
+        lastWrite.type = FRAGMENT_OUTPUT_DESC;
+        lastWrite.pipelineStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        lastWrite.pipelineIndex = VK_SUBPASS_EXTERNAL;
         // Go over every usage of every resource 
         // All reads after a write must wait for the write to finish.
         // A new write must wait for *all* previous reads inbetween it and the last write to finish
@@ -358,10 +386,10 @@ namespace Wado::GAL::Vulkan {
                             
                     // Stage mask is obtained from resInfo's stage and param type 
                     // Mask just from type
-                    firstDependency.srcStageMask = resInfoToVkStage(readResInfo);
+                    firstDependency.srcStageMask = readResInfo.pipelineStages;
                     firstDependency.srcAccessMask = decriptorTypeToAccessType[readResInfo.type];
 
-                    firstDependency.dstStageMask = resInfoToVkStage(resInfo);
+                    firstDependency.dstStageMask = resInfo.pipelineStages;
                     firstDependency.dstAccessMask = decriptorTypeToAccessType[resInfo.type];
 
                     VkSubpassDependency secondDependency{};
@@ -370,10 +398,10 @@ namespace Wado::GAL::Vulkan {
                             
                     // Stage mask is obtained from resInfo's stage and param type 
                     // Mask just from type
-                    secondDependency.srcStageMask = resInfoToVkStage(lastWrite);
+                    secondDependency.srcStageMask = lastWrite.pipelineStages;
                     secondDependency.srcAccessMask = decriptorTypeToAccessType[lastWrite.type];
 
-                    secondDependency.dstStageMask = resInfoToVkStage(readResInfo);
+                    secondDependency.dstStageMask = readResInfo.pipelineStages;
                     secondDependency.dstAccessMask = decriptorTypeToAccessType[readResInfo.type];
 
                     dependencies.push_back(firstDependency);
@@ -392,10 +420,10 @@ namespace Wado::GAL::Vulkan {
             dependency.srcSubpass = lastWrite.pipelineIndex;
             dependency.dstSubpass = readResInfo.pipelineIndex;
                             
-            dependency.srcStageMask = resInfoToVkStage(lastWrite);
+            dependency.srcStageMask = lastWrite.pipelineStages;
             dependency.srcAccessMask = decriptorTypeToAccessType[lastWrite.type];
 
-            dependency.dstStageMask = resInfoToVkStage(readResInfo);
+            dependency.dstStageMask = readResInfo.pipelineStages;
             dependency.dstAccessMask = decriptorTypeToAccessType[readResInfo.type];
 
             dependencies.push_back(dependency); 
@@ -840,13 +868,14 @@ namespace Wado::GAL::Vulkan {
             updateUniformResources(pipeline._uniforms, imageResources, bufferResources, pipelineIndex, _descriptorCounts);
 
             // Fragment-only subpass inputs and outs
-            // TODO : repetetition of loop code with above ref code ^
+            // TODO : repetition of loop code with above ref code ^
             VulkanPipeline::VkSubpassInputs fragmentInputs = pipeline._subpassInputs;
             VulkanPipeline::VkFragmentOutputs fragmentOutputs = pipeline._fragmentOutputs;
 
             updateAttachmentResources<VulkanPipeline::VkSubpassInputs>(fragmentInputs, imageResources, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pipelineIndex);
             updateAttachmentResources<VulkanPipeline::VkFragmentOutputs>(fragmentOutputs, imageResources, FRAGMENT_OUTPUT_DESC, pipelineIndex);
-            // TODO: depth should be handled here too.
+            updateDepthStencilResource(pipeline._depthStencilResource, imageResources, DEPTH_STENCIL_DESC, pipelineIndex);
+
             pipelineIndex++;
         };
 

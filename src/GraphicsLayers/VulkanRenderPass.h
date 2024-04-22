@@ -44,6 +44,7 @@ namespace Wado::GAL::Vulkan {
             using ResourceInfo = struct ResourceInfo {
                 VkDescriptorType type;
                 VkShaderStageFlags stages;
+                VkPipelineStageFlags pipelineStages;
                 uint8_t pipelineIndex;
             };
 
@@ -67,7 +68,9 @@ namespace Wado::GAL::Vulkan {
             static const VkDescriptorType DEPTH_STENCIL_DESC = VkDescriptorType::VK_DESCRIPTOR_TYPE_MUTABLE_VALVE; // TODO: this is very not good, not sure how to extend desc types in a better way...
 
             static bool isWriteDescriptorType(VkDescriptorType type);
-            static VkPipelineStageFlags resInfoToVkStage(const ResourceInfo& resInfo);
+            static VkPipelineStageFlags VkShaderStageFlagsToVkPipelineStageFlags(const VkShaderStageFlags stageFlags);
+
+            //static VkPipelineStageFlags resInfoToVkStage(const ResourceInfo& resInfo);
 
             static std::map<VkDescriptorType, VkAccessFlags> decriptorTypeToAccessType;
 
@@ -77,6 +80,7 @@ namespace Wado::GAL::Vulkan {
             static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex, DescriptorCounts& descriptorCounts);
             template <class T>
             static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
+            static void updateDepthStencilResource(Memory::WdClonePtr<WdImage> depthStencil, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
             static void addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos);
 
             void createDescriptorPool();
