@@ -7,6 +7,7 @@
 #include "WdPipeline.h"
 #include "WdRenderPass.h"
 
+#include "VulkanLayer.h"
 #include "VulkanPipeline.h"
 
 #include <map>

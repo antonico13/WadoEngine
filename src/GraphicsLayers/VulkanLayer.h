@@ -1,5 +1,5 @@
-#ifndef H_WD_VULKAN_LAYER
-#define H_WD_VULKAN_LAYER
+#ifndef WADO_VULKAN_LAYER
+#define WADO_WD_VULKAN_LAYER
 
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
@@ -12,7 +12,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
-#include <memory>
+#include "Shader.h"
+#include "WdLayer.h"
+
+#include "VulkanCommandList.h"
+
+#include <optional>
+
+// TODO: Swapchain recreation & cleanup functions 
 
 namespace Wado::GAL::Vulkan {
 
@@ -30,43 +37,106 @@ namespace Wado::GAL::Vulkan {
         bool isComplete();
     };
 
-    class VulkanLayer : public GraphicsLayer {
+    static const VkFormat WdFormatToVkFormat[] = {
+        VK_FORMAT_UNDEFINED,
+        VK_FORMAT_R8_UNORM,
+        VK_FORMAT_R8_SINT,
+        VK_FORMAT_R8_UINT,
+        VK_FORMAT_R8_SRGB,
+        VK_FORMAT_R8G8_UNORM,
+        VK_FORMAT_R8G8_SINT,
+        VK_FORMAT_R8G8_UINT,
+        VK_FORMAT_R8G8_SRGB,
+        VK_FORMAT_R8G8B8_UNORM,
+        VK_FORMAT_R8G8B8_SINT,
+        VK_FORMAT_R8G8B8_UINT,
+        VK_FORMAT_R8G8B8_SRGB,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_FORMAT_R8G8B8A8_SINT,
+        VK_FORMAT_R8G8B8A8_UINT,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_FORMAT_R16_SINT,
+        VK_FORMAT_R16_UINT,
+        VK_FORMAT_R16_SFLOAT,
+        VK_FORMAT_R16G16_SINT,
+        VK_FORMAT_R16G16_UINT,
+        VK_FORMAT_R16G16_SFLOAT,
+        VK_FORMAT_R16G16B16_SINT,
+        VK_FORMAT_R16G16B16_UINT,
+        VK_FORMAT_R16G16B16_SFLOAT,
+        VK_FORMAT_R16G16B16A16_SINT,
+        VK_FORMAT_R16G16B16A16_UINT,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R32_SINT,
+        VK_FORMAT_R32_UINT,
+        VK_FORMAT_R32_SFLOAT,
+        VK_FORMAT_R32G32_SINT,
+        VK_FORMAT_R32G32_UINT,
+        VK_FORMAT_R32G32_SFLOAT,
+        VK_FORMAT_R32G32B32_SINT,
+        VK_FORMAT_R32G32B32_UINT,
+        VK_FORMAT_R32G32B32_SFLOAT,
+        VK_FORMAT_R32G32B32A32_SINT,
+        VK_FORMAT_R32G32B32A32_UINT,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_FORMAT_R64_SINT,
+        VK_FORMAT_R64_UINT,
+        VK_FORMAT_R64_SFLOAT,
+        VK_FORMAT_R64G64_SINT,
+        VK_FORMAT_R64G64_UINT,
+        VK_FORMAT_R64G64_SFLOAT,
+        VK_FORMAT_R64G64B64_SINT,
+        VK_FORMAT_R64G64B64_UINT,
+        VK_FORMAT_R64G64B64_SFLOAT,
+        VK_FORMAT_R64G64B64A64_SINT,
+        VK_FORMAT_R64G64B64A64_UINT,
+        VK_FORMAT_R64G64B64A64_SFLOAT,
+    };
+
+    class VulkanLayer : public WdLayer {
         public:
             // Returns ref to a WdImage that represents the screen, can only be used as a fragment output!
-            WdImage& getDisplayTarget() override;
-            WdImage& create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
-            WdBuffer& createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
-            WdSamplerHandle createSampler(WdTextureAddressMode addressMode = DefaultTextureAddressMode, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
+            Memory::WdClonePtr<WdImage> getDisplayTarget() override;
+
+            Memory::WdClonePtr<WdImage> create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) override;
+            
+            WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) override;
+
+            Memory::WdClonePtr<WdBuffer> createBuffer(WdSize size, WdBufferUsageFlags usageFlags) override;
+            
+            WdSamplerHandle createSampler(const WdTextureAddressMode& addressMode = DEFAULT_TEXTURE_ADDRESS_MODE, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
             
             void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) override;
             void openBuffer(WdBuffer& buffer) override;
             void closeBuffer(WdBuffer& buffer) override;
 
             // Immediate functions
-            void copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) override;
-            void copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) override;
+            void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) override;
+            void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) override;
 
             WdFenceHandle createFence(bool signaled = true) override;
             void waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
             void resetFences(const std::vector<WdFenceHandle>& fences) override;
             
-            WdPipeline createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdVertexBuilder* vertexBuilder, WdViewportProperties viewportProperties) override;
-            WdRenderPass createRenderPass(const std::vector<WdPipeline>& pipelines) override;
+            Memory::WdClonePtr<WdPipeline> createPipeline(const Shader::WdShader& vertexShader, const Shader::WdShader& fragmentShader, const WdViewportProperties& viewportProperties) override;
+            Memory::WdClonePtr<WdRenderPass> createRenderPass(const std::vector<WdPipeline>& pipelines) override;
 
-            std::unique_ptr<WdCommandList> createCommandList();
+            Memory::WdClonePtr<WdCommandList> createCommandList();
 
-            void executeCommandList(const WdCommandList& commandList) override;
+            void executeCommandList(const WdCommandList& commandList, WdFenceHandle fenceToSignal) override;
+
+            void transitionImageUsage(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) override;
 
             void displayCurrentTarget() override;
 
-            void prepareImageFor(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) override;
+            static Memory::WdClonePtr<VulkanLayer> getVulkanLayer();
 
-            static std::shared_ptr<VulkanLayer> getVulkanLayer();
         private:
             VulkanLayer(GLFWwindow* window, bool debugEnabled);
+
             void init();
             
-            static std::shared_ptr<VulkanLayer> _layer;
+            static Memory::WdMainPtr<VulkanLayer> _layer;
 
             // Init functions 
             void createInstance();
@@ -80,15 +150,9 @@ namespace Wado::GAL::Vulkan {
 
             // Init utils
 
-            static const std::vector<const char*> _validationLayers = {
-                "VK_LAYER_KHRONOS_validation",
-                "VK_LAYER_LUNARG_monitor"
-            };
+            static std::vector<const char*> _validationLayers;
 
-            static const std::vector<const char*> _deviceExtensions = {
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME/*,
-                VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,*/
-            };
+            static std::vector<const char*> _deviceExtensions;
 
             using SwapChainSupportDetails = struct SwapChainSupportDetails {
                 VkSurfaceCapabilitiesKHR capabilities;
@@ -104,18 +168,21 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkLayerProperties> _layers;
 
             VkInstance _instance;
-            GLFWwindow* _window;
+            GLFWwindow* _window; // TODO: this should probably be abstracted somehow 
             VkDebugUtilsMessengerEXT _debugMessenger;
             VkSurfaceKHR _surface;
 
+            uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
             void getSupportedValidationLayers();
             void getSupportedExtensions();
             std::vector<const char *> getRequiredExtensions();
             bool checkStringSubset(const char** superSet, uint32_t superSetCount, const char** subSet, uint32_t subSetCount);
-            bool checkRequiredExtensions(const std::vector<const char*>& requiredExtensions);
+            bool checkRequiredExtensions(std::vector<const char*>& requiredExtensions);
             bool checkRequiredLayers();
+
             bool isDeviceSuitable(VkPhysicalDevice device);
             bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+
             SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
             QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
             VkSampleCountFlagBits getMaxUsableSampleCount();
@@ -125,6 +192,7 @@ namespace Wado::GAL::Vulkan {
             // Internal components 
             VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
             VkDevice _device;
+            VkPhysicalDeviceProperties _deviceProperties;
             VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
             VkQueue _graphicsQueue;
@@ -139,7 +207,7 @@ namespace Wado::GAL::Vulkan {
             VkFormat _swapchainImageFormat;
             VkExtent2D _swapchainImageExtent;
 
-            std::vector<WdImage*> _swapchainWdImages;
+            std::vector<Memory::WdMainPtr<WdImage>> _swapchainWdImages;
 
             std::vector<VkImageView> _swapchainImageViews;
             std::vector<VkSemaphore> _imageAvailableSemaphores;
@@ -154,14 +222,15 @@ namespace Wado::GAL::Vulkan {
             uint32_t _maxMipLevels;
 
             // the pointer management here will need to change 
-            std::vector<WdImage*> _liveImages;
-            std::vector<WdBuffer*> _liveBuffers;
+            std::vector<Memory::WdMainPtr<WdImage>> _liveImages;
+            std::vector<Memory::WdMainPtr<WdBuffer>> _liveBuffers;
             std::vector<VkSampler> _liveSamplers;
             std::vector<VkFence> _liveFences;
             std::vector<VkSemaphore> _liveSemaphores;
             std::vector<VkCommandPool> _liveCommandPools;
-            std::vector<VkPipeline> _livePipelines;
-            std::vector<VulkanRenderPass*> _liveRenderPasses;
+            std::vector<Memory::WdMainPtr<WdPipeline>> _livePipelines;
+            std::vector<Memory::WdMainPtr<WdRenderPass>> _liveRenderPasses;
+            std::vector<Memory::WdMainPtr<WdCommandList>> _liveCommandLists;
 
             // needed in order to determine resource sharing mode and queues to use
             const VkImageUsageFlags transferUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -187,10 +256,13 @@ namespace Wado::GAL::Vulkan {
 
             VkFilter WdFilterToVkFilter(WdFilterMode filter) const;
             VkSamplerAddressMode WdAddressModeToVkAddressMode(WdAddressMode addressMode) const;
+            VkSamplerMipmapMode WdFilterToVkSamplerMipMapMode(WdFilterMode mipMapFilter) const;
+
+            VkMemoryPropertyFlags WdImageUsageToVkMemoryFlags(WdImageUsageFlags usageFlags) const;
+            VkMemoryPropertyFlags WdBufferUsageToVkMemoryFlags(WdBufferUsageFlags usageFlags) const;
 
             VkCommandBuffer beginSingleTimeCommands(VkCommandPool commandPool) const;
             void endSingleTimeCommands(VkCommandBuffer commandBuffer, VkCommandPool commandPool, VkQueue queue) const;
-
     };
 };
 

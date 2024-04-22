@@ -1,10 +1,10 @@
-#include "GraphicsAbstractionLayer.h"
 #include "VulkanLayer.h"
 
 #include <map>
+#include <set>
+#include <algorithm>
 #include <string>
 #include <iostream>
-
 
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
 #define TO_VK_BOOL(A) ((A) ? (VK_TRUE) : (VK_FALSE))
@@ -16,10 +16,38 @@ namespace Wado::GAL::Vulkan {
     };
 
 // UTILS:
+    VkMemoryPropertyFlags VulkanLayer::WdImageUsageToVkMemoryFlags(WdImageUsageFlags usageFlags) const {
+        // TODO: this might need to change in the future, but for now this works I think
+        return VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    };
+
+    VkMemoryPropertyFlags VulkanLayer::WdBufferUsageToVkMemoryFlags(WdBufferUsageFlags usageFlags) const {
+        // TODO: this needs more in-depth analysis
+        if (usageFlags & WdBufferUsage::WD_TRANSFER_SRC) {
+            return VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        }
+        return VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    };
+
+
+    uint32_t VulkanLayer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            // If the memory is a type that we allow, and it has all the properties
+            // we want, get it.
+            if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("Failed to find suitable memory type!");
+    };
 
     // all of the below are designed to be 1-to-1 with Vulkan 
     VkSampleCountFlagBits VulkanLayer::WdSampleBitsToVkSampleBits(WdSampleCount sampleCount) const {
-        return sampleCount;
+        return static_cast<VkSampleCountFlagBits>(sampleCount);
     };
 
     VkImageUsageFlags VulkanLayer::WdImageUsageToVkImageUsage(WdImageUsageFlags imageUsage) const {
@@ -34,33 +62,35 @@ namespace Wado::GAL::Vulkan {
     std::vector<uint32_t> VulkanLayer::getImageQueueFamilies(VkImageUsageFlags usage) const {
         std::vector<uint32_t> queueFamilyIndices;
         if (transferUsage & usage) {
-            queueFamilyIndices.push_back(queueIndices.transferFamily.value());
+            queueFamilyIndices.push_back(_queueIndices.transferFamily.value());
         }
 
         if (graphicsUsage & usage) {
-            queueFamilyIndices.push_back(queueIndices.graphicsFamily.value());
+            queueFamilyIndices.push_back(_queueIndices.graphicsFamily.value());
         }
         return queueFamilyIndices;
     };
 
-    std::vector<uint32_t> getBufferQueueFamilies(VkBufferUsageFlags usage) const {
+    std::vector<uint32_t> VulkanLayer::getBufferQueueFamilies(VkBufferUsageFlags usage) const {
         std::vector<uint32_t> queueFamilyIndices;
         if (bufferTransferUsage & usage) {
-            queueFamilyIndices.push_back(queueIndices.transferFamily.value());
+            queueFamilyIndices.push_back(_queueIndices.transferFamily.value());
         }
 
         if (bufferGraphicsUsage & usage) {
-            queueFamilyIndices.push_back(queueIndices.graphicsFamily.value());
+            queueFamilyIndices.push_back(_queueIndices.graphicsFamily.value());
         }
         return queueFamilyIndices;
     };
 
-
+    // TODO:: Where is this used?
     VkImageAspectFlags VulkanLayer::getImageAspectFlags(VkImageUsageFlags usage) const {
         VkImageAspectFlags flags = 0;
+
         if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
             flags |= VK_IMAGE_ASPECT_DEPTH_BIT;
         }
+
         if (usage & (~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
             flags |= VK_IMAGE_ASPECT_COLOR_BIT;
         }
@@ -70,13 +100,16 @@ namespace Wado::GAL::Vulkan {
 
     // 1-to-1 with Vulkan right now
     VkFilter VulkanLayer::WdFilterToVkFilter(WdFilterMode filter) const {
-        return filter;
+        return static_cast<VkFilter>(filter);
     };
 
     VkSamplerAddressMode VulkanLayer::WdAddressModeToVkAddressMode(WdAddressMode addressMode) const {
-        return addressMode;
+        return static_cast<VkSamplerAddressMode>(addressMode);
     };
 
+    VkSamplerMipmapMode VulkanLayer::WdFilterToVkSamplerMipMapMode(WdFilterMode mipMapFilter) const {
+        return static_cast<VkSamplerMipmapMode>(mipMapFilter);
+    };
 
     void VulkanLayer::getSupportedValidationLayers() {
         vkEnumerateInstanceLayerProperties(&_layerCount, nullptr);
@@ -148,17 +181,18 @@ namespace Wado::GAL::Vulkan {
             #endif
             
             bFoundAll &= bElementFound;
-        }
+        };
+
         return bFoundAll;
     };
 
-    bool VulkanLayer::checkRequiredExtensions(const std::vector<const char*>& requiredExtensions) {
+    bool VulkanLayer::checkRequiredExtensions(std::vector<const char*>& requiredExtensions) {
         getSupportedExtensions();
         std::vector<const char*> supportedExtensionNames(_extensionCount);
 
         for (int i = 0; i < _extensionCount; i++) {
             supportedExtensionNames[i] = _extensions[i].extensionName;
-        }
+        };
 
         return checkStringSubset(supportedExtensionNames.data(), _extensionCount, requiredExtensions.data(), requiredExtensions.size());
     };
@@ -169,26 +203,47 @@ namespace Wado::GAL::Vulkan {
 
         for (int i = 0; i < _layerCount; i++) {
             supportedLayerNames[i] = _layers[i].layerName;
-        }
+        };
 
         return checkStringSubset(supportedLayerNames.data(), _layerCount, _validationLayers.data(), _validationLayers.size());
+    };
+
+    std::vector<const char*> VulkanLayer::_validationLayers = {
+        "VK_LAYER_KHRONOS_validation",
+        "VK_LAYER_LUNARG_monitor",
+    };
+
+    std::vector<const char*> VulkanLayer::_deviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME/*,
+        VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,*/
     };
 
 // END OF UTILS
 
 // Init functions 
 
+    void VulkanLayer::init() {
+        createInstance();
+        setupDebugMessenger();
+        createSurface();
+        pickPhysicalDevice();
+        createLogicalDevice();
+        createGraphicsCommandPool();
+        createTransferCommandPool();
+        createSwapchain();
+    };
+
     void VulkanLayer::createInstance() {
         if (_enableValidationLayers && !checkRequiredLayers()) {
-            throw std::runtime_error("Validation layers requested, but not available.");
-        }
+            throw std::runtime_error("Vulkan validation layers requested, but not available.");
+        };
 
         // Need to make this library agnostic with a windowing library translator
         // eg, in the future get this running on closed platforms as well. 
         // decouple even API from windowing?
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.pApplicationName = "Hello Triangle"; // TODO: replace wiht application name
         appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
         appInfo.pEngineName = "Wado Engine"; // TODO: make this a global const along with version and app name, etc 
         appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
@@ -210,20 +265,20 @@ namespace Wado::GAL::Vulkan {
         } else {
             createInfo.enabledLayerCount = 0;
             createInfo.pNext = nullptr;
-        }
+        };
 
         std::vector<const char*> requiredExtensions = getRequiredExtensions();
 
         if(!checkRequiredExtensions(requiredExtensions)) {
-            throw std::runtime_error("Could not find required extensions.");
-        }
+            throw std::runtime_error("Could not find required extensions for Vulkan");
+        };
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
         createInfo.ppEnabledExtensionNames = requiredExtensions.data();
         createInfo.enabledLayerCount = 0;
 
         if (vkCreateInstance(&createInfo, nullptr, &_instance) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create Vulkan instance");
+            throw std::runtime_error("Failed to create Vulkan instance!");
         };
 
     };
@@ -248,7 +303,7 @@ namespace Wado::GAL::Vulkan {
                 return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
             } else {
                 return VK_ERROR_EXTENSION_NOT_PRESENT;
-            }
+            };
     };
 
     static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, 
@@ -256,7 +311,7 @@ namespace Wado::GAL::Vulkan {
             auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
             if (func != nullptr) {
                 func(instance, debugMessenger, pAllocator);
-            }
+            };
     };
 
     void VulkanLayer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
@@ -282,14 +337,14 @@ namespace Wado::GAL::Vulkan {
         populateDebugMessengerCreateInfo(createInfo);
 
         if (CreateDebugUitlsMessengerEXT(_instance, &createInfo, nullptr, &_debugMessenger) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to set up debug messenger");
-        }
+            throw std::runtime_error("Failed to set up Vulkan debug messenger");
+        };
     };
 
     void VulkanLayer::createSurface() {
         if (glfwCreateWindowSurface(_instance, _window, nullptr, &_surface) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create a GLFW Vulkan Window Surface");
-        }
+        };
     };
 
     bool VulkanLayer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -306,7 +361,7 @@ namespace Wado::GAL::Vulkan {
         return checkStringSubset(supportedExtensionNames.data(), extensionCount, _deviceExtensions.data(), _deviceExtensions.size());
     };
 
-    SwapChainSupportDetails VulkanLayer::querySwapChainSupport(VkPhysicalDevice device) {
+    VulkanLayer::SwapChainSupportDetails VulkanLayer::querySwapChainSupport(VkPhysicalDevice device) {
         SwapChainSupportDetails details;
 
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, _surface, &details.capabilities);
@@ -317,7 +372,7 @@ namespace Wado::GAL::Vulkan {
         if (formatCount != 0) {
             details.formats.resize(formatCount);
             vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &formatCount, details.formats.data());
-        }
+        };
 
         uint32_t presentModeCount;
         vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentModeCount, nullptr);
@@ -325,7 +380,7 @@ namespace Wado::GAL::Vulkan {
         if (presentModeCount != 0) {
             details.presentModes.resize(presentModeCount);
             vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentModeCount, details.presentModes.data());
-        }
+        };
 
         return details;
     };
@@ -382,7 +437,7 @@ namespace Wado::GAL::Vulkan {
             SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
             swapChainAdequate = !swapChainSupport.formats.empty() && 
                                 !swapChainSupport.presentModes.empty();
-        }
+        };
 
         QueueFamilyIndices indices = findQueueFamilies(device);
         return indices.isComplete() && extensionsSupported && swapChainAdequate && deviceFeatures.samplerAnisotropy;
@@ -423,7 +478,7 @@ namespace Wado::GAL::Vulkan {
 
         if (deviceCount == 0) {
             throw std::runtime_error("Failed to find any GPU with Vulkan support.");
-        }
+        };
 
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
@@ -434,20 +489,21 @@ namespace Wado::GAL::Vulkan {
                 _msaaSamples = getMaxUsableSampleCount();
                 _queueIndices = findQueueFamilies(device);
                 _swapChainSupportDetails = querySwapChainSupport(device);
+                vkGetPhysicalDeviceProperties(_physicalDevice, &_deviceProperties);
                 break;
-            } 
+            }; 
         }
 
         #ifdef NDEBUG
         #else
             VkPhysicalDeviceProperties deviceProperties;
-            vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+            vkGetPhysicalDeviceProperties(_physicalDevice, &deviceProperties);
             std::cout << "Chosen device " << deviceProperties.deviceName << std::endl;
         #endif
 
         if (_physicalDevice == VK_NULL_HANDLE) {
-            throw std::runtime_error("Could not find a suitable GPU");
-        }
+            throw std::runtime_error("Could not find a suitable GPU for Vulkan!");
+        };
     };
     
     void VulkanLayer::createLogicalDevice() {
@@ -469,7 +525,7 @@ namespace Wado::GAL::Vulkan {
             queueCreateInfo.queueCount = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
             queueCreateInfos.push_back(queueCreateInfo);
-        }
+        };
 
         VkPhysicalDeviceFeatures deviceFeatures{};
         deviceFeatures.samplerAnisotropy = true;
@@ -489,12 +545,13 @@ namespace Wado::GAL::Vulkan {
             createInfo.ppEnabledLayerNames = _validationLayers.data();
         } else {
             createInfo.enabledLayerCount = 0;
-        }
+        };
 
         if (vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device) != VK_SUCCESS) {
-            throw std::runtime_error("Could not create logical Vulkan device");
-        }
+            throw std::runtime_error("Could not create logical Vulkan device!");
+        };
 
+        // TODO: could get multiple queues within a family here? Could help for parallelism. Eg: get all queues of a family 
         vkGetDeviceQueue(_device, _queueIndices.graphicsFamily.value(), 0, &_graphicsQueue);
         vkGetDeviceQueue(_device, _queueIndices.presentFamily.value(), 0, &_presentQueue);
         vkGetDeviceQueue(_device, _queueIndices.transferFamily.value(), 0, &_transferQueue);
@@ -508,8 +565,8 @@ namespace Wado::GAL::Vulkan {
         poolInfo.queueFamilyIndex = _queueIndices.graphicsFamily.value();
 
         if (vkCreateCommandPool(_device, &poolInfo, nullptr, &_graphicsCommandPool) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create graphics command pool");
-        }
+            throw std::runtime_error("Failed to create Vulkan graphics command pool");
+        };
     };
     
     void VulkanLayer::createTransferCommandPool() {
@@ -519,8 +576,8 @@ namespace Wado::GAL::Vulkan {
         poolInfo.queueFamilyIndex = _queueIndices.transferFamily.value();
 
         if (vkCreateCommandPool(_device, &poolInfo, nullptr, &_transferCommandPool) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create transfer command pool");
-        }
+            throw std::runtime_error("Failed to create Vulkan transfer command pool!");
+        };
     };
 
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
@@ -528,8 +585,8 @@ namespace Wado::GAL::Vulkan {
             if (availableFormat.format == VK_FORMAT_R8G8B8A8_SRGB &&
                 availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                     return availableFormat;
-                }
-        }
+                };
+        };
         return availableFormats[0];
     };
 
@@ -537,8 +594,8 @@ namespace Wado::GAL::Vulkan {
         for (const VkPresentModeKHR& availablePresentMode : availablePresentModes) {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
                 return availablePresentMode;
-            }
-        }
+            };
+        };
         return VK_PRESENT_MODE_FIFO_KHR;
     };
 
@@ -563,10 +620,10 @@ namespace Wado::GAL::Vulkan {
                                     capabilities.maxImageExtent.height);
 
             return actualExtent;
-        }
+        };
     };
 
-    void VulkanLayer::createSwapchain() {        
+    void VulkanLayer::createSwapchain() {
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(_swapChainSupportDetails.formats);
         VkPresentModeKHR presentMode = chooseSwapPresentMode(_swapChainSupportDetails.presentModes);
         VkExtent2D extent = chooseSwapExtent(_window, _swapChainSupportDetails.capabilities);
@@ -586,8 +643,8 @@ namespace Wado::GAL::Vulkan {
         createInfo.imageColorSpace = surfaceFormat.colorSpace;
         createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // display targets can only be used as fragment outputs 
-
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // display targets can only be used as fragment outputs (Should I enforce this?)
+        // TODO: they could be used for transfer too?
         uint32_t queueFamilyIndices[] = {_queueIndices.graphicsFamily.value(), _queueIndices.presentFamily.value()};
 
         if (_queueIndices.graphicsFamily != _queueIndices.presentFamily) {
@@ -613,7 +670,7 @@ namespace Wado::GAL::Vulkan {
         createInfo.oldSwapchain = VK_NULL_HANDLE;
 
         if (vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapchain) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create display targets");
+            throw std::runtime_error("Failed to create Vulkan display targets");
         }
         // Get handles for all swap chain images to use in the application 
         vkGetSwapchainImagesKHR(_device, _swapchain, &imageCount, nullptr);
@@ -626,7 +683,7 @@ namespace Wado::GAL::Vulkan {
         _swapchainImageViews.resize(imageCount);
 
         WdClearValue clearValue;
-        clearValue.color = defaultColorClear;
+        clearValue.color = DEFAULT_COLOR_CLEAR;
         
         for (size_t i = 0; i < imageCount; i++) {
             // bad repetition but needed rn 
@@ -648,20 +705,20 @@ namespace Wado::GAL::Vulkan {
             viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
        
             if (vkCreateImageView(_device, &viewInfo, nullptr, &_swapchainImageViews[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create display image view!");
-            }
+                throw std::runtime_error("Failed to create Vulkan display image render target!");
+            };
 
             // TODO: deal with multiple frames in flight problem here too
-            WdImage* img = new WdImage(static_cast<WdImageHandle>(_swapchainImages[i]), 
-                                   static_cast<WdMemoryPointer>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
+            WdImage* img = create2DImagePtr(static_cast<WdImageHandle>(_swapchainImages[i]), 
+                                   static_cast<WdMemoryHandle>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
                                    static_cast<WdRenderTarget>(_swapchainImageViews[i]), 
-                                   WdFormat::WD_FORMAT_R8G8B8A8_SRGB, // TODO: conversion here 
+                                   WdFormat::WD_FORMAT_R8G8B8A8_SRGB, // TODO: Vk to Wd format conversion here 
                                    {_swapchainImageExtent.height, _swapchainImageExtent.width, 1}, // TODO:: check ordering here 
                                    WdImageUsage::WD_COLOR_ATTACHMENT,
                                    clearValue);
 
-            _swapchainWdImages.push_back(img);
-        }
+            _swapchainWdImages.emplace_back(img);
+        };
 
         // create semaphores for render synch 
         VkSemaphoreCreateInfo semaphoreInfo{};
@@ -678,27 +735,16 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
-    void VulkanLayer::init() {
-        createInstance();
-        setupDebugMessenger();
-        createSurface();
-        pickPhysicalDevice();
-        createLogicalDevice();
-        createGraphicsCommandPool();
-        createTransferCommandPool();
-        createSwapchain();
-    };
-
     // GAL functions:
 
-    WdImage& VulkanLayer::getDisplayTarget() {
+    Memory::WdClonePtr<WdImage> VulkanLayer::getDisplayTarget() {
         // TODO: deal with multiple frames in flight here 
         VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _imageAvailableSemaphores[0], VK_NULL_HANDLE, &_currentSwapchainImageIndex);
-
-        return _swapchainWdImages[_currentSwapchainImageIndex];
+        // TODO: deal with error here 
+        return _swapchainWdImages[_currentSwapchainImageIndex].getClonePtr();
     };
 
-    WdImage& VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
+    Memory::WdClonePtr<WdImage> VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) {
         VkImage image; // image handle, 1-to-1 translation to GAL 
         VkDeviceMemory imageMemory; // memory handle, 1-to-1
         VkImageView imageView; // view handle, same concept 
@@ -709,10 +755,10 @@ namespace Wado::GAL::Vulkan {
         imageInfo.extent = {extent.width, extent.height, 1};
         imageInfo.mipLevels = mipLevels;
         imageInfo.arrayLayers = 1;
-        imageInfo.format = WdFormatToVkFormat[format];
+        imageInfo.format = WdFormatToVkFormat[imageFormat];
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; // start with optimal tiling
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // should this be undefined to start with?
-        imageInfo.usage = WdImageUsageToVkImageUsage(usage);
+        imageInfo.usage = WdImageUsageToVkImageUsage(usageFlags);
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         std::vector<uint32_t> queueFamilyIndices = getImageQueueFamilies(imageInfo.usage);
@@ -723,11 +769,11 @@ namespace Wado::GAL::Vulkan {
             imageInfo.pQueueFamilyIndices = queueFamilyIndices.data();
         }
 
-        imageInfo.samples = WdSampleBitsToVkSampleBits(numSamples);
+        imageInfo.samples = WdSampleBitsToVkSampleBits(sampleCount);
         imageInfo.flags = 0;
 
         if (vkCreateImage(_device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create image!");
+            throw std::runtime_error("Failed to create Vulkan image!");
         }
 
         VkMemoryRequirements memRequirements;
@@ -736,11 +782,11 @@ namespace Wado::GAL::Vulkan {
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, _deviceProperties);
 
         if (vkAllocateMemory(_device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate image memory!");
-        }
+            throw std::runtime_error("Failed to allocate Vulkan image memory!");
+        };
 
         vkBindImageMemory(_device, image, imageMemory, 0);
 
@@ -748,7 +794,7 @@ namespace Wado::GAL::Vulkan {
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.image = image;
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = WdFormatToVkFormat[format];
+        viewInfo.format = WdFormatToVkFormat[imageFormat];
 
         VkImageAspectFlags flags = getImageAspectFlags(imageInfo.usage);
 
@@ -765,7 +811,7 @@ namespace Wado::GAL::Vulkan {
         viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
        
         if (vkCreateImageView(_device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create 2D image view!");
+            throw std::runtime_error("Failed to create Vulkan 2D image view!");
         }
 
         // Create GAL resource now 
@@ -773,33 +819,31 @@ namespace Wado::GAL::Vulkan {
         WdClearValue clearValue;
 
         if (flags & VK_IMAGE_ASPECT_DEPTH_BIT) {
-            clearValue.depthStencil = defaultDepthStencilClear;
+            clearValue.depthStencil = DEFAULT_DEPTH_STENCIL_CLEAR;
         } else {
-            clearValue.color = defaultColorClear;
+            clearValue.color = DEFAULT_COLOR_CLEAR;
         }
 
-        WdImage* img = new WdImage(static_cast<WdImageHandle>(image), 
-                                   static_cast<WdMemoryPointer>(imageMemory), 
+        WdImage* img = create2DImagePtr(static_cast<WdImageHandle>(image), 
+                                   static_cast<WdMemoryHandle>(imageMemory), 
                                    static_cast<WdRenderTarget>(imageView), 
-                                   format,
+                                   imageFormat,
                                    {extent.height, extent.width, 1},
                                    usageFlags,
                                    clearValue);
         // error check etc (will do with cutom allocator in own new operator)
 
-        liveImages.push_back(img); // keep track of this image 
-
-        return *img;
+        return _liveImages.emplace_back(img).getClonePtr(); // keep track of this image 
     };
 
-    WdBuffer& VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
+    Memory::WdClonePtr<WdBuffer> VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
         VkBuffer buffer; // buffer handle 
-        VkMemory bufferMemory; // memory handle 
+        VkDeviceMemory bufferMemory; // memory handle 
 
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
-        bufferInfo.usage = WdBufferUsageToVkBufferUsage(usage);
+        bufferInfo.usage = WdBufferUsageToVkBufferUsage(usageFlags);
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         std::vector<uint32_t> queueFamilyIndices = getBufferQueueFamilies(bufferInfo.usage);
@@ -808,13 +852,13 @@ namespace Wado::GAL::Vulkan {
             bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
             bufferInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size());
             bufferInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-        }
+        };
 
         bufferInfo.flags = 0;
 
         if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create buffer!");
-        }
+            throw std::runtime_error("Failed to create Vulkan buffer!");
+        };
 
         VkMemoryRequirements memRequirements;
         vkGetBufferMemoryRequirements(_device, buffer, &memRequirements);
@@ -822,26 +866,24 @@ namespace Wado::GAL::Vulkan {
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, _deviceProperties);
 
         if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate buffer memory!");
-        }
+            throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
+        };
 
         vkBindBufferMemory(_device, buffer, bufferMemory, 0);
 
         // Create GAL resource now 
-        WdBuffer* buf = new WdBuffer(static_cast<WdBufferHandle>(buffer), 
-                                     static_cast<WdMemoryPointer>(bufferMemory),
-                                     size);
+        WdBuffer* buf = createBufferPtr(static_cast<WdBufferHandle>(buffer), 
+                                     static_cast<WdMemoryHandle>(bufferMemory),
+                                     size, usageFlags);
         // error check etc (will do with cutom allocator in own new operator)
 
-        liveBuffers.push_back(buf); // keep track of this image 
-
-        return *buf;
+        return _liveBuffers.emplace_back(buf).getClonePtr(); // keep track of this buffer 
     };
 
-    WdSamplerHandle VulkanLayer::createSampler(WdTextureAddressMode addressMode, WdFilterMode minFilter, WdFilterMode magFilter, WdFilterMode mipMapFilter) {
+    WdSamplerHandle VulkanLayer::createSampler(const WdTextureAddressMode& addressMode, WdFilterMode minFilter, WdFilterMode magFilter, WdFilterMode mipMapFilter) {
         VkSampler textureSampler;
 
         VkSamplerCreateInfo samplerInfo{};
@@ -853,11 +895,8 @@ namespace Wado::GAL::Vulkan {
         samplerInfo.addressModeV = WdAddressModeToVkAddressMode(addressMode.vMode);;
         samplerInfo.addressModeW = WdAddressModeToVkAddressMode(addressMode.wMode);;
         
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(physicalDevice, &properties);
-
-        samplerInfo.anisotropyEnable = enableAnisotropy ? VK_TRUE : VK_FALSE;
-        samplerInfo.maxAnisotropy = MIN(properties.limits.maxSamplerAnisotropy, maxAnisotropy);
+        samplerInfo.anisotropyEnable = _enableAnisotropy ? VK_TRUE : VK_FALSE;
+        samplerInfo.maxAnisotropy = MIN(_deviceProperties.limits.maxSamplerAnisotropy, _maxAnisotropy);
 
         samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         samplerInfo.unnormalizedCoordinates = VK_FALSE;
@@ -865,16 +904,16 @@ namespace Wado::GAL::Vulkan {
         samplerInfo.compareEnable = VK_FALSE;
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
-        samplerInfo.mipmapMode = WdAddressModeToVkAddressMode(mipMapFilter);
+        samplerInfo.mipmapMode = WdFilterToVkSamplerMipMapMode(mipMapFilter);
         samplerInfo.mipLodBias = 0.0f;
         samplerInfo.minLod = 0.0f;
-        samplerInfo.maxLod = static_cast<float>(maxMipLevels);
+        samplerInfo.maxLod = static_cast<float>(_maxMipLevels);
 
         if (vkCreateSampler(_device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create texture sampler!");
         }
 
-        liveSamplers.push_back(textureSampler);
+        _liveSamplers.push_back(textureSampler);
 
         return static_cast<WdSamplerHandle>(textureSampler);
     };
@@ -885,12 +924,12 @@ namespace Wado::GAL::Vulkan {
     };
 
     void VulkanLayer::openBuffer(WdBuffer& buffer) {
-        vkMapMemory(device, buffer.memory, 0, buffer.size, 0, &buffer.data);
+        vkMapMemory(_device, buffer.memory, 0, buffer.size, 0, &buffer.data);
     };
 
     // TODO when shutting down, call close buffer on all live buffers if they are open
     void VulkanLayer::closeBuffer(WdBuffer& buffer) {
-        vkUnmapMemory(device, buffer.memory); 
+        vkUnmapMemory(_device, buffer.memory); 
     };
 
     WdFenceHandle VulkanLayer::createFence(bool signaled) {
@@ -900,22 +939,21 @@ namespace Wado::GAL::Vulkan {
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0; 
 
-        if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create semaphores and fence for graphics!");
+        if (vkCreateFence(_device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan fence!");
         }
 
-        liveFences.push_back(fence);
+        _liveFences.push_back(fence);
 
         return static_cast<WdFenceHandle>(fence); 
     };
 
     void VulkanLayer::waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll, uint64_t timeout) {
-        // should probably do a static cast here for fence data?
-        vkWaitForFences(_device, static_cast<uint32_t>(fences.size()), fences.data(), TO_VK_BOOL(waitAll), timeout);
+        vkWaitForFences(_device, static_cast<uint32_t>(fences.size()), reinterpret_cast<const VkFence*>(fences.data()), TO_VK_BOOL(waitAll), timeout);
     };
 
     void VulkanLayer::resetFences(const std::vector<WdFenceHandle>& fences) {
-        vkResetFences(_device, static_cast<uint32_t>(fences.size()), fences.data());
+        vkResetFences(_device, static_cast<uint32_t>(fences.size()), reinterpret_cast<const VkFence*>(fences.data()));
     };
 
     VkCommandBuffer VulkanLayer::beginSingleTimeCommands(VkCommandPool commandPool) const {
@@ -951,7 +989,7 @@ namespace Wado::GAL::Vulkan {
         vkFreeCommandBuffers(_device, commandPool, 1, &commandBuffer);
     };
 
-    void VulkanLayer::copyBufferToImage(WdBuffer& buffer, WdImage& image, WdExtent2D extent) {
+    void VulkanLayer::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) {
         VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
         VkBufferImageCopy region{};
         region.bufferOffset = 0;
@@ -977,7 +1015,7 @@ namespace Wado::GAL::Vulkan {
         endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);       
     };
 
-    void VulkanLayer::copyBuffer(WdBuffer& srcBuffer, WdBuffer& dstBuffer, WdSize size) {
+    void VulkanLayer::copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) {
         VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
 
         VkBufferCopy copyRegion{};
@@ -990,8 +1028,24 @@ namespace Wado::GAL::Vulkan {
         endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);          
     };
 
-    std::unique_ptr<WdCommandList> VulkanLayer::createCommandList() {
-        return move(std::make_unique<VulkanCommandList>(););
+    Memory::WdClonePtr<WdCommandList> VulkanLayer::createCommandList() {
+        // TODO:: Not sure if I should allocate one every time
+
+        VkCommandBuffer graphicsBuffer;
+        
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = _graphicsCommandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = 1;
+
+        if (vkAllocateCommandBuffers(_device, &allocInfo, &graphicsBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate Vulkan Command list graphics buffers!");
+        }
+
+        VulkanCommandList* cmdList = new VulkanCommandList(graphicsBuffer);
+        // I think this should be fine 
+        return _liveCommandLists.emplace_back(cmdList).getClonePtr();
     };
 
     void VulkanLayer::executeCommandList(const WdCommandList& commandList, WdFenceHandle fenceToSignal) {
@@ -1002,7 +1056,7 @@ namespace Wado::GAL::Vulkan {
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
         // wait until the image is available 
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[0]}; // TODO: multiple frames in flight 
+        VkSemaphore waitSemaphores[] = {_imageAvailableSemaphores[0]}; // TODO: multiple frames in flight 
         // wait for the color attachment output stage to finish 
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = 1;
@@ -1013,15 +1067,15 @@ namespace Wado::GAL::Vulkan {
         submitInfo.pCommandBuffers = &vkCommandList._graphicsCommandBuffer; // TODO: multiple frames in flight 
 
         // signal that rendering for this frame is finished 
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[0]}; // TODO: multiple frames in flight 
+        VkSemaphore signalSemaphores[] = {_renderFinishedSemaphores[0]}; // TODO: multiple frames in flight 
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
         // signal the in flight fence when we are done so the CPU can work with this frame again
         VkResult submitResult = vkQueueSubmit(_graphicsQueue, 1, &submitInfo, static_cast<VkFence>(fenceToSignal));
         if (submitResult != VK_SUCCESS) {
-            throw std::runtime_error("Failed to execute graphics Vulkan command list!");
-        }
+            throw std::runtime_error("Failed to execute Vulkan command list!");
+        };
     };
 
     void VulkanLayer::displayCurrentTarget() {
@@ -1036,22 +1090,39 @@ namespace Wado::GAL::Vulkan {
         presentInfo.pImageIndices = &_currentSwapchainImageIndex;
         presentInfo.pResults = nullptr;
 
-        result = vkQueuePresentKHR(_presentQueue, &presentInfo);
+        VkResult result = vkQueuePresentKHR(_presentQueue, &presentInfo);
+        // TODO: deal with result here (eg resizing, error)
     };
 
-
     // Skeleton for now, needs to be expanded 
-    WdPipeline VulkanLayer::createPipeline(Shader::Shader vertexShader, Shader::Shader fragmentShader, WdViewportProperties viewportProperties) {
-        return WdPipeline(vertexShader, fragmentShader, vertexBuilder, viewportProperties);
+    Memory::WdClonePtr<WdPipeline> VulkanLayer::createPipeline(const Shader::WdShader& vertexShader, const Shader::WdShader& fragmentShader, const WdViewportProperties& viewportProperties) {
+        SPIRVShaderByteCode vertexShaderCode = {reinterpret_cast<const uint32_t*>(vertexShader.shaderByteCode.data()), static_cast<uint32_t>(vertexShader.shaderByteCode.size())};
+        SPIRVShaderByteCode fragmentShaderCode = {reinterpret_cast<const uint32_t*>(fragmentShader.shaderByteCode.data()), static_cast<uint32_t>(fragmentShader.shaderByteCode.size())};
+        
+        // TODO: this is duplicated here and in VulkanCommandList. Make function?
+        VkViewport viewport{};
+        viewport.x = static_cast<float>(viewportProperties.startCoords.width);
+        viewport.y = static_cast<float>(viewportProperties.startCoords.height);
+        viewport.width = static_cast<float>(viewportProperties.endCoords.width);
+        viewport.height = static_cast<float>(viewportProperties.endCoords.height);
+        viewport.minDepth = viewportProperties.depth.min;
+        viewport.maxDepth = viewportProperties.depth.max;
+
+        VkRect2D scissor{};
+        scissor.offset = {static_cast<int32_t>(viewportProperties.scissor.offset.width), static_cast<int32_t>(viewportProperties.scissor.offset.height)};
+        scissor.extent = {viewportProperties.scissor.extent.width, viewportProperties.scissor.extent.height};
+
+        VulkanPipeline* vulkanPipeline = new VulkanPipeline(vertexShaderCode, fragmentShaderCode, viewport, scissor);
+        
+        return _livePipelines.emplace_back(vulkanPipeline).getClonePtr();
     };
 
     // creates render pass and all subpasses 
-    WdRenderPass VulkanLayer::createRenderPass(const std::vector<WdPipeline>& pipelines) {
-        VulkanRenderPass *renderPass = new VulkanRenderPass(pipelines, _device);
-        renderPass->init();
-        _liveRenderPasses.push_back(renderPass);
-
-        return *renderPass;
+    Memory::WdClonePtr<WdRenderPass> VulkanLayer::createRenderPass(const std::vector<WdPipeline>& pipelines) {
+        // TODO: Should assert here and for similar casts that I can do this 
+        VulkanRenderPass *vkRenderPass = new VulkanRenderPass(reinterpret_cast<const std::vector<VulkanPipeline>&>(pipelines), _device, {0, 0}, _swapchainImageExtent);
+        vkRenderPass->init();
+        return _liveRenderPasses.emplace_back(vkRenderPass).getClonePtr();
     };
 
     //void VulkanRenderPass::prepareImageFor(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) {
