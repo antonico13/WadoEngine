@@ -1,12 +1,16 @@
 #include "WdLayer.h"
 
 namespace Wado::GAL {
-    
-    WdImage* WdLayer::create2DImagePtr(WdImageHandle _handle, WdMemoryHandle _memory, WdRenderTarget _target, WdFormat _format, WdExtent3D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue) {
-        return new WdImage(_handle, _memory, _target, _format, _extent, _usage, _clearValue);
+
+    uint32_t WdLayer::globalResourceID = 0;
+
+    WdImage* WdLayer::create2DImagePtr(const std::vector<WdImageHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, const std::vector<WdRenderTarget>& _targets, WdFormat _format, WdExtent2D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue) {
+        globalResourceID++;
+        return new WdImage(globalResourceID, _handles, _memories, _targets, _format, _extent, _usage, _clearValue);
     };
 
-    WdBuffer* WdLayer::createBufferPtr(WdBufferHandle _handle, WdMemoryHandle _memory, WdSize _size, WdBufferUsageFlags _usage) {
-        return new WdBuffer(_handle, _memory, _size, _usage);
+    WdBuffer* WdLayer::createBufferPtr(const std::vector<WdBufferHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, WdSize _size, WdBufferUsageFlags _usage) {
+        globalResourceID++;
+        return new WdBuffer(globalResourceID, _handles, _memories, _size, _usage);
     };
 };

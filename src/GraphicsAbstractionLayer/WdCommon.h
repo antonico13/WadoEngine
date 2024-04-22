@@ -4,6 +4,9 @@
 #include <cstdint>
 
 namespace Wado::GAL {
+    
+    using WdResourceID = uint32_t;
+
     using WdHandle = void *;
     static const WdHandle WD_INVALID_HANDLE = nullptr;
 

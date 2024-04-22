@@ -19,22 +19,25 @@ namespace Wado::GAL {
     // and all rendering code should be written using these functions
     class WdLayer {
         public:
+            // Utils as static consts here for now 
+            static const uint32_t FRAMES_IN_FLIGHT = 3;
+            static const int CURRENT_FRAME_RESOURCE = -1;
             // Returns pointer to a WdImage that represents the screen, can only be used as a fragment output!
             virtual Memory::WdClonePtr<WdImage> getDisplayTarget() = 0;
             
             virtual Memory::WdClonePtr<WdImage> create2DImage(WdExtent2D extent, uint32_t mipLevels, 
-                    WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags) = 0;
+                    WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags, bool multiFrame = false) = 0;
 
-            virtual Memory::WdClonePtr<WdBuffer> createBuffer(WdSize size, WdBufferUsageFlags usageFlags) = 0;
+            virtual Memory::WdClonePtr<WdBuffer> createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame = false) = 0;
 
             // create texture sampler 
             virtual WdSamplerHandle createSampler(const WdTextureAddressMode& addressMode = DEFAULT_TEXTURE_ADDRESS_MODE, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) = 0;
 
-            virtual void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) = 0;
+            virtual void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize, int bufferIndex = CURRENT_FRAME_RESOURCE) = 0;
             // close or open "pipe" between CPU and GPU for this buffer's memory
-            virtual void openBuffer(WdBuffer& buffer) = 0;
+            virtual void openBuffer(WdBuffer& buffer, int bufferIndex = CURRENT_FRAME_RESOURCE) = 0;
 
-            virtual void closeBuffer(WdBuffer& buffer) = 0;
+            virtual void closeBuffer(WdBuffer& buffer, int bufferIndex = CURRENT_FRAME_RESOURCE) = 0;
 
             // immediate versions 
             virtual void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) = 0;
@@ -61,8 +64,9 @@ namespace Wado::GAL {
             virtual void displayCurrentTarget() = 0;
 
         protected:
-            static WdImage* create2DImagePtr(WdImageHandle _handle, WdMemoryHandle _memory, WdRenderTarget _target, WdFormat _format, WdExtent3D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue);
-            static WdBuffer* createBufferPtr(WdBufferHandle _handle, WdMemoryHandle _memory, WdSize _size, WdBufferUsageFlags _usage);
+            static WdImage* create2DImagePtr(const std::vector<WdImageHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, const std::vector<WdRenderTarget>& _targets, WdFormat _format, WdExtent2D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue);
+            static WdBuffer* createBufferPtr(const std::vector<WdBufferHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, WdSize _size, WdBufferUsageFlags _usage);
+            static uint32_t globalResourceID;
     };   
 }
 #endif

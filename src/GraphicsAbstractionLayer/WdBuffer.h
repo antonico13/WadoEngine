@@ -28,15 +28,18 @@ namespace Wado::GAL {
             friend class WdLayer;
             //friend class Vulkan::VulkanLayer;
 
-            const WdBufferHandle handle;
-            const WdMemoryHandle memory;
+            const WdResourceID resourceID;
+
+            const std::vector<WdBufferHandle> handles;
+            const std::vector<WdMemoryHandle> memories;
+            const std::vector<void *> dataPointers;
             const WdBufferUsageFlags usage;
             const WdSize size;
-            void* data = nullptr; // nullptr by default 
         private:
-            WdBuffer(WdBufferHandle _handle, WdMemoryHandle _memory, WdSize _size, WdBufferUsageFlags _usage) :
-                handle(_handle),
-                memory(_memory),
+            WdBuffer(WdResourceID _resourceID, const std::vector<WdBufferHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, WdSize _size, WdBufferUsageFlags _usage) :
+                resourceID(_resourceID),
+                handles(_handles),
+                memories(_memories),
                 usage(_usage),
                 size(_size) {};
     };

@@ -19,8 +19,8 @@ namespace Wado::GAL {
     // Always recommended to select optimal tiling, implementations
     // can then select the most efficient memory layout for images
     enum WdImageTiling { 
-        WD_TILING_OPTIMAL,
-        WD_TILING_LINEAR,
+        WD_TILING_OPTIMAL = 0,
+        WD_TILING_LINEAR = 1,
     };
 
     using WdImageUsageFlags = uint32_t;
@@ -93,6 +93,9 @@ namespace Wado::GAL {
         WD_FORMAT_R64G64B64A64_SINT,
         WD_FORMAT_R64G64B64A64_UINT,
         WD_FORMAT_R64G64B64A64_SFLOAT,
+        WD_FORMAT_D32_SFLOAT,
+        WD_FORMAT_D32_SFLOAT_S8_UINT,
+        WD_FORMAT_D24_UNORM_S8_UINT,
     };
 
     // This enum describes how many samples to take per pixel when resolving 
@@ -161,18 +164,22 @@ namespace Wado::GAL {
         public:
             friend class WdLayer;
 
-            const WdImageHandle handle;
-            const WdMemoryHandle memory;
-            const WdRenderTarget target;
+            const WdResourceID resourceID;
+            // Extend for multiple frames in flight. 
+            // If object does not need independent frame-wise copies, all of the elements in the vector are the same
+            const std::vector<WdImageHandle> handles;
+            const std::vector<WdMemoryHandle> memories;
+            const std::vector<WdRenderTarget> targets;
             const WdFormat format;
-            const WdExtent3D extent;
+            const WdExtent2D extent;
             const WdImageUsageFlags usage;
             const WdClearValue clearValue;
         private:
-            WdImage(WdImageHandle _handle, WdMemoryHandle _memory, WdRenderTarget _target, WdFormat _format, WdExtent3D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue) : 
-                handle(_handle), 
-                memory(_memory),
-                target(_target),
+            WdImage(WdResourceID _resourceID, const std::vector<WdImageHandle>& _handles, const std::vector<WdMemoryHandle>& _memories, const std::vector<WdRenderTarget>& _targets, WdFormat _format, WdExtent2D _extent, WdImageUsageFlags _usage, WdClearValue _clearValue) : 
+                resourceID(_resourceID),
+                handles(_handles), 
+                memories(_memories),
+                targets(_targets),
                 format(_format),
                 extent(_extent),
                 usage(_usage),
