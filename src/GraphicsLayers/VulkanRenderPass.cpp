@@ -412,6 +412,7 @@ namespace Wado::GAL::Vulkan {
                 lastWrite = resInfo;
             };
             // TODO: fragment output desc is the only write-only part, should that be treated differently?
+            // TODO: for RW things this becomes a self dependency, I think that's incorrect in Vulkan
             previousReads.push_back(resInfo);
         };
         // Now, if there are any reads leftover they must wait for the previous write. 
@@ -653,8 +654,8 @@ namespace Wado::GAL::Vulkan {
         // TODO: do this based on whether the depth resource is set or not 
         VkPipelineDepthStencilStateCreateInfo depthStencil{};
         depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depthStencil.depthTestEnable = VK_TRUE;
-        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthTestEnable = pipeline._depthStencilResource ? VK_TRUE : VK_FALSE;
+        depthStencil.depthWriteEnable = pipeline._depthStencilResource ? VK_TRUE : VK_FALSE;
         depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
        
         depthStencil.depthBoundsTestEnable = VK_FALSE;
