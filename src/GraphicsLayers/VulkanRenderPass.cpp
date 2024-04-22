@@ -385,7 +385,7 @@ namespace Wado::GAL::Vulkan {
             dependencies.push_back(dependency); 
         };
     };
-    
+
     void VulkanRenderPass::createDescriptorPool() {
         std::vector<VkDescriptorPoolSize> poolSizes{};
 
@@ -407,6 +407,318 @@ namespace Wado::GAL::Vulkan {
         if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create descriptor pool");
         }
+    };
+
+    VkDescriptorSetLayout VulkanRenderPass::createDescriptorSetLayout(const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs) {
+        VkDescriptorSetLayout layout;
+        
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+        for (VulkanPipeline::VkUniforms::const_iterator it = uniforms.begin(); it != uniforms.end(); ++it) {
+            
+            VulkanPipeline::VkUniform uniform = it->second;
+            // TODO: maybe move this inside the VkUniform when it's created?
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = uniform.decorationBinding;
+            binding.descriptorType = uniform.descType;
+            binding.descriptorCount = uniform.resourceCount;
+            binding.stageFlags = uniform.stages;
+            binding.pImmutableSamplers = nullptr; // TODO: allow immutable samplers
+
+            bindings.push_back(binding);
+        };
+        
+        // TODO: This is a bit of duplication, could fix with the thing from above maybe
+        for (VulkanPipeline::VkSubpassInputs::const_iterator it = subpassInputs.begin(); it != subpassInputs.end(); ++it) {
+            
+            VulkanPipeline::VkSubpassInput subpassInput = it->second;
+            
+            VkDescriptorSetLayoutBinding binding;
+            binding.binding = subpassInput.decorationBinding;
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            binding.descriptorCount = 1; // Fixed size 1 
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; // subpass inputs are fragment only 
+            binding.pImmutableSamplers = nullptr; // TODO: as above
+
+            bindings.push_back(binding);
+        };
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor set layout!");
+        };
+
+        return layout;
+    };  
+
+    VulkanPipelineInfo VulkanRenderPass::createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index) {
+        VulkanPipelineInfo vkPipeline{};
+        vkPipeline.descriptorSetLayout = createDescriptorSetLayout(pipeline._uniforms, pipeline._subpassInputs); // TODO: support only one layout for now 
+        
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = _descriptorPool;
+        allocInfo.descriptorSetCount = 1; // TODO: Max frames in flight thing here 
+        allocInfo.pSetLayouts = &vkPipeline.descriptorSetLayout;
+
+        if (vkAllocateDescriptorSets(_device, &allocInfo, &vkPipeline.descriptorSet) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate descriptor set when creating VK pipelines!");
+        };
+
+        // TODO: Should this be moved to the VulkanPipeline object itself?
+        // + duplication
+        VkShaderModule vertShaderModule; 
+        
+        VkShaderModuleCreateInfo vertexCreateInfo{};
+        vertexCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        vertexCreateInfo.codeSize = pipeline._spirvVertexShader.wordCount;
+        vertexCreateInfo.pCode = pipeline._spirvVertexShader.spirvWords;
+
+        if (vkCreateShaderModule(_device, &vertexCreateInfo, nullptr, &vertShaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create vertex shader module!");
+        };
+
+        VkShaderModule fragShaderModule; 
+
+        VkShaderModuleCreateInfo fragmentCreateInfo{};
+        fragmentCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        fragmentCreateInfo.codeSize = pipeline._spirvVertexShader.wordCount;
+        fragmentCreateInfo.pCode = pipeline._spirvVertexShader.spirvWords;
+
+        if (vkCreateShaderModule(_device, &fragmentCreateInfo, nullptr, &fragShaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create fragment shader module!");
+        };
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = vertShaderModule;
+        vertShaderStageInfo.pName = "main"; // TODO: could be configurable like Unreal
+        vertShaderStageInfo.pNext = nullptr;
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main"; // TODO: could be configurable like Unreal
+        fragShaderStageInfo.pNext = nullptr;
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = {
+            vertShaderStageInfo, fragShaderStageInfo
+        };
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: same as in binding desc function
+        vertexInputInfo.pVertexBindingDescriptions = &pipeline._vertexInputBindingDesc;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(pipeline._vertexInputAttributes.size());
+        vertexInputInfo.pVertexAttributeDescriptions = pipeline._vertexInputAttributes.data();
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        std::vector<VkDynamicState> dynamicStates = {
+            VK_DYNAMIC_STATE_VIEWPORT, 
+            VK_DYNAMIC_STATE_SCISSOR
+        };
+
+        VkPipelineDynamicStateCreateInfo dynamicState{};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+        dynamicState.pDynamicStates = dynamicStates.data();
+        
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.scissorCount = 1;
+
+        //TODO: Currently rasterizer, multisampling & color blending are not customizable
+        VkPipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+        rasterizer.depthBiasEnable = VK_FALSE;
+        rasterizer.depthBiasConstantFactor = 0.0f;
+        rasterizer.depthBiasClamp = 0.0f;
+        rasterizer.depthBiasSlopeFactor = 0.0f;
+
+        VkPipelineMultisampleStateCreateInfo multisampling{};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisampling.minSampleShading = 1.0f;
+        multisampling.pSampleMask = nullptr;
+        multisampling.alphaToCoverageEnable = VK_FALSE;
+        multisampling.alphaToOneEnable = VK_FALSE;
+
+        // Do alpha blending
+        // This is the blend attachment state, per framebuffer. 
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | 
+                                            VK_COLOR_COMPONENT_G_BIT | 
+                                            VK_COLOR_COMPONENT_B_BIT |
+                                            VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        // Add color blend here for every color output
+        // TODO: color blending for depth here?
+        std::vector<VkPipelineColorBlendAttachmentState> blendStates(pipeline._fragmentOutputs.size(), colorBlendAttachment);
+
+        // Color Blend State, for all framebuffers 
+
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.logicOp = VK_LOGIC_OP_COPY;
+        colorBlending.attachmentCount = static_cast<uint32_t>(blendStates.size());
+        colorBlending.pAttachments = blendStates.data();
+        colorBlending.blendConstants[0] = 0.0f;
+        colorBlending.blendConstants[1] = 0.0f;
+        colorBlending.blendConstants[2] = 0.0f;
+        colorBlending.blendConstants[3] = 0.0f;
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1; // TODO: when would you have more than 1?
+        pipelineLayoutInfo.pSetLayouts = &vkPipeline.descriptorSetLayout;
+        pipelineLayoutInfo.pushConstantRangeCount = 0; // TODO: work push constants into the workflow
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+        if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &vkPipeline.pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan pipeline layout!");
+        };
+
+        // TODO: do this based on whether the depth resource is set or not 
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+       
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.minDepthBounds = 0.0f;
+        depthStencil.maxDepthBounds = 1.0f;
+
+        // TODO: figure out stencil usage 
+        depthStencil.stencilTestEnable = VK_FALSE;
+        depthStencil.front = {};
+        depthStencil.back = {};
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = &depthStencil;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = vkPipeline.pipelineLayout;
+        pipelineInfo.renderPass = _renderPass;
+        pipelineInfo.subpass = index;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // TODO: deal with this during pipeline caching
+        //pipelineInfo.basePipelineIndex = -1;
+
+        if (vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline.pipeline) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan graphics pipeline");
+        };
+        
+        vkDestroyShaderModule(_device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(_device, vertShaderModule, nullptr);    
+
+        return vkPipeline;        
+    };
+
+    // TODO: can descriptor writes be moved to the pipelines themselves actually?
+    void VulkanRenderPass::writeDescriptorSet(const VkDescriptorSet descriptorSet, const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs) {
+        std::vector<VkWriteDescriptorSet> descriptorWrites{};
+
+        for (VulkanPipeline::VkUniforms::const_iterator it = uniforms.begin(); it != uniforms.end(); ++it) {
+                
+            uint8_t arrayIndex = 0;
+            for (const WdShaderResource& shaderResource : it->second.resources) {
+                VkWriteDescriptorSet descriptorWrite{};
+                    
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = descriptorSet; // TODO: can handle multiple frames in flight this way ?
+                descriptorWrite.dstBinding = it->second.decorationBinding;
+                descriptorWrite.dstArrayElement = arrayIndex; // set elements 1 by 1 
+                descriptorWrite.descriptorType = it->second.descType;
+                descriptorWrite.descriptorCount = 1; // static_cast<uint32_t>(uniform.resources.size());
+                descriptorWrite.pBufferInfo = nullptr;
+                descriptorWrite.pImageInfo = nullptr;
+                descriptorWrite.pTexelBufferView = nullptr;
+
+                if (isImageDescriptor(it->second.descType)) {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.sampler = static_cast<VkSampler>(shaderResource.imageResource.sampler);
+                    imageInfo.imageView = static_cast<VkImageView>(shaderResource.imageResource.image->target); // TODO:: write translate function for this to deal with default values
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO: In the spec it says this is the layout the image will be in when accessed from the descriptor. Do I have to do this transition manually?
+
+                    descriptorWrite.pImageInfo = &imageInfo;
+                } else if (isBufferDescriptor(it->second.descType)) {
+                    if (it->second.descType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || it->second.descType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) {
+                        descriptorWrite.pTexelBufferView = reinterpret_cast<const VkBufferView*>(&(shaderResource.bufferResource.bufferTarget)); // TODO: this might be a problem, might have to cast first to a variable then pass reference 
+                    } else {
+                        VkDescriptorBufferInfo bufferInfo{};
+                        bufferInfo.buffer = static_cast<VkBuffer>(shaderResource.bufferResource.buffer->handle);
+                        bufferInfo.offset = 0; //TODO: idk when it wouldn't be 
+                        bufferInfo.range = static_cast<VkDeviceSize>(shaderResource.bufferResource.buffer->size); 
+
+                        descriptorWrite.pBufferInfo = &bufferInfo;
+                    };
+                };
+
+                descriptorWrites.push_back(descriptorWrite);
+                arrayIndex++;
+            };
+        };
+
+        for (VulkanPipeline::VkSubpassInputs::const_iterator it = subpassInputs.begin(); it != subpassInputs.end(); ++it) {
+                
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.sampler = nullptr; // no sampler 
+            imageInfo.imageView = static_cast<VkImageView>(it->second.resource->target); // TODO:: write translate function for this 
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;  // TODO: same as above
+
+            VkWriteDescriptorSet descriptorWrite{};
+
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = descriptorSet; // TODO: can handle multiple frames in flight this way ?
+            descriptorWrite.dstBinding = it->second.decorationBinding;
+            descriptorWrite.dstArrayElement = 0; // subpass inputs can't be in an array 
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            descriptorWrite.descriptorCount = 1; // static_cast<uint32_t>(uniform.resources.size());
+            descriptorWrite.pBufferInfo = nullptr;
+            descriptorWrite.pImageInfo = &imageInfo;
+            descriptorWrite.pTexelBufferView = nullptr;
+
+            descriptorWrites.push_back(descriptorWrite);
+        };
+        
+        vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     };
 
     // Init functions 
@@ -546,13 +858,14 @@ namespace Wado::GAL::Vulkan {
 
         createDescriptorPool(); // Create descriptor pool first, then allocate the sets and create writes when making the pipeline objects
 
-        // Create all Vulkan pipelines now 
+        // Create all Vulkan pipelines & descriptor writes now 
         uint8_t index = 0;
         for (const VulkanPipeline& pipeline : _pipelines) {
-            /*VulkanPipeline vkPipeline = createVulkanPipeline(pipeline, index);
-            writeDescriptorSets(vkPipeline.descriptorSets, pipeline._uniforms, pipeline._subpassInputs);
-            _vkPipelines.push_back(vkPipeline);
-            index++; */
+            VulkanPipelineInfo vkPipelineInfo = createVulkanPipelineInfo(pipeline, index);
+            _vkPipelines.push_back(vkPipelineInfo);
+            
+            writeDescriptorSet(vkPipelineInfo.descriptorSet, pipeline._uniforms, pipeline._subpassInputs);
+            index++; 
         };
     };
 };

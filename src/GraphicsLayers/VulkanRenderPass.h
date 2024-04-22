@@ -27,8 +27,8 @@ namespace Wado::GAL::Vulkan {
             using VulkanPipelineInfo = struct VulkanPipelineInfo {
                 VkPipeline pipeline;
                 VkPipelineLayout pipelineLayout;
-                std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-                std::vector<VkDescriptorSet> descriptorSets;
+                VkDescriptorSetLayout descriptorSetLayout;
+                VkDescriptorSet descriptorSet;
             };
 
             using AttachmentInfo = struct AttachmentInfo {
@@ -48,8 +48,6 @@ namespace Wado::GAL::Vulkan {
 
             using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
             using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
-
-            using VertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>;
 
             using Framebuffer = struct Framebuffer {
                 std::vector<VkImageView> attachmentViews;
@@ -72,28 +70,6 @@ namespace Wado::GAL::Vulkan {
 
             static std::map<VkDescriptorType, VkAccessFlags> decriptorTypeToAccessType;
 
-
-            // Wd to Vk Translation utils
-
-            /*inline static const WdPipeline::WdShaderParameterTypeMask _imgReadMask = WdPipeline::WdShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::WdShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::WdShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::WdShaderParameterType::WD_SUBPASS_INPUT;
-            inline static const WdPipeline::WdShaderParameterTypeMask _imgWriteMask = WdPipeline::WdShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::WdShaderParameterType::WD_STAGE_OUTPUT;
-
-            inline static const WdPipeline::WdShaderParameterTypeMask _bufReadMask = WdPipeline::WdShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::WdShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::WdShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::WdShaderParameterType::WD_STORAGE_BUFFER;
-            inline static const WdPipeline::WdShaderParameterTypeMask _bufWriteMask = WdPipeline::WdShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::WdShaderParameterType::WD_STORAGE_BUFFER;
-
-            inline static const WdPipeline::WdShaderParameterTypeMask _bufferMask = WdPipeline::WdShaderParameterType::WD_SAMPLED_BUFFER & WdPipeline::WdShaderParameterType::WD_BUFFER_IMAGE & WdPipeline::WdShaderParameterType::WD_UNIFORM_BUFFER & WdPipeline::WdShaderParameterType::WD_STORAGE_BUFFER;
-            inline static const WdPipeline::WdShaderParameterTypeMask _imageMask = WdPipeline::WdShaderParameterType::WD_SAMPLED_IMAGE & WdPipeline::WdShaderParameterType::WD_TEXTURE_IMAGE & WdPipeline::WdShaderParameterType::WD_STORAGE_IMAGE & WdPipeline::WdShaderParameterType::WD_SUBPASS_INPUT & WdPipeline::WdShaderParameterType::WD_STAGE_OUTPUT; */
-
-            /*static const VkAccessFlags WdShaderParamTypeToAccess[]; 
-
-            static const VkDescriptorType WdShaderParamTypeToVkDescriptorType[];
-
-            static VkShaderStageFlagBits WdStagesToVkStages(const WdStageMask stages);
-
-            static VkPipelineStageFlags ResInfoToVkStage(const ResourceInfo& resInfo); */
-
-            //static void addDependencies(std::vector<VkSubpassDependency>& dependencies, std::vector<ResourceInfo>& resInfos, uint32_t readMask, uint32_t writeMask);
-
             static void updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
             static void updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout);
             static void updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkImageView>& framebuffer, VkSubpassDescription& subpass);
@@ -103,17 +79,9 @@ namespace Wado::GAL::Vulkan {
             static void addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos);
 
             void createDescriptorPool();
-            /*VkDescriptorSetLayout createDescriptorSetLayout(const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs);
-            
-            static VertexInputDesc createVertexAttributeDescriptionsAndBinding(const WdPipeline::WdVertexInputs& vertexInputs);
-
-            static void addDescriptorPoolSizes(const WdPipeline& pipeline, std::vector<VkDescriptorPoolSize>& poolSizes);
-
-            void writeDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets, const WdPipeline::WdUniforms& uniforms, const WdPipeline::WdSubpassInputs& subpassInputs) const;
-
-            void createDescriptorPool();
-
-            VulkanPipelineInfo createVulkanPipeline(const VulkanPipeline& pipeline, uint8_t index); */
+            VkDescriptorSetLayout createDescriptorSetLayout(const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs);
+            VulkanPipelineInfo createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index);
+            void writeDescriptorSet(const VkDescriptorSet descriptorSet, const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs);
 
             VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device);
             
