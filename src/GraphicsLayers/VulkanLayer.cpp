@@ -849,9 +849,9 @@ namespace Wado::GAL::Vulkan {
         return _liveImages.emplace_back(img).getClonePtr(); // keep track of this image 
     };
 
-    Memory::WdClonePtr<WdBuffer> VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags) {
-        VkBuffer buffer; // buffer handle 
-        VkDeviceMemory bufferMemory; // memory handle 
+    Memory::WdClonePtr<WdBuffer> VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame) {
+        std::vector<VkBuffer> buffers(FRAMES_IN_FLIGHT); // buffer handles
+        std::vector<VkDeviceMemory> bufferMemories(FRAMES_IN_FLIGHT); // memory handles
 
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -869,27 +869,40 @@ namespace Wado::GAL::Vulkan {
 
         bufferInfo.flags = 0;
 
-        if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create Vulkan buffer!");
+        int elemCount = multiFrame ? FRAMES_IN_FLIGHT : 1;
+
+        for (int i = 0; i < elemCount; i++) {
+
+            if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffers[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create Vulkan buffer!");
+            };
+
+            VkMemoryRequirements memRequirements;
+            vkGetBufferMemoryRequirements(_device, buffers[i], &memRequirements);
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memRequirements.size;
+            allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
+
+            if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemories[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
+            };
+
+            vkBindBufferMemory(_device, buffers[i], bufferMemories[i], 0);
         };
 
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(_device, buffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
-
-        if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
+        if (!multiFrame) {
+            for (int i = 1; i < FRAMES_IN_FLIGHT; i++) {
+                buffers[i] = buffers[0];
+                bufferMemories[i] = bufferMemories[0];
+            };
         };
 
-        vkBindBufferMemory(_device, buffer, bufferMemory, 0);
 
         // Create GAL resource now 
-        WdBuffer* buf = createBufferPtr(static_cast<WdBufferHandle>(buffer), 
-                                     static_cast<WdMemoryHandle>(bufferMemory),
+        WdBuffer* buf = createBufferPtr(reinterpret_cast<const std::vector<WdBufferHandle>&>(buffers), 
+                                     reinterpret_cast<const std::vector<WdMemoryHandle>&>(bufferMemories),
                                      size, usageFlags);
         // error check etc (will do with cutom allocator in own new operator)
 
