@@ -56,7 +56,7 @@ namespace Wado::GAL::Vulkan {
             };
 
             using RenderArea = struct RenderArea {
-                VkExtent2D offset;
+                VkOffset2D offset;
                 VkExtent2D extent;
             };
 
@@ -83,13 +83,13 @@ namespace Wado::GAL::Vulkan {
             VulkanPipelineInfo createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index);
             void writeDescriptorSet(const VkDescriptorSet descriptorSet, const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs);
 
-            VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkExtent2D renderOffset, VkExtent2D renderSize);
+            VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize);
             
             void init();
 
             VkDevice _device;
             VkRenderPass _renderPass;
-            Framebuffer _framebuffer; // TODO: need to actually create the framebuffer object
+            Framebuffer _framebuffer;
             RenderArea _renderArea;
             VkDescriptorPool _descriptorPool;
 

@@ -67,13 +67,12 @@ namespace Wado::GAL {
     };
 
     enum WdStage {
-        Unknown = 0x00000000,
-        Vertex = 0x00000001,
-        Fragment = 0x00000002,
+        Unknown = 0,
+        Vertex = 1,
+        Fragment = 2,
     };
 
-    using WdStageMask = uint32_t;
-
-}
+    //using WdStageMask = uint32_t;
+};
 
 #endif

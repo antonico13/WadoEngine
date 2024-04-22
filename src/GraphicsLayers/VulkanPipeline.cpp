@@ -179,9 +179,9 @@ namespace Wado::GAL::Vulkan {
         
         VkVertexInputBindingDescription bindingDescription{};
 
-        bindingDescription.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: when is this instance?
-        bindingDescription.stride = _vertexInputs.totalSize;
+        _vertexInputBindingDesc.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
+        _vertexInputBindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: when is this instance?
+        _vertexInputBindingDesc.stride = _vertexInputs.totalSize;
 
         for (const VkVertexInput& vertexInput : _vertexInputs.inputs) { 
             VkVertexInputAttributeDescription attributeDescription;
@@ -190,10 +190,8 @@ namespace Wado::GAL::Vulkan {
             attributeDescription.format = vertexInput.format;
             attributeDescription.offset = vertexInput.offset;
 
-            attributeDescriptions.push_back(attributeDescription);
+            _vertexInputAttributes.push_back(attributeDescription);
         };
-
-        _vertexInputDesc = VkVertexInputDesc(attributeDescriptions, bindingDescription);
     };
 
     void VulkanPipeline::generateVertexParams() {

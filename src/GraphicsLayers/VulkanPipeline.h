@@ -87,8 +87,6 @@ namespace Wado::GAL::Vulkan {
 
             using VkFragmentOutputs = std::map<std::string, VkFragmentOutput>;
 
-            using VkVertexInputDesc = std::tuple<std::vector<VkVertexInputAttributeDescription>, VkVertexInputBindingDescription>;
-
             void generateVertexParams();
             void generateFragmentParams();
 
@@ -98,7 +96,8 @@ namespace Wado::GAL::Vulkan {
             VkUniformAddresses _uniformAddresses;
             VkUniforms _uniforms;
             VkVertexInputs _vertexInputs;
-            VkVertexInputDesc _vertexInputDesc;
+            std::vector<VkVertexInputAttributeDescription> _vertexInputAttributes;
+            VkVertexInputBindingDescription _vertexInputBindingDesc;
 
             VkSubpassInputs _subpassInputs; // These are fragment only
             VkFragmentOutputs _fragmentOutputs;

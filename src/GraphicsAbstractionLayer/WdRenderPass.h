@@ -11,12 +11,9 @@ namespace Wado::GAL {
         public:
             friend class WdLayer;
             //friend class Vulkan::VulkanLayer;
-
         private:
-            WdRenderPass(const std::vector<WdPipeline>& pipelines);
-            const std::vector<WdPipeline>& _pipelines;
+            //const std::vector<WdPipeline>& _pipelines;
     };
-
-}
+};
 
 #endif

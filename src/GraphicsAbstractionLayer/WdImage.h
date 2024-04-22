@@ -160,7 +160,6 @@ namespace Wado::GAL {
     using WdImage = struct WdImage {
         public:
             friend class WdLayer;
-            //friend class Vulkan::VulkanLayer;
 
             const WdImageHandle handle;
             const WdMemoryHandle memory;

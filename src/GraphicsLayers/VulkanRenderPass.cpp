@@ -471,7 +471,7 @@ namespace Wado::GAL::Vulkan {
         return layout;
     };  
 
-    VulkanPipelineInfo VulkanRenderPass::createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index) {
+    VulkanRenderPass::VulkanPipelineInfo VulkanRenderPass::createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index) {
         VulkanPipelineInfo vkPipeline{};
         vkPipeline.descriptorSetLayout = createDescriptorSetLayout(pipeline._uniforms, pipeline._subpassInputs); // TODO: support only one layout for now 
         
@@ -739,7 +739,7 @@ namespace Wado::GAL::Vulkan {
 
     // Init functions 
 
-    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkExtent2D renderOffset, VkExtent2D renderSize) : _pipelines(pipelines), _device(device) {
+    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize) : _pipelines(pipelines), _device(device) {
         _renderArea.offset = renderOffset;
         _renderArea.extent = renderSize;
     }; 

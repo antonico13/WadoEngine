@@ -23,6 +23,7 @@ namespace Wado::GAL::Vulkan {
     void VulkanCommandList::setRenderPass(const WdRenderPass& renderPass) { 
         // TODO: This has to be safe every time, need to ensure with destruction of all objects 
         // when switching backend layers.
+        // TODO: maybe add assert here?
         const VulkanRenderPass& _vkRenderPass = reinterpret_cast<const VulkanRenderPass&>(renderPass);
 
         VkRenderPassBeginInfo renderPassInfo{};
