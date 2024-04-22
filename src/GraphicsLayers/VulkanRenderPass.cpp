@@ -69,8 +69,21 @@ namespace Wado::GAL::Vulkan {
                 VK_FORMAT_R64G64B64A64_UINT,
                 VK_FORMAT_R64G64B64A64_SFLOAT,
     };
+
+    // TODO: Util, move to Vulkan Layer
+    static VkClearValue WdClearValueToVkClearValue(WdClearValue clearValue, bool isDepthStencil = false) {
+        VkClearValue vkClearValue{};
+        if (isDepthStencil) {
+            vkClearValue.depthStencil.depth = clearValue.depthStencil.depth; // direct translation
+            vkClearValue.depthStencil.stencil = clearValue.depthStencil.stencil;
+        } else {
+            vkClearValue.color = {{clearValue.color.r, clearValue.color.g, clearValue.color.b, clearValue.color.a}};
+        }
+        return vkClearValue;
+    };
+
     // TODO: a bit of repetition in all the update functions 
-    void VulkanRenderPass::updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout) {
+    void VulkanRenderPass::updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, Framebuffer& framebuffer, VkImageLayout layout) {
         for (VulkanPipeline::VkFragmentOutputs::const_iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             
             WdImageHandle attachmentHandle = it->second.resource->handle;
@@ -96,7 +109,8 @@ namespace Wado::GAL::Vulkan {
                 // Add info to attachment map and framebuffers
                 attachments[attachmentHandle] = info; 
                 // Framebuffer location maps to attachment index 
-                framebuffer.push_back(static_cast<VkImageView>(it->second.resource->target));
+                framebuffer.attachmentViews.push_back(static_cast<VkImageView>(it->second.resource->target));
+                framebuffer.clearValues.push_back(WdClearValueToVkClearValue(it->second.resource->clearValue));
             };
 
             // Create attachment ref 
@@ -110,7 +124,7 @@ namespace Wado::GAL::Vulkan {
         }; 
     };
 
-    void VulkanRenderPass::updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<VkImageView>& framebuffer, VkImageLayout layout) {
+    void VulkanRenderPass::updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, Framebuffer& framebuffer, VkImageLayout layout) {
         for (VulkanPipeline::VkSubpassInputs::const_iterator it = resourceMap.begin(); it != resourceMap.end(); ++it) {
             
             WdImageHandle attachmentHandle = it->second.resource->handle;
@@ -135,7 +149,8 @@ namespace Wado::GAL::Vulkan {
                 // Add info to attachment map and framebuffers
                 attachments[attachmentHandle] = info;
                 // Framebuffer location maps to attachment index  
-                framebuffer.push_back(static_cast<VkImageView>(it->second.resource->target));
+                framebuffer.attachmentViews.push_back(static_cast<VkImageView>(it->second.resource->target));
+                framebuffer.clearValues.push_back(WdClearValueToVkClearValue(it->second.resource->clearValue));
             };
 
             // Create attachment ref 
@@ -149,7 +164,7 @@ namespace Wado::GAL::Vulkan {
         }; 
     };
 
-    void VulkanRenderPass::updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkImageView>& framebuffer, VkSubpassDescription& subpass) {
+    void VulkanRenderPass::updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, Framebuffer& framebuffer, VkSubpassDescription& subpass) {
         if (!depthStencilAttachment) { // invalid pointer, no depth attachment resource set
             return;
         };
@@ -175,7 +190,8 @@ namespace Wado::GAL::Vulkan {
             // Add info to attachment map and framebuffers
             attachments[attachmentHandle] = info;
             // Framebuffer location maps to attachment index  
-            framebuffer.push_back(static_cast<VkImageView>(depthStencilAttachment->target));
+            framebuffer.attachmentViews.push_back(static_cast<VkImageView>(depthStencilAttachment->target));
+            framebuffer.clearValues.push_back(WdClearValueToVkClearValue(depthStencilAttachment->clearValue, true));
         };
 
         // Create attachment ref 
@@ -723,7 +739,10 @@ namespace Wado::GAL::Vulkan {
 
     // Init functions 
 
-    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device) : _pipelines(pipelines), _device(device) {}; 
+    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkExtent2D renderOffset, VkExtent2D renderSize) : _pipelines(pipelines), _device(device) {
+        _renderArea.offset = renderOffset;
+        _renderArea.extent = renderSize;
+    }; 
     
     void VulkanRenderPass::init() {
         // Create a map of ImageHanlde -> Attachment info (VkDesc, all the refs,
@@ -745,8 +764,8 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkAttachmentReference> inputRefs(fragmentInputs.size());
             std::vector<VkAttachmentReference> colorRefs(fragmentOutputs.size());
 
-            updateSubpassInputAttachements(fragmentInputs, attachments, attachmentIndex, inputRefs, _framebuffer.attachmentViews, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            updateFragmentOutputAttachements(fragmentOutputs, attachments, attachmentIndex, colorRefs, _framebuffer.attachmentViews, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            updateSubpassInputAttachements(fragmentInputs, attachments, attachmentIndex, inputRefs, _framebuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            updateFragmentOutputAttachements(fragmentOutputs, attachments, attachmentIndex, colorRefs, _framebuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             
             VkSubpassDescription subpass{};
             subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -757,7 +776,7 @@ namespace Wado::GAL::Vulkan {
             subpass.inputAttachmentCount = static_cast<uint32_t>(inputRefs.size());
             subpass.pInputAttachments = inputRefs.data();
 
-            updateDepthStencilAttachment(pipeline._depthStencilResource, attachments, attachmentIndex, _framebuffer.attachmentViews, subpass);
+            updateDepthStencilAttachment(pipeline._depthStencilResource, attachments, attachmentIndex, _framebuffer, subpass);
 
             // TODO: deal with preserve attachments (either here or later on once we understand all of them?)
 
@@ -856,6 +875,21 @@ namespace Wado::GAL::Vulkan {
             throw std::runtime_error("Failed to create Vulkan render pass!");
         };
 
+        // Render pass has been created, can create framebuffer now.
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = _renderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(_framebuffer.attachmentViews.size());
+        framebufferInfo.pAttachments = _framebuffer.attachmentViews.data();
+        framebufferInfo.width = _renderArea.extent.width; // TODO: By default I'm mapping the render area to the framebuffer, don't know if this is desirable or not yet
+        framebufferInfo.height = _renderArea.extent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_framebuffer.framebuffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan framebuffers");
+        };
+
         createDescriptorPool(); // Create descriptor pool first, then allocate the sets and create writes when making the pipeline objects
 
         // Create all Vulkan pipelines & descriptor writes now 
@@ -863,7 +897,7 @@ namespace Wado::GAL::Vulkan {
         for (const VulkanPipeline& pipeline : _pipelines) {
             VulkanPipelineInfo vkPipelineInfo = createVulkanPipelineInfo(pipeline, index);
             _vkPipelines.push_back(vkPipelineInfo);
-            
+
             writeDescriptorSet(vkPipelineInfo.descriptorSet, pipeline._uniforms, pipeline._subpassInputs);
             index++; 
         };
