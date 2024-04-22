@@ -1077,21 +1077,35 @@ namespace Wado::GAL::Vulkan {
     };
 
     Memory::WdClonePtr<WdCommandList> VulkanLayer::createCommandList() {
-        // TODO:: Not sure if I should allocate one every time
+        // TODO: Not sure if I should allocate one every time
+        // TODO: when a command list is released, make sure to deallocate its buffers
+        // TODO: Same for descriptor sets for pipelines and render passes 
 
-        VkCommandBuffer graphicsBuffer;
+        std::vector<VkCommandBuffer> graphicsBuffers(FRAMES_IN_FLIGHT);
+        std::vector<VkCommandBuffer> transferBuffers(FRAMES_IN_FLIGHT);
         
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = _graphicsCommandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
+        allocInfo.commandBufferCount = FRAMES_IN_FLIGHT;
 
-        if (vkAllocateCommandBuffers(_device, &allocInfo, &graphicsBuffer) != VK_SUCCESS) {
+        if (vkAllocateCommandBuffers(_device, &allocInfo, graphicsBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate Vulkan Command list graphics buffers!");
-        }
+        };
 
-        VulkanCommandList* cmdList = new VulkanCommandList(graphicsBuffer);
+        VkCommandBufferAllocateInfo transferAllocInfo{};
+        transferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        transferAllocInfo.commandPool = _transferCommandPool;
+        transferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        transferAllocInfo.commandBufferCount = FRAMES_IN_FLIGHT;
+
+        if (vkAllocateCommandBuffers(_device, &transferAllocInfo, transferBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate Vulkan Command list transfer buffers!");
+        };
+
+
+        VulkanCommandList* cmdList = new VulkanCommandList(graphicsBuffers, transferBuffers);
         // I think this should be fine 
         return _liveCommandLists.emplace_back(cmdList).getClonePtr();
     };

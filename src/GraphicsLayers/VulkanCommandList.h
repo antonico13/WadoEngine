@@ -29,9 +29,10 @@ namespace Wado::GAL::Vulkan {
             void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) override;
             void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) override;
         private:
-            VulkanCommandList(VkCommandBuffer graphicsBuffer);
+            VulkanCommandList(const std::vector<VkCommandBuffer>& graphicsBuffers, const std::vector<VkCommandBuffer>& transferBuffers);
 
-            VkCommandBuffer _graphicsCommandBuffer; 
+            const std::vector<VkCommandBuffer>& _graphicsCommandBuffers; // per frame in flight 
+            const std::vector<VkCommandBuffer>& _transferCommandBuffers; // per frame in flight
 
             std::vector<VulkanRenderPass::VulkanPipelineInfo>::const_iterator _startingPipeline;
             std::vector<VulkanRenderPass::VulkanPipelineInfo>::const_iterator _currentPipeline;

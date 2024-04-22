@@ -133,7 +133,7 @@ namespace Wado::GAL::Vulkan {
             void displayCurrentTarget() override;
             // TODO: should this be abstract too?
             static Memory::WdClonePtr<WdLayer> getVulkanLayer();
-
+            static uint32_t getCurrentFrameIndex();
         private:
             VulkanLayer(GLFWwindow* window, bool debugEnabled);
 

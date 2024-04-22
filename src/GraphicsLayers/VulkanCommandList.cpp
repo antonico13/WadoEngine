@@ -3,7 +3,7 @@
 namespace Wado::GAL::Vulkan {
 
     void VulkanCommandList::resetCommandList() { 
-        if (vkResetCommandBuffer(_graphicsCommandBuffer, 0) != VK_SUCCESS) { // TOOD: when should I release resources back to the command pool? the reset flag controls this 
+        if (vkResetCommandBuffer(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], 0) != VK_SUCCESS) { // TOOD: when should I release resources back to the command pool? the reset flag controls this 
             throw std::runtime_error("Failed to reset Vulkan command list!");
         }
     };
@@ -15,7 +15,7 @@ namespace Wado::GAL::Vulkan {
         beginInfo.flags = 0; // TODO: for this one since it's graphics, no flags, but for transfer and present i think this should be set 
         beginInfo.pInheritanceInfo = nullptr; // TODO: this 
 
-        if (vkBeginCommandBuffer(_graphicsCommandBuffer, &beginInfo) != VK_SUCCESS) {
+        if (vkBeginCommandBuffer(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], &beginInfo) != VK_SUCCESS) {
             throw std::runtime_error("Failed to begin recording Vulkan command list!");
         }
     };
@@ -29,14 +29,14 @@ namespace Wado::GAL::Vulkan {
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = _vkRenderPass._renderPass;
-        renderPassInfo.framebuffer = _vkRenderPass._framebuffer.framebuffer; // TODO: how to handle multiple frames in flight here?
+        renderPassInfo.framebuffer = _vkRenderPass._framebuffer.framebuffer; // TODO: how to handle multiple frames in flight here? // TODO: Handle multiple frames in flight here 
         renderPassInfo.renderArea.offset = _vkRenderPass._renderArea.offset;
         renderPassInfo.renderArea.extent = _vkRenderPass._renderArea.extent;
 
         renderPassInfo.clearValueCount = static_cast<uint32_t>(_vkRenderPass._framebuffer.clearValues.size());
         renderPassInfo.pClearValues = _vkRenderPass._framebuffer.clearValues.data();
 
-        vkCmdBeginRenderPass(_graphicsCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE); // TODO: this might not always be inline? Not sure 
+        vkCmdBeginRenderPass(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE); // TODO: this might not always be inline? Not sure 
 
         _currentPipeline = _vkRenderPass._vkPipelines.begin();
         _startingPipeline = _vkRenderPass._vkPipelines.begin();
@@ -46,13 +46,13 @@ namespace Wado::GAL::Vulkan {
     void VulkanCommandList::nextPipeline() { 
         // TODO: should throw error here if render pass not set, if it's last pipeline, etc 
         if (_currentPipeline != _startingPipeline) {
-            vkCmdNextSubpass(_graphicsCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdNextSubpass(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_SUBPASS_CONTENTS_INLINE);
         };
 
-        vkCmdBindPipeline(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipeline);
+        vkCmdBindPipeline(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipeline);
  
         // TODO: binding multiple decsriptor sets here?
-        vkCmdBindDescriptorSets(_graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSet, 0, nullptr); // TODO: handle multi-frame here 
+        vkCmdBindDescriptorSets(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSet, 0, nullptr); // TODO: handle multi-frame here 
         
         _currentPipeline++;
     };
@@ -63,16 +63,16 @@ namespace Wado::GAL::Vulkan {
         std::vector<VkDeviceSize> offsets(vertexBuffers.size());
 
         for (const WdBuffer& wdBuffer : vertexBuffers) {
-            vkBuffers.push_back(static_cast<VkBuffer>(wdBuffer.handle));
+            vkBuffers.push_back(static_cast<VkBuffer>(wdBuffer.handles[VulkanLayer::getCurrentFrameIndex()]));
             offsets.push_back(0);
         };
 
         // TODO: look into if handling multiple vertex bindings is needed 
-        vkCmdBindVertexBuffers(_graphicsCommandBuffer, 0, static_cast<uint32_t>(vkBuffers.size()), vkBuffers.data(), offsets.data());
+        vkCmdBindVertexBuffers(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], 0, static_cast<uint32_t>(vkBuffers.size()), vkBuffers.data(), offsets.data());
     };
     
     void VulkanCommandList::setIndexBuffer(const WdBuffer& indexBuffer) { 
-        vkCmdBindIndexBuffer(_graphicsCommandBuffer, static_cast<VkBuffer>(indexBuffer.handle), 0, VK_INDEX_TYPE_UINT32); // TODO: look into if I need to address the offset 
+        vkCmdBindIndexBuffer(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], static_cast<VkBuffer>(indexBuffer.handles[VulkanLayer::getCurrentFrameIndex()]), 0, VK_INDEX_TYPE_UINT32); // TODO: look into if I need to address the offset 
     };
     
     void VulkanCommandList::setViewport(const WdViewportProperties& viewportProperties) { 
@@ -84,33 +84,33 @@ namespace Wado::GAL::Vulkan {
         viewport.minDepth = viewportProperties.depth.min;
         viewport.maxDepth = viewportProperties.depth.max;
 
-        vkCmdSetViewport(_graphicsCommandBuffer, 0, 1, &viewport); // TODO: support only one right now 
+        vkCmdSetViewport(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], 0, 1, &viewport); // TODO: support only one right now 
 
         VkRect2D scissor{};
         scissor.offset = {static_cast<int32_t>(viewportProperties.scissor.offset.width), static_cast<int32_t>(viewportProperties.scissor.offset.height)};
         scissor.extent = {viewportProperties.scissor.extent.width, viewportProperties.scissor.extent.height};
 
-        vkCmdSetScissor(_graphicsCommandBuffer, 0, 1, &scissor);
+        vkCmdSetScissor(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], 0, 1, &scissor);
     };
     
     void VulkanCommandList::drawIndexed(uint32_t indexCount) { 
         // TODO: throw error if draw is called without setting viewport, index, vertex buffer etc first 
-        vkCmdDrawIndexed(_graphicsCommandBuffer, indexCount, 1, 0, 0, 0); // TODO for all of the params, idk if they should be customizable or not 
+        vkCmdDrawIndexed(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], indexCount, 1, 0, 0, 0); // TODO for all of the params, idk if they should be customizable or not 
     };
     
     void VulkanCommandList::drawVertices(uint32_t vertexCount) { 
         // TODO: throw error if draw is called without setting viewport first 
         // TODO: throw error if trying to call this with index buffer set 
-        vkCmdDraw(_graphicsCommandBuffer, vertexCount, 1, 0, 0); // TODO: as with draw index, find out if these params should be user-set
+        vkCmdDraw(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], vertexCount, 1, 0, 0); // TODO: as with draw index, find out if these params should be user-set
     };
     
     void VulkanCommandList::endRenderPass() { 
         // TODO: check if all subpasses have finished, need to call this only after submitting last subpass
-        vkCmdEndRenderPass(_graphicsCommandBuffer);
+        vkCmdEndRenderPass(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()]);
     };
     
     void VulkanCommandList::endCommandList() { 
-        if (vkEndCommandBuffer(_graphicsCommandBuffer) != VK_SUCCESS) {
+        if (vkEndCommandBuffer(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to end Vulkan command list!");
         };
     };
@@ -125,6 +125,6 @@ namespace Wado::GAL::Vulkan {
     };
 
     // Private constructor
-    VulkanCommandList::VulkanCommandList(VkCommandBuffer graphicsBuffer) : _graphicsCommandBuffer(graphicsBuffer) { };
+    VulkanCommandList::VulkanCommandList(const std::vector<VkCommandBuffer>& graphicsBuffers, const std::vector<VkCommandBuffer>& transferBuffers) : _graphicsCommandBuffers(graphicsBuffers), _transferCommandBuffers(transferBuffers) { };
 
 };
