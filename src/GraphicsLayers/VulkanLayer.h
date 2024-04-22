@@ -114,8 +114,8 @@ namespace Wado::GAL::Vulkan {
             void closeBuffer(WdBuffer& buffer, int bufferIndex = CURRENT_FRAME_RESOURCE) override;
 
             // Immediate functions
-            void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) override;
-            void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) override;
+            void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent, int resourceIndex = CURRENT_FRAME_RESOURCE) override;
+            void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size, int bufferIndex = CURRENT_FRAME_RESOURCE) override;
 
             WdFenceHandle createFence(bool signaled = true) override;
             void waitForFences(const std::vector<WdFenceHandle>& fences, bool waitAll = true, uint64_t timeout = UINT64_MAX) override;
@@ -140,6 +140,7 @@ namespace Wado::GAL::Vulkan {
             void init();
             
             static Memory::WdMainPtr<VulkanLayer> _layer;
+            static uint32_t currentFrameIndex;
 
             // Init functions 
             void createInstance();
@@ -209,8 +210,7 @@ namespace Wado::GAL::Vulkan {
             std::vector<VkImage> _swapchainImages;
             VkFormat _swapchainImageFormat;
             VkExtent2D _swapchainImageExtent;
-
-            std::vector<Memory::WdMainPtr<WdImage>> _swapchainWdImages;
+            Memory::WdMainPtr<WdImage> _swapchainImage;
 
             std::vector<VkImageView> _swapchainImageViews;
             std::vector<VkSemaphore> _imageAvailableSemaphores;

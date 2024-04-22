@@ -7,6 +7,7 @@
 #include <iostream>
 
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
+#define MAX(A, B) ((A) < (B) ? (B) : (A))
 #define TO_VK_BOOL(A) ((A) ? (VK_TRUE) : (VK_FALSE))
 
 namespace Wado::GAL::Vulkan {
@@ -628,11 +629,12 @@ namespace Wado::GAL::Vulkan {
         VkPresentModeKHR presentMode = chooseSwapPresentMode(_swapChainSupportDetails.presentModes);
         VkExtent2D extent = chooseSwapExtent(_window, _swapChainSupportDetails.capabilities);
 
-        uint32_t imageCount = _swapChainSupportDetails.capabilities.minImageCount + 1;
+        // we want to have frames in flight swap chain images if possible
+        uint32_t imageCount = MAX(_swapChainSupportDetails.capabilities.minImageCount + 1, FRAMES_IN_FLIGHT);
 
         if (_swapChainSupportDetails.capabilities.maxImageCount > 0 && imageCount > _swapChainSupportDetails.capabilities.maxImageCount) {
             imageCount = _swapChainSupportDetails.capabilities.maxImageCount;
-        }
+        };
 
         VkSwapchainCreateInfoKHR createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -707,18 +709,18 @@ namespace Wado::GAL::Vulkan {
             if (vkCreateImageView(_device, &viewInfo, nullptr, &_swapchainImageViews[i]) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create Vulkan display image render target!");
             };
+        };
 
-            // TODO: deal with multiple frames in flight problem here too
-            WdImage* img = create2DImagePtr(static_cast<WdImageHandle>(_swapchainImages[i]), 
-                                   static_cast<WdMemoryHandle>(VK_NULL_HANDLE),  // TODO: don't think this is how it should be implemented, should have special WdInvalidHandle 
-                                   static_cast<WdRenderTarget>(_swapchainImageViews[i]), 
+        // TODO: deal with multiple frames in flight problem here too
+        WdImage* img = create2DImagePtr(reinterpret_cast<const std::vector<WdImageHandle>&>(_swapchainImages), 
+                                   std::vector<WdMemoryHandle>(imageCount),  // empty array for the memories
+                                   reinterpret_cast<const std::vector<WdRenderTarget>&>(_swapchainImageViews), 
                                    WdFormat::WD_FORMAT_R8G8B8A8_SRGB, // TODO: Vk to Wd format conversion here 
-                                   {_swapchainImageExtent.height, _swapchainImageExtent.width, 1}, // TODO:: check ordering here 
+                                   {_swapchainImageExtent.width, _swapchainImageExtent.height}, // TODO: check ordering to be sure 
                                    WdImageUsage::WD_COLOR_ATTACHMENT,
                                    clearValue);
 
-            _swapchainWdImages.emplace_back(img);
-        };
+        _swapchainImage = Memory::WdMainPtr<WdImage>(img);
 
         // create semaphores for render synch 
         VkSemaphoreCreateInfo semaphoreInfo{};
@@ -740,8 +742,9 @@ namespace Wado::GAL::Vulkan {
     Memory::WdClonePtr<WdImage> VulkanLayer::getDisplayTarget() {
         // TODO: deal with multiple frames in flight here 
         VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _imageAvailableSemaphores[0], VK_NULL_HANDLE, &_currentSwapchainImageIndex);
+        // TODO: this should be moved?
         // TODO: deal with error here 
-        return _swapchainWdImages[_currentSwapchainImageIndex].getClonePtr();
+        return _swapchainImage.getClonePtr();
     };
 
     Memory::WdClonePtr<WdImage> VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags, bool multiFrame) {
@@ -899,7 +902,6 @@ namespace Wado::GAL::Vulkan {
             };
         };
 
-
         // Create GAL resource now 
         WdBuffer* buf = createBufferPtr(reinterpret_cast<const std::vector<WdBufferHandle>&>(buffers), 
                                      reinterpret_cast<const std::vector<WdMemoryHandle>&>(bufferMemories),
@@ -944,19 +946,30 @@ namespace Wado::GAL::Vulkan {
         return static_cast<WdSamplerHandle>(textureSampler);
     };
 
-    void VulkanLayer::updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) {
+    void VulkanLayer::updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize, int bufferIndex) {
         // TODO: should do some bounds checks and stuff here at some point 
         // TODO: offset problem?
-        memcpy(buffer.data, data, dataSize);
+        if (bufferIndex == CURRENT_FRAME_RESOURCE) {
+            bufferIndex = currentFrameIndex;
+        };
+        memcpy(buffer.dataPointers[bufferIndex], data, dataSize);
     };
 
-    void VulkanLayer::openBuffer(WdBuffer& buffer) {
-        vkMapMemory(_device, static_cast<VkDeviceMemory>(buffer.memory), 0, buffer.size, 0, &buffer.data);
+    void VulkanLayer::openBuffer(WdBuffer& buffer, int bufferIndex) {
+        if (bufferIndex == CURRENT_FRAME_RESOURCE) {
+            bufferIndex = currentFrameIndex;
+        };
+
+        vkMapMemory(_device, static_cast<VkDeviceMemory>(buffer.memories[bufferIndex]), 0, buffer.size, 0, &buffer.dataPointers[bufferIndex]);
     };
 
     // TODO when shutting down, call close buffer on all live buffers if they are open
-    void VulkanLayer::closeBuffer(WdBuffer& buffer) {
-        vkUnmapMemory(_device, static_cast<VkDeviceMemory>(buffer.memory)); 
+    void VulkanLayer::closeBuffer(WdBuffer& buffer, int bufferIndex) {
+        if (bufferIndex == CURRENT_FRAME_RESOURCE) {
+            bufferIndex = currentFrameIndex;
+        };
+
+        vkUnmapMemory(_device, static_cast<VkDeviceMemory>(buffer.memories[bufferIndex])); 
     };
 
     WdFenceHandle VulkanLayer::createFence(bool signaled) {
@@ -1016,7 +1029,11 @@ namespace Wado::GAL::Vulkan {
         vkFreeCommandBuffers(_device, commandPool, 1, &commandBuffer);
     };
 
-    void VulkanLayer::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) {
+    void VulkanLayer::copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent, int resourceIndex) {
+        if (resourceIndex == CURRENT_FRAME_RESOURCE) {
+            resourceIndex = currentFrameIndex;
+        };
+
         VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
         VkBufferImageCopy region{};
         region.bufferOffset = 0;
@@ -1035,14 +1052,18 @@ namespace Wado::GAL::Vulkan {
             1
         };
 
-        vkCmdCopyBufferToImage(commandBuffer, static_cast<VkBuffer>(buffer.handle), static_cast<VkImage>(image.handle), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        vkCmdCopyBufferToImage(commandBuffer, static_cast<VkBuffer>(buffer.handles[resourceIndex]), static_cast<VkImage>(image.handles[resourceIndex]), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
         
         //std::cout << "Submitted copy buffer to image command" << std::endl;
         
         endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);       
     };
 
-    void VulkanLayer::copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) {
+    void VulkanLayer::copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size, int bufferIndex) {
+        if (bufferIndex == CURRENT_FRAME_RESOURCE) {
+            bufferIndex = currentFrameIndex;
+        };
+
         VkCommandBuffer commandBuffer = beginSingleTimeCommands(_transferCommandPool);
 
         VkBufferCopy copyRegion{};
@@ -1050,7 +1071,7 @@ namespace Wado::GAL::Vulkan {
         copyRegion.dstOffset = 0;
         copyRegion.size = size;
 
-        vkCmdCopyBuffer(commandBuffer, static_cast<VkBuffer>(srcBuffer.handle), static_cast<VkBuffer>(dstBuffer.handle), 1, &copyRegion);
+        vkCmdCopyBuffer(commandBuffer, static_cast<VkBuffer>(srcBuffer.handles[bufferIndex]), static_cast<VkBuffer>(dstBuffer.handles[bufferIndex]), 1, &copyRegion);
 
         endSingleTimeCommands(commandBuffer, _transferCommandPool, _transferQueue);          
     };

@@ -41,7 +41,8 @@ namespace Wado::GAL {
                 handles(_handles),
                 memories(_memories),
                 usage(_usage),
-                size(_size) {};
+                size(_size),
+                dataPointers(handles.size()) {};
     };
 }
 #endif

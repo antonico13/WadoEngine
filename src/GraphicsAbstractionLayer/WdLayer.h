@@ -40,8 +40,8 @@ namespace Wado::GAL {
             virtual void closeBuffer(WdBuffer& buffer, int bufferIndex = CURRENT_FRAME_RESOURCE) = 0;
 
             // immediate versions 
-            virtual void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent) = 0;
-            virtual void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size) = 0;
+            virtual void copyBufferToImage(const WdBuffer& buffer, const WdImage& image, WdExtent2D extent, int resourceIndex = CURRENT_FRAME_RESOURCE) = 0;
+            virtual void copyBuffer(const WdBuffer& srcBuffer, const WdBuffer& dstBuffer, WdSize size, int bufferIndex = CURRENT_FRAME_RESOURCE) = 0;
 
             virtual WdFenceHandle createFence(bool signaled = true) = 0;
 
