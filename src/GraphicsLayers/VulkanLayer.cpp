@@ -1186,4 +1186,36 @@ namespace Wado::GAL::Vulkan {
         endSingleTimeCommands(commandBuffer, commandPool, graphicsQueue);        */
     //};
 
+    static const VkImageTiling WdTilingToVkTiling(const WdImageTiling imgTiling) {
+        return static_cast<VkImageTiling>(imgTiling);
+    };
+
+    static const VkFormatFeatureFlags WdFeatureFlagsToVkFeatureFlags(const WdFormatFeatureFlags features) {
+        return features;
+    };
+
+    WdFormat VulkanLayer::findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) {
+        for (WdFormat format : formatCandidates) {
+            VkFormatProperties properties;
+            vkGetPhysicalDeviceFormatProperties(_physicalDevice, WdFormatToVkFormat[format], &properties);
+            if (WdTilingToVkTiling(tiling) == VK_IMAGE_TILING_LINEAR && (properties.linearTilingFeatures & WdFeatureFlagsToVkFeatureFlags(features)) == features) {
+                return format;
+            } else if (WdTilingToVkTiling(tiling) == VK_IMAGE_TILING_OPTIMAL && (properties.optimalTilingFeatures & WdFeatureFlagsToVkFeatureFlags(features)) == features) {
+                return format;
+            }; 
+        };
+
+        throw std::runtime_error("Failed to find a supported format!");        
+    };
+
+
+    // Setup and init 
+    VulkanLayer::VulkanLayer(GLFWwindow* window, bool debugEnabled) : _window(window), _enableValidationLayers(debugEnabled) {
+        init();
+    };
+
+    Memory::WdClonePtr<WdLayer> VulkanLayer::getVulkanLayer() { 
+
+    };
+
 };

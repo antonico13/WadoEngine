@@ -128,8 +128,8 @@ namespace Wado::GAL::Vulkan {
             void transitionImageUsage(const WdImage& image, WdImageUsage currentUsage, WdImageUsage nextUsage) override;
 
             void displayCurrentTarget() override;
-
-            static Memory::WdClonePtr<VulkanLayer> getVulkanLayer();
+            // TODO: should this be abstract too?
+            static Memory::WdClonePtr<WdLayer> getVulkanLayer();
 
         private:
             VulkanLayer(GLFWwindow* window, bool debugEnabled);
