@@ -52,7 +52,7 @@ namespace Wado::GAL {
 
             virtual Memory::WdClonePtr<WdCommandList> createCommandList() = 0;
 
-            virtual void executeCommandList(const WdCommandList& commandList) = 0;
+            virtual void executeCommandList(const WdCommandList& commandList, WdFenceHandle fenceToSignal) = 0;
 
             virtual WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) = 0;
 

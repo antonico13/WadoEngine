@@ -782,7 +782,7 @@ namespace Wado::GAL::Vulkan {
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, _deviceProperties);
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
 
         if (vkAllocateMemory(_device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate Vulkan image memory!");
@@ -866,7 +866,7 @@ namespace Wado::GAL::Vulkan {
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, _deviceProperties);
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
 
         if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
@@ -920,16 +920,17 @@ namespace Wado::GAL::Vulkan {
 
     void VulkanLayer::updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize) {
         // TODO: should do some bounds checks and stuff here at some point 
-        memcpy(buffer.data + offset, data, dataSize);
+        // TODO: offset problem?
+        memcpy(buffer.data, data, dataSize);
     };
 
     void VulkanLayer::openBuffer(WdBuffer& buffer) {
-        vkMapMemory(_device, buffer.memory, 0, buffer.size, 0, &buffer.data);
+        vkMapMemory(_device, static_cast<VkDeviceMemory>(buffer.memory), 0, buffer.size, 0, &buffer.data);
     };
 
     // TODO when shutting down, call close buffer on all live buffers if they are open
     void VulkanLayer::closeBuffer(WdBuffer& buffer) {
-        vkUnmapMemory(_device, buffer.memory); 
+        vkUnmapMemory(_device, static_cast<VkDeviceMemory>(buffer.memory)); 
     };
 
     WdFenceHandle VulkanLayer::createFence(bool signaled) {

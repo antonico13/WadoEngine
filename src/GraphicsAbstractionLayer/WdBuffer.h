@@ -32,14 +32,13 @@ namespace Wado::GAL {
             const WdMemoryHandle memory;
             const WdBufferUsageFlags usage;
             const WdSize size;
+            void* data = nullptr; // nullptr by default 
         private:
             WdBuffer(WdBufferHandle _handle, WdMemoryHandle _memory, WdSize _size, WdBufferUsageFlags _usage) :
                 handle(_handle),
                 memory(_memory),
                 usage(_usage),
                 size(_size) {};
-            
-            void* data = nullptr; // nullptr by default 
     };
 }
 #endif

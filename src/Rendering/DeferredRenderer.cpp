@@ -128,13 +128,42 @@ void DeferredRender::render(Scene scene) {
     // ^^ this could be/should be cached somehow so we actually only look for these pipelines if they don't exist.
     std::vector<GAL::WdPipeline> pipelines = {gBufferPipeline, deferredPipeline};
 
+    GAL::WdSize uboBufferSize;
+    GAL::WdBuffer uboBuffer = _graphicsLayer->createBuffer(uboBufferSize, GAL::WdBufferUsage::WD_UNIFORM_BUFFER);
+
+    gBufferPipeline.setVertexUniform("UniformBufferObject", GAL::WdPipeline::ShaderResource(&uboBuffer));
+
+    // create depth & color resources for GBuffer Pass 
     createDeferredColorAttachments();
     createDepthAttachment();
 
-    std::vector<GAL::WdImage> attachments = deferredColorAttachments;
-    attachments.push_back(depthAttachment);
-    // push back swap chain image for current frame here 
-    // attachments.push_back(swapchainImage[currentFrame])
+    gBufferPipeline.setFragmentOutput("diffuseProperties", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[0]));
+    gBufferPipeline.setFragmentOutput("specularProperties", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[1]));
+    gBufferPipeline.setFragmentOutput("meshProperties", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[2]));
+    gBufferPipeline.setFragmentOutput("positionProperties", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[3]));
+
+    gBufferPipeline.setDepthStencilResource(GAL::WdPipeline::ShaderResource(depthAttachment));
+
+    // need to set all texture arrays for GBuffer here as well 
+
+    // set swapchain image here 
+    deferredPipeline.setFragmentOutput("outColor", GAL::WdPipeline::ShaderResource());
+
+    deferredPipeline.setFragmentUniform("diffuseInput", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[0]));
+    deferredPipeline.setFragmentUniform("specularInput", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[1]));
+    deferredPipeline.setFragmentUniform("meshInput", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[2]));
+    deferredPipeline.setFragmentUniform("positionInput", GAL::WdPipeline::ShaderResource(&deferredColorAttachments[3]));
+
+    GAL::WdSize lightBufferSize;
+    GAL::WdBuffer lightBuffer = _graphicsLayer->createBuffer(lightBufferSize, GAL::WdBufferUsage::WD_UNIFORM_BUFFER);
+    
+    deferredPipeline.setFragmentUniform("PointLight", GAL::WdPipeline::ShaderResource(&lightBuffer));
+
+    GAL::WdSize cameraBufferSize;
+    GAL::WdBuffer cameraBuffer = _graphicsLayer->createBuffer(cameraBufferSize, GAL::WdBufferUsage::WD_UNIFORM_BUFFER);
+    
+    deferredPipeline.setFragmentUniform("PointLight", GAL::WdPipeline::ShaderResource(&cameraBuffer));
+
 
     _deferredRenderPass = _graphicsLayer->createRenderPass(pipelines, attachments);
 

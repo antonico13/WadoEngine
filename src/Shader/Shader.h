@@ -10,8 +10,8 @@ namespace Wado::Shader {
 
     class WdShader {
         public:
-        private:
             WdShaderByteCode shaderByteCode;
+        private:
     };
 }
 #endif
