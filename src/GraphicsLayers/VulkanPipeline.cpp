@@ -11,7 +11,8 @@ namespace Wado::GAL::Vulkan {
 
             VkSubpassInputs::iterator it = _subpassInputs.find(paramName);
             
-            if (it != _subpassInputs.end()) { // not a subpass input, continue
+            if (it != _subpassInputs.end()) { // Is a subpass input, need to set its resource 
+                // TODO: Throw error if image not provided 
                 it->second.resource = resource.imageResource.image;
                 return;
             };
@@ -125,13 +126,14 @@ namespace Wado::GAL::Vulkan {
 		8, // Double,
     };
 
-    VulkanPipeline::VulkanPipeline(SPIRVShaderByteCode vertexShader, SPIRVShaderByteCode fragmentShader, VkViewport viewport, VkRect2D scissor) : 
+    VulkanPipeline::VulkanPipeline(SPIRVShaderByteCode vertexShader, SPIRVShaderByteCode fragmentShader, VkViewport viewport, VkRect2D scissor, VkDevice device) : 
         _spirvVertexShader(vertexShader), _spirvFragmentShader(fragmentShader),
-        _viewport(viewport), _scissor(scissor) {
+        _viewport(viewport), _scissor(scissor), _device(device) {
         
         generateVertexParams();
         generateFragmentParams();
-        createVertexAttributeDescriptionsAndBinding();
+        createDescriptorSetLayouts();
+        createPipelineLayout();
     };
 
     void VulkanPipeline::addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const VkDescriptorType descType, const VkShaderStageFlagBits stageFlag) {
@@ -145,52 +147,44 @@ namespace Wado::GAL::Vulkan {
 
             uint32_t decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
             uint32_t decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding);
-            uint32_t decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
 
-            VkUniformAddress address(decorationSet, decorationBinding, decorationLocation); 
+            VkUniformAddress address(decorationSet, decorationBinding);
 
-            // TODO: maybe there is a better way than map look up 
-            if (_uniforms.find(address) == _uniforms.end()) {
+            if (_uniforms.size() < decorationSet) {
+                // This set has never been seen before, need to add it to the general vector,
+                // and the layout vector
+                _uniforms.resize(decorationSet); // TODO: Idk if this is the best resize
+                _descriptorSetBindings.resize(decorationSet);
+                _uniforms[decorationSet - 1] = VkSetUniforms(); // Sets start from 1, index from 0 here 
+            };
+
+            // TODO: Not sure if I should combine maps or not 
+            // TODO: bindings right now don't have to be continous, and this works. Should they be continous?
+            if (_uniforms[decorationSet - 1].find(decorationBinding) == _uniforms[decorationSet].end()) {
                 // First time seeing this uniform, need to add its entry 
                 VkUniform uniform{}; 
-                uniform.descType = descType; 
+                uniform.binding.descriptorType = descType;
+                uniform.binding.binding = decorationBinding; 
+                uniform.binding.descriptorCount = spirvCompiler.get_type(resource.type_id).array[0]; // TODO:: Should I deal with arrays of arrays here?
+                uniform.binding.stageFlags = stageFlag;
+                uniform.binding.pImmutableSamplers = nullptr; // TODO, when is this not?
+
                 uniform.decorationSet = decorationSet;
-                uniform.decorationBinding = decorationBinding;
-                uniform.decorationLocation = decorationLocation;
-                uniform.resourceCount = spirvCompiler.get_type(resource.type_id).array[0]; 
-                uniform.resources.resize(uniform.resourceCount);
-                uniform.stages = 0;
-
-                _uniforms[address] = uniform; // TODO: this could be move actually
-            }
-
-            _uniforms[address].stages |= stageFlag;
+                uniform.resources.resize(uniform.binding.descriptorCount);
+                
+                if (_descriptorSetBindings[decorationSet - 1].size() <= decorationBinding) {
+                    _descriptorSetBindings[decorationSet - 1].resize(decorationBinding + 1); // TODO: lots of resizes, bad
+                };
+                _descriptorSetBindings[decorationSet - 1][decorationBinding] = uniform.binding;
+                _uniforms[decorationSet - 1][decorationBinding] = uniform; // TODO: this could be move actually
+            } else {
+                _descriptorSetBindings[decorationSet - 1][decorationBinding].stageFlags |= stageFlag;
+                _uniforms[decorationSet - 1][decorationBinding].binding.stageFlags |= stageFlag; 
+            };
             
             // Build unique uniform ID
-            VkUniformIdent stageIdent = std::to_string(stageFlag) + resource.name;
+            VkUniformIdent stageIdent(resource.name, stageFlag);
             _uniformAddresses[stageIdent] = address; 
-        };
-    };
-
-    // TODO: using vector a lot everywhere, I should look into performance characteristics,
-    // maybe arrays or other stack-based collections are better
-    void VulkanPipeline::createVertexAttributeDescriptionsAndBinding() {
-        std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
-        
-        VkVertexInputBindingDescription bindingDescription{};
-
-        _vertexInputBindingDesc.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
-        _vertexInputBindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: when is this instance?
-        _vertexInputBindingDesc.stride = _vertexInputs.totalSize;
-
-        for (const VkVertexInput& vertexInput : _vertexInputs.inputs) { 
-            VkVertexInputAttributeDescription attributeDescription;
-            attributeDescription.binding = 0; // TODO: same as above
-            attributeDescription.location = vertexInput.decorationLocation;
-            attributeDescription.format = vertexInput.format;
-            attributeDescription.offset = vertexInput.offset;
-
-            _vertexInputAttributes.push_back(attributeDescription);
         };
     };
 
@@ -210,23 +204,28 @@ namespace Wado::GAL::Vulkan {
         //addUniformDescription(push_constant_buffers, WD_PUSH_CONSTANT); TODO: These need to be handled separately 
         addUniformDescription(spirvCompiler, resources.storage_buffers, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER , VK_SHADER_STAGE_VERTEX_BIT); // TODO: these can also be dynamic 
 
-        // process vertex input now 
+        // process vertex inputs now and build input layout 
+        _vertexInputBindingDesc.binding = 0; // TODO: how to handle this? In what case do we have different bindings?
+        _vertexInputBindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: when is this instance?
+        _vertexInputBindingDesc.stride = 0;
+
         for (const spirv_cross::Resource &resource : resources.stage_inputs) {
-            VkVertexInput vertexInput;
-            vertexInput.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); // TODO: look into how this is used 
-            vertexInput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); 
-            vertexInput.offset = spirvCompiler.get_decoration(resource.id, spv::DecorationOffset); 
+            
+            VkVertexInputAttributeDescription attributeDescription;
+            attributeDescription.binding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); // TODO: look into how this is actually used 
+            attributeDescription.location = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
+            attributeDescription.offset = spirvCompiler.get_decoration(resource.id, spv::DecorationOffset); // TODO: i think this is talking about the layout offset qualifier, not the vertex input offset, so it's wrong
 
             const spirv_cross::SPIRType& type = spirvCompiler.get_type(resource.type_id);
             uint32_t vecSize = type.vecsize;
             spirv_cross::SPIRType::BaseType baseType = type.basetype;
+            
+            attributeDescription.format = SPIRVtoVkFormat[vecSize - 1][baseType];
 
-            vertexInput.size = vecSize * SPIRVBaseToSize[baseType];
-            vertexInput.format = SPIRVtoVkFormat[vecSize - 1][baseType];
+            _vertexInputAttributes.push_back(attributeDescription);
 
-            _vertexInputs.totalSize += vertexInput.size;
-            _vertexInputs.inputs.push_back(vertexInput);
-        };        
+            _vertexInputBindingDesc.stride += vecSize * SPIRVBaseToSize[baseType];
+        };
     };
 
     void VulkanPipeline::generateFragmentParams() {
@@ -243,15 +242,29 @@ namespace Wado::GAL::Vulkan {
         addUniformDescription(spirvCompiler, resources.separate_samplers, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
         addUniformDescription(spirvCompiler, resources.uniform_buffers, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT); // TODO: look into dynamic uniform buffer here 
         //addUniformDescription(push_constant_buffers, WD_PUSH_CONSTANT); TODO: These need to be handled separately 
-        addUniformDescription(spirvCompiler, resources.storage_buffers, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER , VK_SHADER_STAGE_FRAGMENT_BIT); // TODO: these can also be dynamic 
+        addUniformDescription(spirvCompiler, resources.storage_buffers, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT); // TODO: these can also be dynamic 
 
         // Process subpass inputs now, which are fragment shader only 
         for (const spirv_cross::Resource &resource : resources.subpass_inputs) {
             VkSubpassInput subpassInput{};
-            subpassInput.decorationBinding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
-            subpassInput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation);
+            subpassInput.binding.binding = spirvCompiler.get_decoration(resource.id, spv::DecorationBinding); 
+            subpassInput.binding.descriptorCount = 1; // Fixed size;
+            subpassInput.binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            subpassInput.binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            subpassInput.binding.pImmutableSamplers = nullptr;
+
             subpassInput.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationInputAttachmentIndex);
             subpassInput.decorationSet = spirvCompiler.get_decoration(resource.id, spv::DecorationDescriptorSet);
+            
+            if (_descriptorSetBindings.size() < subpassInput.decorationSet) {
+                _descriptorSetBindings.resize(subpassInput.decorationSet);
+            };
+
+            if (_descriptorSetBindings[subpassInput.decorationSet - 1].size() <= subpassInput.binding.binding) {
+                _descriptorSetBindings[subpassInput.decorationSet - 1].resize(subpassInput.binding.binding + 1);
+            };
+
+            _descriptorSetBindings[subpassInput.decorationSet - 1][subpassInput.binding.binding] = subpassInput.binding;
             // By construction the names have to be unique 
             _subpassInputs[resource.name] = subpassInput; 
         };
@@ -264,4 +277,35 @@ namespace Wado::GAL::Vulkan {
             _fragmentOutputs[resource.name] = fragOutput; 
         };
     };
+
+    void VulkanPipeline::createDescriptorSetLayouts() {
+        //_descSetBindings.resize(_uniforms.size()); // As many bindings as there are descriptor sets 
+        _descriptorSetLayouts.resize(_uniforms.size());
+
+        // All descriptor set bindings should have been created by now when the pipeline was loaded in 
+        for (int descSetIndex = 0; descSetIndex < _uniforms.size(); descSetIndex++) {
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = static_cast<uint32_t>(_descriptorSetBindings[descSetIndex].size());
+            layoutInfo.pBindings = _descriptorSetBindings[descSetIndex].data();
+
+            if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_descriptorSetLayouts[descSetIndex]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create Vulkan descriptor set layout!");
+            };
+        };
+    };
+
+    void VulkanPipeline::createPipelineLayout() {
+        
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(_descriptorSetLayouts.size());
+        pipelineLayoutInfo.pSetLayouts = _descriptorSetLayouts.data();
+        pipelineLayoutInfo.pushConstantRangeCount = 0; // TODO: work push constants into the workflow
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+        if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan pipeline layout!");
+        };
+    }
 };

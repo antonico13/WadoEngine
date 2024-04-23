@@ -37,45 +37,30 @@ namespace Wado::GAL::Vulkan {
         
         private:
 
-            VulkanPipeline(SPIRVShaderByteCode vertexShader, SPIRVShaderByteCode fragmentShader, VkViewport viewport, VkRect2D scissor);
+            VulkanPipeline(SPIRVShaderByteCode vertexShader, SPIRVShaderByteCode fragmentShader, VkViewport viewport, VkRect2D scissor, VkDevice device);
             
             // Uniforms can alias in Vulkan, so they are identified through a 2 step map, first 
-            // They get a unique ID based on their binding, set and location.
+            // They get a unique ID based on their binding and set
             using VkUniform = struct VkUniform {
-                VkDescriptorType descType;
+                VkDescriptorSetLayoutBinding binding;
                 uint32_t decorationSet;
-                uint32_t decorationBinding;
-                uint32_t decorationLocation;
-                uint32_t resourceCount;
-                VkShaderStageFlags stages;
-                std::vector<WdShaderResource> resources;
+                //uint32_t decorationLocation; Not valid in Vulkan GLSL
+                std::vector<WdResourceID> resourceIDs; // Resource IDs, used for synchronisation 
+                std::vector<WdShaderResource> resources; // concrete resources, used for descriptor write creation 
             };
             
-            using VkUniformAddress = std::tuple<uint32_t, uint32_t, uint32_t>; // (Set, Binding, Location)
-            using VkUniformIdent = const std::string&; // Stage resource is in + uniform name as to not alias 
+            using VkUniformAddress = std::tuple<uint32_t, uint32_t>; // (Set, Binding). These are the only unique identifiers of a uniform in Vulkan GLSL
+            using VkUniformIdent = std::tuple<const std::string&, VkShaderStageFlagBits>; // Stage resource is in + uniform name as to not alias 
             
             using VkUniformAddresses = std::map<VkUniformIdent, VkUniformAddress>;
-            using VkUniforms = std::map<VkUniformAddress, VkUniform>;
+            using VkSetUniforms = std::map<uint32_t, VkUniform>;
+            using VkUniforms = std::vector<VkSetUniforms>; // Index by set number, -> (map of binding -> uniform). TODO: Only support continous sets right now, starting from index 1 
 
-            using VkVertexInput = struct VkVertexInput {
-                uint8_t decorationLocation;
-                uint8_t decorationBinding; // TODO: look into different vertex bindings 
-                uint8_t offset;
-                size_t size;
-                VkFormat format;
-            };
-
-            using VkVertexInputs = struct {
-                std::vector<VkVertexInput> inputs;
-                size_t totalSize;
-            };
-
-            using VkSubpassInput = struct VkSubpassInput { // Vulkan only 
+            using VkSubpassInput = struct VkSubpassInput {
+                VkDescriptorSetLayoutBinding binding;
                 uint8_t decorationSet;
-                uint8_t decorationBinding;
-                uint8_t decorationLocation;
                 uint8_t decorationIndex; // This index corresponds to the attach index in the pInputAttachments struct 
-                Memory::WdClonePtr<WdImage> resource;
+                Memory::WdClonePtr<WdImage> resource; // This one has to be a concrete resource since it's set at the framebuffer level, also for dependencies 
             }; 
 
             using VkSubpassInputs = std::map<std::string, VkSubpassInput>;
@@ -91,15 +76,22 @@ namespace Wado::GAL::Vulkan {
             void generateFragmentParams();
 
             void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const VkDescriptorType descType, const VkShaderStageFlagBits stageFlag);
-            void createVertexAttributeDescriptionsAndBinding();
+
+            void createDescriptorSetLayouts();
+
+            void createPipelineLayout();
 
             VkUniformAddresses _uniformAddresses;
             VkUniforms _uniforms;
-            VkVertexInputs _vertexInputs;
+
             std::vector<VkVertexInputAttributeDescription> _vertexInputAttributes;
             VkVertexInputBindingDescription _vertexInputBindingDesc;
+        
+            std::vector<std::vector<VkDescriptorSetLayoutBinding>> _descriptorSetBindings; // bindings for all decsriptor sets
+            std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
+            VkPipelineLayout _pipelineLayout;
 
-            VkSubpassInputs _subpassInputs; // These are fragment only
+            VkSubpassInputs _subpassInputs;
             VkFragmentOutputs _fragmentOutputs;
 
             Memory::WdClonePtr<WdImage> _depthStencilResource; // By default is set as invalid pointer, if it's ever set before pipeline is created it will be used in Render Pass creation
@@ -108,6 +100,7 @@ namespace Wado::GAL::Vulkan {
             SPIRVShaderByteCode _spirvFragmentShader;
             VkViewport _viewport;
             VkRect2D _scissor;
+            VkDevice _device;
     };
 };
 
