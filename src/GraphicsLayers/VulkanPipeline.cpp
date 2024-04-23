@@ -29,20 +29,21 @@ namespace Wado::GAL::Vulkan {
     };
 
     void VulkanPipeline::setUniform(const WdStage stage, const std::string& paramName, const std::vector<WdShaderResource>& resources) {
-        VkUniformIdent uniformIdent = std::to_string(WdShaderStageToVkShaderStage[stage]) + paramName;
+        VkUniformIdent uniformIdent(paramName, WdShaderStageToVkShaderStage[stage]);
         VkUniformAddresses::iterator it = _uniformAddresses.find(uniformIdent);
 
         if (it != _uniformAddresses.end()) { // Found, can set resource 
-            VkUniformAddress address = it->second;
-            VkUniforms::iterator uniform = _uniforms.find(address);
+            uint32_t uniformSet = std::get<0>(it->second);
+            uint32_t uniformBinding = std::get<1>(it->second);
+            // TODO: bounds check here 
+            VkUniform& uniform = _uniforms[uniformSet][uniformBinding];
             
-            assert(uniform != _uniforms.end()); // This should never fail by construction.
-
-            if (uniform->second.resourceCount < resources.size()) {
+            if (uniform.binding.descriptorCount < resources.size()) {
                 throw std::runtime_error("Cannot set uniform " + paramName + " values since provided resource array has greater size than the maximum resoucre count for this uniform.");
             };
             // TODO: type check here 
-            uniform->second.resources = resources;
+            // TODO: set resource IDs too?
+            uniform.resources = resources;
         };
 
         throw std::runtime_error("Uniform " + paramName + "not found.");
@@ -50,18 +51,20 @@ namespace Wado::GAL::Vulkan {
     
     // Only for array uniforms 
     void VulkanPipeline::addToUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource, int index) {
-        VkUniformIdent uniformIdent = std::to_string(WdShaderStageToVkShaderStage[stage]) + paramName;
+        VkUniformIdent uniformIdent(paramName, WdShaderStageToVkShaderStage[stage]);
         VkUniformAddresses::iterator it = _uniformAddresses.find(uniformIdent);
         
         if (it != _uniformAddresses.end()) { // found, can add to resource 
-            VkUniformAddress address = it->second;
-            VkUniforms::iterator uniform = _uniforms.find(address);
+            uint32_t uniformSet = std::get<0>(it->second);
+            uint32_t uniformBinding = std::get<1>(it->second);
+            // TODO: bounds check here 
+            VkUniform& uniform = _uniforms[uniformSet][uniformBinding];
             // Checks here
-            if (uniform->second.resourceCount == 1) {
+            if (uniform.binding.descriptorCount == 1) {
                 throw std::runtime_error("Cannot add to uniform " + paramName + ", since it is of non-array type.");
             };
 
-            if (uniform->second.resourceCount < index) {
+            if (uniform.binding.descriptorCount < index) {
                 throw std::runtime_error("Cannot add to uniform " + paramName + ", since provided index is out of bounds.");
                 return;
             };
@@ -69,15 +72,15 @@ namespace Wado::GAL::Vulkan {
             if (index == UNIFORM_END) {
                 // Need to push back in this case 
 
-                if (uniform->second.resourceCount == uniform->second.resources.size()) {
+                if (uniform.binding.descriptorCount == uniform.resources.size()) {
                     throw std::runtime_error("Cannot add to uniform " + paramName + ", all of its values have already been set.");
                 };
 
-                uniform->second.resources.push_back(resource);
+                uniform.resources.push_back(resource);
             } else {
                 // TODO: this is terrible but it might work, fix pls 
-                std::replace(uniform->second.resources.begin() + index, uniform->second.resources.begin() + index + 1, uniform->second.resources[index], resource); 
-            }
+                std::replace(uniform.resources.begin() + index, uniform.resources.begin() + index + 1, uniform.resources[index], resource); 
+            };
         };
         
         throw std::runtime_error("Uniform " + paramName + "not found.");
@@ -170,6 +173,7 @@ namespace Wado::GAL::Vulkan {
                 uniform.binding.pImmutableSamplers = nullptr; // TODO, when is this not?
 
                 uniform.decorationSet = decorationSet;
+                uniform.resourceIDs.resize(uniform.binding.descriptorCount);
                 uniform.resources.resize(uniform.binding.descriptorCount);
                 
                 if (_descriptorSetBindings[decorationSet - 1].size() <= decorationBinding) {
