@@ -107,6 +107,10 @@ namespace Wado::GAL::Vulkan {
 
             Memory::WdClonePtr<WdBuffer> createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame = false) override;
             
+            Memory::WdClonePtr<WdImage> createTemp2DImage(bool multiFrame = false) override;
+
+            Memory::WdClonePtr<WdBuffer> createTempBuffer(bool multiFrame = false) override;
+
             WdSamplerHandle createSampler(const WdTextureAddressMode& addressMode = DEFAULT_TEXTURE_ADDRESS_MODE, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
             
             void updateBuffer(const WdBuffer& buffer, void *data, WdSize offset, WdSize dataSize, int bufferIndex = CURRENT_FRAME_RESOURCE) override;
@@ -227,6 +231,8 @@ namespace Wado::GAL::Vulkan {
             // the pointer management here will need to change 
             std::vector<Memory::WdMainPtr<WdImage>> _liveImages;
             std::vector<Memory::WdMainPtr<WdBuffer>> _liveBuffers;
+            std::vector<Memory::WdMainPtr<WdImage>> _liveTempImages;
+            std::vector<Memory::WdMainPtr<WdBuffer>> _liveTempBuffers;
             std::vector<VkSampler> _liveSamplers;
             std::vector<VkFence> _liveFences;
             std::vector<VkSemaphore> _liveSemaphores;

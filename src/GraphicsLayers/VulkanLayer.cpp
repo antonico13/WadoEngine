@@ -907,6 +907,15 @@ namespace Wado::GAL::Vulkan {
         return _liveBuffers.emplace_back(buf).getClonePtr(); // keep track of this buffer 
     };
 
+    Memory::WdClonePtr<WdImage> VulkanLayer::createTemp2DImage(bool multiFrame) {
+        return _liveTempImages.emplace_back(createTemp2DImagePtr()).getClonePtr();
+    };
+
+    Memory::WdClonePtr<WdBuffer> VulkanLayer::createTempBuffer(bool multiFrame) {
+        return _liveTempBuffers.emplace_back(createTempBufferPtr()).getClonePtr();
+    };
+
+
     WdSamplerHandle VulkanLayer::createSampler(const WdTextureAddressMode& addressMode, WdFilterMode minFilter, WdFilterMode magFilter, WdFilterMode mipMapFilter) {
         VkSampler textureSampler;
 
