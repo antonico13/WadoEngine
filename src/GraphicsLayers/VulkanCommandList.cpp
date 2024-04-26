@@ -29,7 +29,7 @@ namespace Wado::GAL::Vulkan {
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = _vkRenderPass._renderPass;
-        renderPassInfo.framebuffer = _vkRenderPass._framebuffer.framebuffer; // TODO: how to handle multiple frames in flight here? // TODO: Handle multiple frames in flight here 
+        renderPassInfo.framebuffer = _vkRenderPass._framebuffer.framebuffer; // TODO: how to handle multiple frames in flight here? // TODO: Handle multiple frames in flight here, this should be handled by the swapchain image index
         renderPassInfo.renderArea.offset = _vkRenderPass._renderArea.offset;
         renderPassInfo.renderArea.extent = _vkRenderPass._renderArea.extent;
 
@@ -52,7 +52,7 @@ namespace Wado::GAL::Vulkan {
         vkCmdBindPipeline(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipeline);
  
         // TODO: binding multiple decsriptor sets here?
-        vkCmdBindDescriptorSets(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSet, 0, nullptr); // TODO: handle multi-frame here 
+        vkCmdBindDescriptorSets(_graphicsCommandBuffers[VulkanLayer::getCurrentFrameIndex()], VK_PIPELINE_BIND_POINT_GRAPHICS, _currentPipeline->pipelineLayout, 0, 1, &_currentPipeline->descriptorSet, 0, nullptr); // TODO: handle multi-frame here, need to index decsriptor set from swap chain index 
         
         _currentPipeline++;
     };

@@ -27,9 +27,9 @@ namespace Wado::GAL::Vulkan {
         private:
             using VulkanPipelineInfo = struct VulkanPipelineInfo {
                 VkPipeline pipeline;
-                VkPipelineLayout pipelineLayout;
-                VkDescriptorSetLayout descriptorSetLayout;
-                VkDescriptorSet descriptorSet;
+                // Have vector of descriptors per frame in-flight. 
+                // Index by frame in flight, then by set number 
+                std::vector<std::vector<VkDescriptorSet>> descriptorSets;
             };
 
             using AttachmentInfo = struct AttachmentInfo {
@@ -39,7 +39,7 @@ namespace Wado::GAL::Vulkan {
                 bool presentSrc;
             };
 
-            using AttachmentMap = std::map<WdImageHandle, AttachmentInfo>;
+            using AttachmentMap = std::map<WdResourceID, AttachmentInfo>;
 
             using ResourceInfo = struct ResourceInfo {
                 VkDescriptorType type;
@@ -48,12 +48,11 @@ namespace Wado::GAL::Vulkan {
                 uint8_t pipelineIndex;
             };
 
-            using ImageResources = std::map<WdImageHandle, std::vector<ResourceInfo>>;
-            using BufferResources = std::map<WdBufferHandle, std::vector<ResourceInfo>>;
+            using ResourceMap = std::map<WdResourceID, std::vector<ResourceInfo>>;
 
             using Framebuffer = struct Framebuffer {
                 std::vector<VkImageView> attachmentViews;
-                std::vector<VkClearValue> clearValues;
+                std::vector<VkClearValue> clearValues; // TODO: should this be per big framebuffer? Since the clear values should always be the same between frames 
                 VkFramebuffer framebuffer;
             };
 
@@ -70,23 +69,19 @@ namespace Wado::GAL::Vulkan {
             static bool isWriteDescriptorType(VkDescriptorType type);
             static VkPipelineStageFlags VkShaderStageFlagsToVkPipelineStageFlags(const VkShaderStageFlags stageFlags);
 
-            //static VkPipelineStageFlags resInfoToVkStage(const ResourceInfo& resInfo);
-
             static std::map<VkDescriptorType, VkAccessFlags> decriptorTypeToAccessType;
 
-            static void updateFragmentOutputAttachements(const VulkanPipeline::VkFragmentOutputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, Framebuffer& framebuffer, VkImageLayout layout);
-            static void updateSubpassInputAttachements(const VulkanPipeline::VkSubpassInputs& resourceMap, AttachmentMap& attachments, uint8_t& attachmentIndex, std::vector<VkAttachmentReference>& attachmentRefs, Framebuffer& framebuffer, VkImageLayout layout);
-            static void updateDepthStencilAttachment(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, uint8_t& attachmentIndex, Framebuffer& framebuffer, VkSubpassDescription& subpass);
-            static void updateUniformResources(const VulkanPipeline::VkUniforms& resourceMap, ImageResources& imageResources, BufferResources& bufferResources, const uint8_t pipelineIndex, DescriptorCounts& descriptorCounts);
+            static void updateUniformResources(const VulkanPipeline::VkSetUniforms& uniforms, ResourceMap& resourceMap, const uint8_t pipelineIndex, DescriptorCounts& descriptorCounts);
+            
             template <class T>
-            static void updateAttachmentResources(const T& resourceMap, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
-            static void updateDepthStencilResource(Memory::WdClonePtr<WdImage> depthStencil, ImageResources& imageResources, const VkDescriptorType type, const uint8_t pipelineIndex);
+            static void updateAttachmentResources(const T& attachments, AttachmentMap& attachmentMap, ResourceMap& resourceMap, std::vector<VkAttachmentReference>& attachmentRefs, std::vector<Framebuffer>& framebuffers, const VkImageLayout layout, const VkDescriptorType type, const uint8_t pipelineIndex);
+            static void updateDepthStencilAttachmentResource(const Memory::WdClonePtr<WdImage> depthStencilAttachment, AttachmentMap& attachments, ResourceMap& resourceMap, std::vector<Framebuffer>& framebuffers, const VkDescriptorType type, const uint8_t pipelineIndex, VkSubpassDescription& subpass);
+
             static void addDependencies(std::vector<VkSubpassDependency>& dependencies, const std::vector<ResourceInfo>& resInfos);
 
             void createDescriptorPool();
-            VkDescriptorSetLayout createDescriptorSetLayout(const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs);
+            
             VulkanPipelineInfo createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index);
-            void writeDescriptorSet(const VkDescriptorSet descriptorSet, const VulkanPipeline::VkUniforms& uniforms, const VulkanPipeline::VkSubpassInputs& subpassInputs);
 
             VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize);
             
@@ -94,10 +89,9 @@ namespace Wado::GAL::Vulkan {
 
             VkDevice _device;
             VkRenderPass _renderPass;
-            Framebuffer _framebuffer;
+            std::vector<Framebuffer> _framebuffers; // per frame in flight/swap chain image count 
             RenderArea _renderArea;
             VkDescriptorPool _descriptorPool;
-
             DescriptorCounts _descriptorCounts;
             
             const std::vector<VulkanPipeline>& _pipelines;

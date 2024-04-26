@@ -65,7 +65,7 @@ namespace Wado::GAL::Vulkan {
             using VkSubpassInputs = std::map<std::string, VkSubpassInput>;
 
             using VkFragmentOutput = struct VkFragmentOutput { 
-                uint8_t decorationLocation; // Needed in order to create refs and layouts
+                uint8_t decorationIndex; // Needed in order to create refs and layouts, analog to "Location" in the actual shader
                 Memory::WdClonePtr<WdImage> resource; 
             }; 
 
