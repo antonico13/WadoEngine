@@ -42,6 +42,21 @@ namespace Wado::GAL::Vulkan {
             if (it != _subpassInputs.end()) { // Is a subpass input, need to set its resource 
                 // TODO: Throw error if image not provided 
                 it->second.resource = std::get<WdImageResource>(resource.resource).image;
+                // Also need to add its descriptor write 
+                
+                VkWriteDescriptorSet writeDescriptor{};
+                writeDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeDescriptor.descriptorCount = 1; // Can only update 1 for subpass inputs 
+                writeDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                writeDescriptor.dstArrayElement = 0;
+                writeDescriptor.dstBinding = it->second.binding.binding;
+
+                VkOutstandingDescriptorWrite descriptorWrite{};
+                descriptorWrite.descSetIndex = it->second.decorationSet;
+                descriptorWrite.writeDescSet = writeDescriptor;
+                descriptorWrite.descInfo = std::visit(VkDescriptorWriteVisitor(), resource.resource);
+
+                _outstandingWrites.push_back(descriptorWrite); // whenever this pipeline is next execute the new resources can be bound now 
                 return;
             };
         };
@@ -71,7 +86,6 @@ namespace Wado::GAL::Vulkan {
             };
 
             // TODO: type check here 
-            // TODO: Set resource ID and make outstanding descriptor write here. 
             uniform.resourceIDs.clear();
             
             for (int i = 0; i < resources.size(); i++) {
@@ -350,7 +364,7 @@ namespace Wado::GAL::Vulkan {
         // Process fragment outputs now 
         for (const spirv_cross::Resource &resource : resources.stage_outputs) {
             VkFragmentOutput fragOutput{};
-            fragOutput.decorationLocation = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); // Only care about location for now 
+            fragOutput.decorationIndex = spirvCompiler.get_decoration(resource.id, spv::DecorationLocation); // Only care about location for now 
             // By construction the names have to be unique 
             _fragmentOutputs[resource.name] = fragOutput; 
         };
