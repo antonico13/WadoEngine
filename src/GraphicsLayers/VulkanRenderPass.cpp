@@ -509,9 +509,10 @@ namespace Wado::GAL::Vulkan {
 
     // Init functions 
 
-    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize) : _pipelines(pipelines), _device(device) {
+    VulkanRenderPass::VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize, const uint32_t maximumFramesInFlight) : _pipelines(pipelines), _device(device), _maximumFramesInFlight(maximumFramesInFlight) {
         _renderArea.offset = renderOffset;
         _renderArea.extent = renderSize;
+        _framebuffers.resize(maximumFramesInFlight);
     }; 
     
     void VulkanRenderPass::init() {

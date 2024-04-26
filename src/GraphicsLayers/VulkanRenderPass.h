@@ -83,7 +83,7 @@ namespace Wado::GAL::Vulkan {
             
             VulkanPipelineInfo createVulkanPipelineInfo(const VulkanPipeline& pipeline, const uint8_t index);
 
-            VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize);
+            VulkanRenderPass(const std::vector<VulkanPipeline>& pipelines, VkDevice device, VkOffset2D renderOffset, VkExtent2D renderSize, const uint32_t maximumFramesInFlight);
             
             void init();
 
@@ -96,6 +96,8 @@ namespace Wado::GAL::Vulkan {
             
             const std::vector<VulkanPipeline>& _pipelines;
             std::vector<VulkanPipelineInfo> _vkPipelines;
+
+            const uint32_t _maximumFramesInFlight;
     };
 };
 
