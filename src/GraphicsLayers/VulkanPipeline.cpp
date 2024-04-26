@@ -5,6 +5,34 @@
 
 namespace Wado::GAL::Vulkan {
 
+    VulkanPipeline::VkDescriptorInfo VulkanPipeline::VkDescriptorWriteVisitor::operator()(const WdImageResource& imageResource) const {
+        VkDescriptorInfo descInfo{};
+
+        for (const WdRenderTarget& renderTarget : imageResource.image->targets) {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = static_cast<VkImageView>(renderTarget);
+            imageInfo.sampler = static_cast<VkSampler>(imageResource.sampler); // TODO: make sure this is invalid handle if not set 
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO: fix this across entire project 
+            descInfo.imageInfos.push_back(imageInfo);
+        };
+
+        return descInfo;
+    };
+
+    VulkanPipeline::VkDescriptorInfo VulkanPipeline::VkDescriptorWriteVisitor::operator()(const WdBufferResource& bufferResource) const {
+        VkDescriptorInfo descInfo{};
+
+        for (const WdBufferHandle& bufferHandle : bufferResource.buffer->handles) {
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = static_cast<VkBuffer>(bufferHandle);
+            bufferInfo.offset = 0;
+            bufferInfo.range = VK_WHOLE_SIZE; // TODO: should these be granular?
+            descInfo.bufferInfos.push_back(bufferInfo);
+        };
+
+        return descInfo;
+    };
+
     void VulkanPipeline::setUniform(const WdStage stage, const std::string& paramName, const WdShaderResource& resource) {
         // If fragment, look first in subpassInputs before going to the general case 
         if (stage == WdStage::Fragment) {
@@ -13,7 +41,7 @@ namespace Wado::GAL::Vulkan {
             
             if (it != _subpassInputs.end()) { // Is a subpass input, need to set its resource 
                 // TODO: Throw error if image not provided 
-                it->second.resource = resource.imageResource.image;
+                it->second.resource = std::get<WdImageResource>(resource.resource).image;
                 return;
             };
         };
@@ -41,9 +69,28 @@ namespace Wado::GAL::Vulkan {
             if (uniform.binding.descriptorCount < resources.size()) {
                 throw std::runtime_error("Cannot set uniform " + paramName + " values since provided resource array has greater size than the maximum resoucre count for this uniform.");
             };
+
             // TODO: type check here 
-            // TODO: set resource IDs too?
-            uniform.resources = resources;
+            // TODO: Set resource ID and make outstanding descriptor write here. 
+            uniform.resourceIDs.clear();
+            
+            for (int i = 0; i < resources.size(); i++) {
+                uniform.resourceIDs.push_back(resources[i].resID);
+
+                VkWriteDescriptorSet writeDescriptor{};
+                writeDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeDescriptor.descriptorCount = 1; // Always update 1 at a time in this design 
+                writeDescriptor.descriptorType = uniform.binding.descriptorType;
+                writeDescriptor.dstArrayElement = i;
+                writeDescriptor.dstBinding = uniformBinding;
+
+                VkOutstandingDescriptorWrite descriptorWrite{};
+                descriptorWrite.descSetIndex = uniformSet;
+                descriptorWrite.writeDescSet = writeDescriptor;
+                descriptorWrite.descInfo = std::visit(VkDescriptorWriteVisitor(), resources[i].resource);
+
+                _outstandingWrites.push_back(descriptorWrite); // whenever this pipeline is next execute the new resources can be bound now 
+            };
         };
 
         throw std::runtime_error("Uniform " + paramName + "not found.");
@@ -72,14 +119,41 @@ namespace Wado::GAL::Vulkan {
             if (index == UNIFORM_END) {
                 // Need to push back in this case 
 
-                if (uniform.binding.descriptorCount == uniform.resources.size()) {
+                if (uniform.binding.descriptorCount == uniform.resourceIDs.size()) {
                     throw std::runtime_error("Cannot add to uniform " + paramName + ", all of its values have already been set.");
                 };
 
-                uniform.resources.push_back(resource);
+                uniform.resourceIDs.push_back(resource.resID);
+
+                VkWriteDescriptorSet writeDescriptor{};
+                writeDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeDescriptor.descriptorCount = 1; // Always update 1 at a time in this design 
+                writeDescriptor.descriptorType = uniform.binding.descriptorType;
+                writeDescriptor.dstArrayElement = uniform.resourceIDs.size() - 1;
+                writeDescriptor.dstBinding = uniformBinding;
+
+                VkOutstandingDescriptorWrite descriptorWrite{};
+                descriptorWrite.descSetIndex = uniformSet;
+                descriptorWrite.writeDescSet = writeDescriptor;
+                descriptorWrite.descInfo = std::visit(VkDescriptorWriteVisitor(), resource.resource);
+
+                _outstandingWrites.push_back(descriptorWrite); // whenever this pipeline is next execute the new resources can be bound now 
             } else {
-                // TODO: this is terrible but it might work, fix pls 
-                std::replace(uniform.resources.begin() + index, uniform.resources.begin() + index + 1, uniform.resources[index], resource); 
+                uniform.resourceIDs[index] = resource.resID;
+
+                VkWriteDescriptorSet writeDescriptor{};
+                writeDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeDescriptor.descriptorCount = 1; // Always update 1 at a time in this design 
+                writeDescriptor.descriptorType = uniform.binding.descriptorType;
+                writeDescriptor.dstArrayElement = index;
+                writeDescriptor.dstBinding = uniformBinding;
+
+                VkOutstandingDescriptorWrite descriptorWrite{};
+                descriptorWrite.descSetIndex = uniformSet;
+                descriptorWrite.writeDescSet = writeDescriptor;
+                descriptorWrite.descInfo = std::visit(VkDescriptorWriteVisitor(), resource.resource);
+
+                _outstandingWrites.push_back(descriptorWrite); // whenever this pipeline is next execute the new resources can be bound now 
             };
         };
         
@@ -174,7 +248,7 @@ namespace Wado::GAL::Vulkan {
 
                 uniform.decorationSet = decorationSet;
                 uniform.resourceIDs.resize(uniform.binding.descriptorCount);
-                uniform.resources.resize(uniform.binding.descriptorCount);
+                //uniform.resources.resize(uniform.binding.descriptorCount);
                 
                 if (_descriptorSetBindings[decorationSet - 1].size() <= decorationBinding) {
                     _descriptorSetBindings[decorationSet - 1].resize(decorationBinding + 1); // TODO: lots of resizes, bad

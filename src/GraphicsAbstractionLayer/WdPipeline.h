@@ -9,6 +9,7 @@
 
 #include <string>
 #include <vector>
+#include <variant>
 
 namespace Wado::GAL {
 
@@ -22,24 +23,11 @@ namespace Wado::GAL {
         WdRenderTarget bufferTarget;
     };
 
-    using WdShaderResource = union WdShaderResource {
-        const WdImageResource imageResource;
-        const WdBufferResource bufferResource;
-
-        WdShaderResource(Memory::WdClonePtr<WdImage> img);
-        WdShaderResource(Memory::WdClonePtr<WdBuffer> buf);
-        WdShaderResource(WdSamplerHandle sampler);
-        WdShaderResource(Memory::WdClonePtr<WdImage> img, WdSamplerHandle sampler);
-        WdShaderResource(Memory::WdClonePtr<WdBuffer> buf, WdRenderTarget bufTarget);
-
-        // copy assignment & constructor
-        // WdShaderResource& operator=(const WdShaderResource& other);
-        // WdShaderResource(const WdShaderResource& other);
-        // move assignment & constructor 
-        // WdShaderResource& operator=(const WdShaderResource& other);
-        // WdShaderResource(const WdShaderResource& other);
+    using WdShaderResource = struct WdShaderResource {
+        WdResourceID resID;
+        std::variant<WdImageResource, WdBufferResource> resource; 
     };
-    
+
     class WdPipeline  {
         public:
             inline static const int UNIFORM_END = -1;

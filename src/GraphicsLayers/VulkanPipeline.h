@@ -46,7 +46,6 @@ namespace Wado::GAL::Vulkan {
                 uint32_t decorationSet;
                 //uint32_t decorationLocation; Not valid in Vulkan GLSL
                 std::vector<WdResourceID> resourceIDs; // Resource IDs, used for synchronisation 
-                std::vector<WdShaderResource> resources; // concrete resources, used for descriptor write creation 
             };
             
             using VkUniformAddress = std::tuple<uint32_t, uint32_t>; // (Set, Binding). These are the only unique identifiers of a uniform in Vulkan GLSL
@@ -72,6 +71,25 @@ namespace Wado::GAL::Vulkan {
 
             using VkFragmentOutputs = std::map<std::string, VkFragmentOutput>;
 
+            using VkDescriptorInfo = struct VkDescriptorInfo {
+                std::vector<VkDescriptorImageInfo> imageInfos;
+                std::vector<VkDescriptorBufferInfo> bufferInfos;
+                std::vector<VkBufferView> bufferViews;
+            };
+
+            using VkDescriptorWriteVisitor = struct VkDescriptorWriteVisitor {
+                
+                VkDescriptorInfo operator()(const WdImageResource& imageResource) const;
+                VkDescriptorInfo operator()(const WdBufferResource& bufferResource) const;
+            };
+
+            using VkOutstandingDescriptorWrite = struct VkOutstandingDescriptorWrite {
+                VkWriteDescriptorSet writeDescSet; // this is a "template" to plug in different descriptor sets and resources to make it per-frame 
+                VkDescriptorInfo descInfo;
+                uint32_t descSetIndex;
+            };
+
+
             void generateVertexParams();
             void generateFragmentParams();
 
@@ -90,6 +108,8 @@ namespace Wado::GAL::Vulkan {
             std::vector<std::vector<VkDescriptorSetLayoutBinding>> _descriptorSetBindings; // bindings for all decsriptor sets
             std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
             VkPipelineLayout _pipelineLayout;
+
+            std::vector<VkOutstandingDescriptorWrite> _outstandingWrites;
 
             VkSubpassInputs _subpassInputs;
             VkFragmentOutputs _fragmentOutputs;
