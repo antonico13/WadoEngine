@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 namespace Wado::ECS {
-    Entity::Entity(EntityID  entityID, Database* database) : 
+    Entity::Entity(EntityID entityID, Database* database) : 
         _entityID(entityID), 
         _database(database) { };
 
@@ -39,8 +39,15 @@ namespace Wado::ECS {
     };
 
     Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
-        
+        return _entityMainPtrs.emplace_back(new Entity(generateNewEntityID(), this)).getClonePtr();
     };
 
+    Entity Database::createEntityObj() {
+        return Entity(generateNewEntityID(), this);
+    };
+
+    EntityID Database::createEntityID() {
+        return generateNewEntityID();
+    };
 
 };
