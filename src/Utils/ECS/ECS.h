@@ -17,36 +17,35 @@ namespace Wado::ECS {
             // to a pool of reusable IDs after this operation. 
             void destroy(); 
 
-            // adds a component to an entity. "Empty" component by default.
-            // adding the same component twice does not throw an error, but
-            // adding an empty component where one exists already will
-            // erase the previous contents. 
+            // Getters, setters and verifiers act the same way as
+            // the main database functions. Check the Database class
+            // for more in-depth comments. 
             template <class T> 
             void addComponent() noexcept;
 
-            // sets an entity's component values. This uses the copy constructor of
-            // the class. Setting a component that the class does not have
-            // creates the component instead. 
             template <class T> 
             void setComponent(T componentData) noexcept;
 
-
-            // sets an entity's component values. This uses the move constructor,
-            // and the value passed in becomes invalid from the caller scope, be 
-            // careful!
             template <class T> 
             void setComponent(T& componentData) noexcept;
 
-
-            // removes the component from an entity if it exists. 
             template <class T> 
             void removeComponent() noexcept;
+
+            template <class T>
+            const T& getComponent() noexcept;
+
+            template <class T>
+            std::optional<const T&> getComponent() noexcept;
+            
+            template <class T>
+            bool hasComponent() noexcept;
         private:
-            Entity();
-            const EntityID entityID;
+            Entity(EntityID entityID, Database* database);
+            const EntityID _entityID;
             // store raw pointer to DB for operations like 
             // adding or setting components 
-            Database* database; 
+            Database* _database; 
     };
 
     class Database {
@@ -74,7 +73,8 @@ namespace Wado::ECS {
             Entity createEntityObj();
             // Highest performance option. Lifetime is still managed manually
             // by the caller, but all operations require a database object 
-            // on which to call add, set component, etc.
+            // on which to call add, set component, etc. without any 
+            // pointer dereferences 
             EntityID createEntityID();
 
             // adds a component to an entity based on its ID. The component is
@@ -90,17 +90,38 @@ namespace Wado::ECS {
             template <class T> 
             void setComponent(EntityID entityID, T componentData) noexcept;
 
-
-            // sets an entity's component values. This uses the move constructor,
-            // and the value passed in becomes invalid from the caller scope, be 
-            // careful!
+            // sets an entity's component values. However, be careful as this
+            // uses the move constructor, and the value passed in becomes invalid 
+            // in the caller's scope.
             template <class T> 
             void setComponent(EntityID entityID, T& componentData) noexcept;
-
 
             // removes a component to an entity based on its ID.
             template <class T> 
             void removeComponent(EntityID entityID) noexcept;
+
+            // Component getters, these also have similarly multiple 
+            // version for performance and safety issues as with entity
+            // creation. All componet get return values are constant 
+            // references. Updating component values should only be 
+            // done through setters or systems. 
+
+            // Unsafe component getter. This will never check if 
+            // the entity has a component and thus will never throw 
+            // an exception. Higher performance, but only use 
+            // if it is provable the entity does have the component 
+            // when called. 
+            template <class T>
+            const T& getComponent(EntityID entityID) noexcept;
+
+            // This getter also does not throw an exception, however 
+            // it will first check whether the entity has the requested component,
+            // and if not return an empty optional. 
+            template <class T>
+            std::optional<const T&> getComponent(EntityID entityID) noexcept;
+            
+            template <class T>
+            bool hasComponent(EntityID entityID) noexcept;
 
         private:
 
@@ -108,6 +129,13 @@ namespace Wado::ECS {
             uint64_t ENTITY_ID = 1 << 32;
             static const uint64_t ENTITY_INCREMENT = 1 << 32;
             static const uint64_t COMPONENT_INCREMENT = 1;
+
+            // Gets the ID for a component. Each specialization of 
+            // this function will have a static variable with the component ID,
+            // if calling for the first time a new ID is generated, otherwise the 
+            // component ID for this function is returned. 
+            template <class T>
+            inline ComponentID getComponentID() noexcept;
 
             std::vector<EntityID> reusableEntityIDs;
 
