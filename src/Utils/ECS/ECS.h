@@ -4,7 +4,8 @@
 #include "MainClonePtr.h"
 
 #include <vector>
-#include <map>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace Wado::ECS {
 
@@ -143,7 +144,7 @@ namespace Wado::ECS {
             template <class T>
             ComponentID getComponentID() noexcept;
 
-            std::vector<EntityID> reusableEntityIDs;
+            std::vector<EntityID> _reusableEntityIDs;
 
             using TableType = const std::vector<uint64_t>; // The type of a table, this should hopefully allow for 
             // fast "has component" checks rather than looking up a map. Basically, do component ID mod 64. Each bit
@@ -160,7 +161,28 @@ namespace Wado::ECS {
             struct Table {
                 TableType type;
                 std::vector<Column> columns;
+                // Traversing the add/remove component graphs gives a
+                // new table that has overlapping components with
+                // the current table +/- the key component ID. 
+                std::unordered_map<ComponentID, Table&> addComponentGraph;
+                std::unordered_map<ComponentID, Table&> removeComponentGraph;
             };  
+
+            struct TableIndex {
+                Table& table;
+                size_t entityColumnIndex;
+            };
+
+            std::vector<Table> _tables; // Keep a record of tables so they can be
+            // cleaned up later. 
+            
+            using TableRegistry = std::unordered_map<EntityID, TableIndex>;
+            TableRegistry _tableRegistry;
+
+            // Used for fast inverse look-ups, for example: getting all tables
+            // that have a specific component
+            using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<Table&>>;
+            ComponentRegistry _componentRegistry;
     };
 };
 
