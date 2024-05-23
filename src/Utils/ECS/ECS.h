@@ -33,13 +33,15 @@ namespace Wado::ECS {
             void removeComponent() noexcept;
 
             template <class T>
-            const T& getComponent() noexcept;
+            const T& getComponent() const noexcept;
 
             template <class T>
-            std::optional<const T&> getComponent() noexcept;
+            std::optional<const T&> getComponent() const noexcept;
             
             template <class T>
-            bool hasComponent() noexcept;
+            bool hasComponent() const noexcept;
+
+            EntityID getID() const noexcept;
         private:
             Entity(EntityID entityID, Database* database);
             const EntityID _entityID;
@@ -57,7 +59,7 @@ namespace Wado::ECS {
 
             // These functions will throw errors if and only if 
             // the pool of available IDs has been fully consumed. E.g: no reusable
-            // IDs, and 2^32 entities created. 
+            // IDs, and 2^31 entities created. 
 
             // Creating a pointer entity means the lifetime is managed 
             // by the database. This means entities don't need to be manually
@@ -112,22 +114,26 @@ namespace Wado::ECS {
             // if it is provable the entity does have the component 
             // when called. 
             template <class T>
-            const T& getComponent(EntityID entityID) noexcept;
+            const T& getComponent(EntityID entityID) const noexcept;
 
             // This getter also does not throw an exception, however 
             // it will first check whether the entity has the requested component,
             // and if not return an empty optional. 
             template <class T>
-            std::optional<const T&> getComponent(EntityID entityID) noexcept;
+            std::optional<const T&> getComponent(EntityID entityID) const noexcept;
             
             template <class T>
-            bool hasComponent(EntityID entityID) noexcept;
+            bool hasComponent(EntityID entityID) const noexcept;
 
         private:
 
+            // The lower 32 bits of an entity ID 
+            // are used for the actual ID. The higher 32 bits will be used 
+            // for various flags and features such as entity relationships,
+            // tags, and more.
             uint64_t COMPONENT_ID = 0;
-            uint64_t ENTITY_ID = 1 << 32;
-            static const uint64_t ENTITY_INCREMENT = 1 << 32;
+            uint64_t ENTITY_ID = 1 << 31;
+            static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
 
             // Gets the ID for a component. Each specialization of 
@@ -135,7 +141,7 @@ namespace Wado::ECS {
             // if calling for the first time a new ID is generated, otherwise the 
             // component ID for this function is returned. 
             template <class T>
-            inline ComponentID getComponentID() noexcept;
+            ComponentID getComponentID() noexcept;
 
             std::vector<EntityID> reusableEntityIDs;
 
