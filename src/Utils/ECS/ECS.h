@@ -136,6 +136,7 @@ namespace Wado::ECS {
             uint64_t ENTITY_ID = 1 << 31;
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
+            static const uint64_t MAX_ENTITY_ID = 1 << 32;
 
             // Gets the ID for a component. Each specialization of 
             // this function will have a static variable with the component ID,
@@ -145,6 +146,14 @@ namespace Wado::ECS {
             ComponentID getComponentID() noexcept;
 
             std::vector<EntityID> _reusableEntityIDs;
+
+            // Generates a new entity ID. First, this function will
+            // check if there is a reusable entity ID in the reusable list.
+            // Otherwise, it will increment the current entity ID value to 
+            // get a fresh ID. This function will throw an exception if 
+            // the running entity ID accumulator has reched its 
+            // maximum value (2^32). 
+            inline EntityID generateNewEntityID();
 
             using TableType = const std::vector<uint64_t>; // The type of a table, this should hopefully allow for 
             // fast "has component" checks rather than looking up a map. Basically, do component ID mod 64. Each bit
@@ -159,13 +168,14 @@ namespace Wado::ECS {
             };
 
             struct Table {
-                TableType type;
-                std::vector<Column> columns;
+                Table(TableType type);
+                TableType _type;
+                std::vector<Column> _columns;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
                 // the current table +/- the key component ID. 
-                std::unordered_map<ComponentID, Table&> addComponentGraph;
-                std::unordered_map<ComponentID, Table&> removeComponentGraph;
+                std::unordered_map<ComponentID, Table&> _addComponentGraph;
+                std::unordered_map<ComponentID, Table&> _removeComponentGraph;
             };  
 
             struct TableIndex {
@@ -175,6 +185,11 @@ namespace Wado::ECS {
 
             std::vector<Table> _tables; // Keep a record of tables so they can be
             // cleaned up later. 
+
+            // vector of main pointer for entities. The lifetime of 
+            // these entities is managed by the database, so all
+            // the main pointers need to be kept track of. 
+            std::vector<Memory::WdMainPtr<Entity>> _entityMainPtrs;
             
             using TableRegistry = std::unordered_map<EntityID, TableIndex>;
             TableRegistry _tableRegistry;
