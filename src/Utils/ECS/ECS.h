@@ -96,7 +96,7 @@ namespace Wado::ECS {
             // sets an entity's component values. However, be careful as this
             // uses the move constructor, and the value passed in becomes invalid 
             // in the caller's scope.
-            template <class T> 
+            template <class T>
             void setComponent(EntityID entityID, T& componentData) noexcept;
 
             // removes a component to an entity based on its ID.
@@ -137,6 +137,7 @@ namespace Wado::ECS {
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
             static const uint64_t MAX_ENTITY_ID = 1 << 32;
+            static const uint64_t MAX_COMPONENT_ID = 1 << 31;
             static const uint64_t ENTITY_ID_MASK = 0xFFFFFFFF;
 
             // Gets the ID for a component. Each specialization of 
@@ -144,7 +145,7 @@ namespace Wado::ECS {
             // if calling for the first time a new ID is generated, otherwise the 
             // component ID for this function is returned. 
             template <class T>
-            ComponentID getComponentID() noexcept;
+            ComponentID getComponentID();
 
             std::vector<EntityID> _reusableEntityIDs;
 
@@ -155,6 +156,9 @@ namespace Wado::ECS {
             // the running entity ID accumulator has reched its 
             // maximum value (2^32). 
             inline EntityID generateNewEntityID();
+            // Similarly to the above, will throw an error if the component ID
+            // becomes greater than 2^31.
+            inline ComponentID generateNewComponentID();
 
             inline EntityID generateNewIDAndAddToEmptyTableRegistry();
 

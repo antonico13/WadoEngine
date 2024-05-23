@@ -65,6 +65,19 @@ namespace Wado::ECS {
         return generateNewIDAndAddToEmptyTableRegistry();
     };
 
+    ComponentID Database::generateNewComponentID() {
+        if (COMPONENT_ID == MAX_COMPONENT_ID) {
+                throw std::runtime_error("Reached the maximum number of components, cannot create any new ones.");
+        }
+        return COMPONENT_ID++;
+    };
+
+    template <class T>
+    ComponentID Database::getComponentID() {
+        static ComponentID componentID = generateNewComponentID();
+        return componentID;
+    };
+
     template <class T>
     void Database::addComponent(EntityID entityID) {
 
