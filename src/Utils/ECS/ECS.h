@@ -137,6 +137,7 @@ namespace Wado::ECS {
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
             static const uint64_t MAX_ENTITY_ID = 1 << 32;
+            static const uint64_t ENTITY_ID_MASK = 0xFFFFFFFF;
 
             // Gets the ID for a component. Each specialization of 
             // this function will have a static variable with the component ID,
@@ -155,6 +156,8 @@ namespace Wado::ECS {
             // maximum value (2^32). 
             inline EntityID generateNewEntityID();
 
+            inline EntityID generateNewIDAndAddToEmptyTableRegistry();
+
             using TableType = const std::vector<uint64_t>; // The type of a table, this should hopefully allow for 
             // fast "has component" checks rather than looking up a map. Basically, do component ID mod 64. Each bit
             // in one of the uints is meant to represent whether a component is present or not. Since tables are technically 
@@ -171,6 +174,7 @@ namespace Wado::ECS {
                 Table(TableType type);
                 TableType _type;
                 std::vector<Column> _columns;
+                size_t _rowCount;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
                 // the current table +/- the key component ID. 
@@ -198,6 +202,8 @@ namespace Wado::ECS {
             // that have a specific component
             using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<Table&>>;
             ComponentRegistry _componentRegistry;
+
+            inline void addEntityToTableRegistry(EntityID entityID, Table& table) noexcept;
     };
 };
 

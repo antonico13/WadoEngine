@@ -38,16 +38,36 @@ namespace Wado::ECS {
         return newId;
     };
 
+    EntityID Database::generateNewIDAndAddToEmptyTableRegistry() {
+        EntityID newID = generateNewEntityID();
+        // The 0-th table will always be the default empty
+        // table. 
+        addEntityToTableRegistry(newID, _tables.front());
+        return newID;
+    };
+
+
+    void Database::addEntityToTableRegistry(EntityID entityID, Table& table) {
+        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, table, table._rowCount);
+        table._rowCount++;
+        // TODO: need to resize entity columns here if needed and increase capacity, count, etc  
+    };
+
     Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
-        return _entityMainPtrs.emplace_back(new Entity(generateNewEntityID(), this)).getClonePtr();
+        return _entityMainPtrs.emplace_back(new Entity(generateNewIDAndAddToEmptyTableRegistry(), this)).getClonePtr();
     };
 
     Entity Database::createEntityObj() {
-        return Entity(generateNewEntityID(), this);
+        return Entity(generateNewIDAndAddToEmptyTableRegistry(), this);
     };
 
     EntityID Database::createEntityID() {
-        return generateNewEntityID();
+        return generateNewIDAndAddToEmptyTableRegistry();
+    };
+
+    template <class T>
+    void Database::addComponent(EntityID entityID) {
+
     };
 
 };
