@@ -10,9 +10,15 @@ namespace Wado::ECS {
         _entityID(entityID), 
         _database(database) { };
 
-    Database::Table::Table(TableType type, const Database& database) : _type(type) {
-        for (const ComponentID& componentID : type) {
-            _columns[componentID] = {nullptr, database._componentSizes[componentID], 0};
+    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type) {
+        for (const ComponentID componentID : type) {
+            void* columnData = malloc(sizes.at(componentID) * defaultColumnSize);
+            
+            if (columnData == nullptr) {
+                throw std::runtime_error("Ran out of memory for storing column data");
+            };
+
+            _columns.emplace(componentID, columnData, sizes.at(componentID), defaultColumnSize);
         };
     };
 
@@ -22,7 +28,7 @@ namespace Wado::ECS {
     };
 
     
-    Database::Database() {
+    Database::Database(size_t defaultColumnSize) : _defaultColumnSize(defaultColumnSize) {
         // Create the empty table and place it in the 
         // table vector, and initalize the empty table 
         // variable, empty table will always be the 0th
@@ -52,7 +58,7 @@ namespace Wado::ECS {
         EntityID newID = generateNewEntityID();
         // The 0-th table will always be the default empty
         // table. 
-        addEntityToTableRegistry(newID, 0, _tables[0]._rowCount); // first table, the "empty" table
+        addEntityToTableRegistry(newID, 0, _tables.front()._rowCount); // first table, the "empty" table
         return newID;
     };
 

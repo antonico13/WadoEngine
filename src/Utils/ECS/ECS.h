@@ -55,7 +55,8 @@ namespace Wado::ECS {
 
     class Database {
         public:
-            Database();
+            static const size_t DEFAULT_COLUMN_SIZE = 10;
+            Database(size_t defaultColumnSize = DEFAULT_COLUMN_SIZE);
             ~Database();
 
             // Multiple ways of creating entities
@@ -149,6 +150,8 @@ namespace Wado::ECS {
             static const uint64_t MAX_COMPONENT_ID = 1 << 31;
             static const uint64_t ENTITY_ID_MASK = 0xFFFFFFFF;
 
+            const size_t _defaultColumnSize;
+
             // Gets the ID for a component. Each specialization of 
             // this function will have a static variable with the component ID,
             // if calling for the first time a new ID is generated, otherwise the 
@@ -184,8 +187,12 @@ namespace Wado::ECS {
 
             using Columns = std::map<ComponentID, Column>;
 
+            using ComponentSizes = std::map<ComponentID, size_t>;
+            ComponentSizes _componentSizes;
+
             using Table = struct Table {
-                Table(TableType type, const Database& database);
+                // TODO: fix passing pointer here 
+                Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize);
                 // Empty table constructor
                 Table();
                 const TableType _type;
@@ -235,9 +242,6 @@ namespace Wado::ECS {
             // that have a specific component
             using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
             ComponentRegistry _componentRegistry;
-
-            using ComponentSizes = std::map<ComponentID, size_t>;
-            ComponentSizes _componentSizes;
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
             inline size_t findOrAddTable(const TableType& fullType) noexcept;
