@@ -131,7 +131,7 @@ namespace Wado::ECS {
             // it will first check whether the entity has the requested component,
             // and if not return an empty optional. 
             template <class T>
-            std::optional<const T&> getComponent(EntityID entityID) const noexcept;
+            std::optional<const T&> getComponentSafe(EntityID entityID) const noexcept;
             
             template <class T>
             bool hasComponent(EntityID entityID) const noexcept;

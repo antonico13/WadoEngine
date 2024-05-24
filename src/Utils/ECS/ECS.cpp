@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <algorithm>
+#include <optional>
 
 namespace Wado::ECS {
     Entity::Entity(EntityID entityID, Database* database) : 
@@ -239,6 +240,24 @@ namespace Wado::ECS {
     bool Database::hasComponent(EntityID entityID) const {
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         return _componentRegistry[getComponentID<T>()].find(tableIndex) != _componentRegistry[getComponentID<T>()].end();
+    };
+
+    template <class T>
+    const T& Database::getComponent(EntityID entityID) const {
+        ComponentID componentID = getComponentID<T>();
+        size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+        const Column& column = _tables[tableIndex]._columns[componentID];
+        return *static_cast<T*>(column.data + column.elementStride * entityColumnIndex);
+    };
+
+    template <class T>
+    std::optional<const T&> Database::getComponentSafe(EntityID entityID) const {
+        if (!hasComponent<T>(entityID)) {
+            return std::nullopt;
+        } else {
+            return std::optional<T>(getComponent<T>(entityID));
+        };
     };
 
 };
