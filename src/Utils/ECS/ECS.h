@@ -178,7 +178,7 @@ namespace Wado::ECS {
             using Columns = std::map<ComponentID, Column>;
 
             struct Table {
-                Table(TableType type);
+                Table(TableType type, const Database& database);
                 // Empty table constructor
                 Table();
                 const TableType _type;
@@ -228,6 +228,9 @@ namespace Wado::ECS {
             // that have a specific component
             using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
             ComponentRegistry _componentRegistry;
+
+            using ComponentSizes = std::map<ComponentID, size_t>;
+            ComponentSizes _componentSizes;
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
             inline size_t findOrAddTable(const TableType& fullType) noexcept;

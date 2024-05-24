@@ -9,8 +9,10 @@ namespace Wado::ECS {
         _entityID(entityID), 
         _database(database) { };
 
-    Database::Table::Table(TableType type) : _type(type) {
-
+    Database::Table::Table(TableType type, const Database& database) : _type(type) {
+        for (const ComponentID& componentID : type) {
+            _columns[componentID] = {nullptr, database._componentSizes[componentID], 0};
+        };
     };
 
     // Empty constructor
@@ -56,8 +58,6 @@ namespace Wado::ECS {
 
     void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) {
         _tableRegistry.emplace(entityID & ENTITY_ID_MASK, tableIndex, position);
-        _tables[tableIndex]._rowCount++;
-        // TODO: need to resize entity columns here if needed and increase capacity, count, etc  
     };
 
     Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
@@ -82,6 +82,7 @@ namespace Wado::ECS {
     template <class T>
     ComponentID Database::getComponentID() {
         static ComponentID componentID = generateNewComponentID();
+        _componentSizes.try_emplace(componentID, sizeof(T));
         return componentID;
     };
 
@@ -131,7 +132,7 @@ namespace Wado::ECS {
                 // Create type of the new table
                 TableType newType(_tables[currentTableIndex]._type);
                 newType.insert(componentID);
-                _tables.emplace_back(newType);
+                _tables.emplace_back(newType, *this);
                 // Size of table - 1 is the index of the newly inserted table, need
                 // to add this to the graph now.
                 _tables[currentTableIndex]._addComponentGraph[componentID] = _tables.size() - 1;
