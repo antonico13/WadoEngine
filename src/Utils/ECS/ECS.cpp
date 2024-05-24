@@ -262,7 +262,7 @@ namespace Wado::ECS {
     };
 
     template <class T> 
-    void setComponent(EntityID entityID, T componentData) {
+    void setComponentCopy(EntityID entityID, T componentData) {
         ComponentID componentID = getComponentID<T>();
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
@@ -272,7 +272,7 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    void setComponent(EntityID entityID, T& componentData) {
+    void setComponentMove(EntityID entityID, T& componentData) {
         ComponentID componentID = getComponentID<T>();
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
