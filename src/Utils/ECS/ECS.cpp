@@ -18,7 +18,6 @@ namespace Wado::ECS {
             if (columnData == nullptr) {
                 throw std::runtime_error("Ran out of memory for storing column data");
             };
-
             _columns.emplace(componentID, columnData, sizes.at(componentID), defaultColumnSize);
         };
     };
@@ -238,8 +237,10 @@ namespace Wado::ECS {
 
     template <class T>
     bool Database::hasComponent(EntityID entityID) const {
+        //size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        return _componentRegistry[getComponentID<T>()].find(tableIndex) != _componentRegistry[getComponentID<T>()].end();
+        std::set<size_t> typeSet& = _componentRegistry.at(tableIndex);
+        return typeSet.find(tableIndex) != typeSet.end();
     };
 
     template <class T>
@@ -258,6 +259,26 @@ namespace Wado::ECS {
         } else {
             return std::optional<T>(getComponent<T>(entityID));
         };
+    };
+
+    template <class T> 
+    void setComponent(EntityID entityID, T componentData) {
+        ComponentID componentID = getComponentID<T>();
+        size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+        const Column& column = _tables[tableIndex]._columns[componentID];
+        // This version uses the copy constructor. 
+        *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = componentData;
+    };
+
+    template <class T>
+    void setComponent(EntityID entityID, T& componentData) {
+        ComponentID componentID = getComponentID<T>();
+        size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+        const Column& column = _tables[tableIndex]._columns[componentID];
+        // This version uses the move constructor
+        *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = std::move(componentData);
     };
 
 };
