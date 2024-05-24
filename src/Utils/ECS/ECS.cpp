@@ -1,6 +1,8 @@
 #include "ECS.h"
 
+#include <stdlib.h> 
 #include <stdexcept>
+#include <cstring>
 
 namespace Wado::ECS {
     Entity::Entity(EntityID entityID, Database* database) : 
@@ -11,13 +13,18 @@ namespace Wado::ECS {
 
     };
 
+    // Empty constructor
+    Database::Table::Table() : _type({}) {
+
+    };
+
     
     Database::Database() {
         // Create the empty table and place it in the 
         // table vector, and initalize the empty table 
         // variable, empty table will always be the 0th
         // element of this collection
-        _tables.emplace_back(std::vector<uint64_t>());
+        _tables.emplace_back();
     };
 
     Database::~Database() {
@@ -42,13 +49,13 @@ namespace Wado::ECS {
         EntityID newID = generateNewEntityID();
         // The 0-th table will always be the default empty
         // table. 
-        addEntityToTableRegistry(newID, 0); // first table, the "empty" table
+        addEntityToTableRegistry(newID, 0, _tables[0]._rowCount); // first table, the "empty" table
         return newID;
     };
 
 
-    void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex) {
-        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, tableIndex, _tables[tableIndex]._rowCount);
+    void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) {
+        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, tableIndex, position);
         _tables[tableIndex]._rowCount++;
         // TODO: need to resize entity columns here if needed and increase capacity, count, etc  
     };
@@ -79,13 +86,40 @@ namespace Wado::ECS {
     };
 
     size_t Database::getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) {
-        //Table::TableEdges::iterator nextTable = table._addComponentGraph.find(componentID);
-        // TODO: need to add table to component registry too. 
+        Table::TableEdges::iterator nextTable = _tables[tableIndex]._addComponentGraph.find(componentID);
+        size_t nextTableID;
+        if (nextTable == _tables[tableIndex]._addComponentGraph.end()) {
+            // Successor doesn't exist, perform a full graph walk 
+            // to find or create the path to the successor.
 
+            // TODO: can optimize here. For example, if the requested
+            // componentID is greater than the maximum component ID 
+            // in the current table's full type, a full graph walk is not 
+            // required, since the current type will represent an ascending
+            // order. In that case, we can just create the new table directly 
+            // and add it. This also avoids unneccesary set operations.
+
+            // Can solve this by storing the max component ID on a table type
+            // at creation time. 
+            TableType newTableType(_tables[tableIndex]._type);
+            newTableType.insert(componentID);
+            nextTableID = findOrAddTable(newTableType);
+
+            // Add graph edges now, component registry will 
+            // have ben taken care of by the findOrAddTable function. 
+            // This can also be optimized away with the maximum component ID optimization. 
+            _tables[tableIndex]._addComponentGraph[componentID] = nextTableID;
+            _tables[nextTableID]._removeComponentGraph[componentID] = tableIndex; 
+
+        } else {
+            nextTableID = nextTable->second;
+        };
+
+        return nextTableID;
     };
 
 
-    size_t Database::findTableSuccessor(const TableType& fullType) {
+    size_t Database::findOrAddTable(const TableType& fullType) {
         size_t currentTableIndex = 0;
         for (const ComponentID& componentID : fullType) {
             Table::TableEdges::iterator nextTable = _tables[currentTableIndex]._addComponentGraph.find(componentID);
@@ -105,6 +139,9 @@ namespace Wado::ECS {
                 _tables.back()._removeComponentGraph[componentID] = currentTableIndex;
 
                 currentTableIndex = _tables.size() - 1;
+                // Add new table to component registry too.
+                _componentRegistry[componentID].insert(currentTableIndex);
+
             } else {
                 currentTableIndex = nextTable->second;
             };
@@ -112,27 +149,60 @@ namespace Wado::ECS {
         return currentTableIndex;
     };
 
-
+    // This is immediate mode. 
+    // For multiple components in quick succession,
+    // use the deferred mode. 
     template <class T>
     void Database::addComponent(EntityID entityID) {
-        // When adding a component, check 
-        // current entity's table table graph.
-        // if edge exists to new table we need 
-        // to move all the overlapping data 
-        // (can I SIMD this? It's just memcopies to
-        // all the columns I think. )
-        // If it doesn't exist need to create new table
-        // and update. Also need to add new table to 
-        // componet's registry, and update
-        // the index for the table index of this entity.
-        // This all seems pretty expensive. 
-        // This should be the immediate version, need to add 
-        // a deferred version as welll.
+        // TODO: replace all these array accesses with refs,
+        // do the same in other functions too. 
+        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        size_t currentEntityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+        size_t nextTableIndex = getNextTableOrAddEdges(currentTableIndex, getComponentID<T>());
 
-        // When if table edge doesn't exist, need to 
-        // traverse the entire tree with every component 
-        // until we've found the edges. 
+        // the row for this entity is voided from the original table
+        _tables[currentTableIndex].deleteList.push_back(currentEntityColumnIndex);
 
+        size_t freeRowIndex;
+        if (_tables[nextTableIndex].deleteList.empty()) {
+            freeRowIndex = _tables[nextTableIndex]._rowCount;
+            _tables[nextTableIndex]._rowCount++;
+        } else {
+            freeRowIndex = _tables[nextTableIndex].deleteList.back();
+            _tables[nextTableIndex].deleteList.pop_back();
+        };
+
+        // Now, update table registry
+        addEntityToTableRegistry(entityID, nextTableIndex, freeRowIndex);
+        
+        // If we are adding a new row and its index is greater than
+        // the column capacity, we need to realloc all columns. 
+        // TODO: this can also be vectorized with SIMD I think. 
+        if (freeRowIndex >= _tables[nextTableIndex]._columns.begin()->second.capacity) {
+            // everything needs to be resized in this case. 
+            // By default, just double capacity.
+            for (Columns::iterator it = _tables[nextTableIndex]._columns.begin(); it != _tables[nextTableIndex]._columns.end(); it++) {
+                it->second.data = realloc(it->second.data, it->second.capacity * 2);
+                
+                if (it->second.data == nullptr) {
+                    throw std::runtime_error("Ran out of memory, cannot increase row count for table.");
+                };
+
+                it->second.capacity = it->second.capacity * 2;
+
+            };
+        };
+
+        // Now perform data copies for overlapping components, 
+        // with guaranteed space. 
+        // TODO: can I SIMD/vectorize this in any way?
+        
+        // Copy column content
+        for (ComponentID& componentID : _tables[currentTableIndex]._type) {
+            Column& copyFrom = _tables[currentTableIndex]._columns[componentID];
+            Column& copyTo = _tables[nextTableIndex]._columns[componentID];
+            std::memcpy(copyTo.data + copyTo.elementStride * freeRowIndex, copyFrom.data + copyFrom.elementStride * currentEntityColumnIndex, copyFrom.elementStride);
+        };
     };
 
 };

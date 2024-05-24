@@ -4,7 +4,6 @@
 #include "MainClonePtr.h"
 
 #include <vector>
-#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -89,7 +88,7 @@ namespace Wado::ECS {
             // Warning: only works with valid IDs produced by the database, 
             // undefined behaviour if the ID supplied is not valid. 
             template <class T> 
-            void addComponent(EntityID entityID) noexcept;
+            void addComponent(EntityID entityID);
 
             // sets an entity's component values. This uses the copy constructor of
             // the class.
@@ -165,20 +164,33 @@ namespace Wado::ECS {
 
             inline EntityID generateNewIDAndAddToEmptyTableRegistry();
 
-            using TableType = std::set<ComponentID, std::less<ComponentID>>; // The type of a table.
+            using TableType = std::set<ComponentID>; // The type of a table.
             // Just a vector of all its componets, in order. 
 
             struct Column {
                 void* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
-                size_t elementStride; // element stride in bytes  
-                size_t elementCount;
+                const size_t elementStride; // element stride in bytes  
+                size_t capacity; // element capacity. resizes are needed when 
+                // we exceed the capacity
             };
+
+            using Columns = std::map<ComponentID, Column>;
 
             struct Table {
                 Table(TableType type);
+                // Empty table constructor
+                Table();
                 const TableType _type;
-                std::vector<Column> _columns;
+                // TODO: should this be const? Also, map might be slow here. 
+                Columns _columns;
+                // delete list keeps track of the 
+                // free "slots" within this table's rows.
+                // This allows us to reuse data from the vector without resize or
+                // remove operations that would invalidate the vector. 
+                // if the remove list is empty, a new element is pushed back
+                // at the end of each column.
+                std::vector<size_t> deleteList;
                 size_t _rowCount;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
@@ -214,11 +226,11 @@ namespace Wado::ECS {
 
             // Used for fast inverse look-ups, for example: getting all tables
             // that have a specific component
-            using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<Table&>>;
+            using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
             ComponentRegistry _componentRegistry;
 
-            inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex) noexcept;
-            inline size_t findTableSuccessor(const TableType& fullType) noexcept;
+            inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
+            inline size_t findOrAddTable(const TableType& fullType) noexcept;
             inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
     };
 };
