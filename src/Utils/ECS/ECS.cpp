@@ -3,6 +3,7 @@
 #include <stdlib.h> 
 #include <stdexcept>
 #include <cstring>
+#include <algorithm>
 
 namespace Wado::ECS {
     Entity::Entity(EntityID entityID, Database* database) : 
@@ -150,39 +151,34 @@ namespace Wado::ECS {
         return currentTableIndex;
     };
 
-    // This is immediate mode. 
-    // For multiple components in quick succession,
-    // use the deferred mode. 
-    template <class T>
-    void Database::addComponent(EntityID entityID) {
-        // TODO: replace all these array accesses with refs,
-        // do the same in other functions too. 
-        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
-        size_t currentEntityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
-        size_t nextTableIndex = getNextTableOrAddEdges(currentTableIndex, getComponentID<T>());
+    void Database::moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
+        size_t currentEntityRowIndex = _tableRegistry[entityID].entityColumnIndex;
+        Table& sourceTable = _tables[sourceTableIndex];
+        Table& destTable = _tables[destTableIndex];
 
         // the row for this entity is voided from the original table
-        _tables[currentTableIndex].deleteList.push_back(currentEntityColumnIndex);
+        sourceTable.deleteList.push_back(currentEntityRowIndex);
 
+        // get next row index for the entity 
         size_t freeRowIndex;
-        if (_tables[nextTableIndex].deleteList.empty()) {
-            freeRowIndex = _tables[nextTableIndex]._rowCount;
-            _tables[nextTableIndex]._rowCount++;
+        if (destTable.deleteList.empty()) {
+            freeRowIndex = destTable._rowCount++;
+            //destTable._rowCount++;
         } else {
-            freeRowIndex = _tables[nextTableIndex].deleteList.back();
-            _tables[nextTableIndex].deleteList.pop_back();
+            freeRowIndex = destTable.deleteList.back();
+            destTable.deleteList.pop_back();
         };
 
         // Now, update table registry
-        addEntityToTableRegistry(entityID, nextTableIndex, freeRowIndex);
+        addEntityToTableRegistry(entityID, destTableIndex, freeRowIndex);
         
         // If we are adding a new row and its index is greater than
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
-        if (freeRowIndex >= _tables[nextTableIndex]._columns.begin()->second.capacity) {
+        if (freeRowIndex >= destTable._columns.begin()->second.capacity) {
             // everything needs to be resized in this case. 
             // By default, just double capacity.
-            for (Columns::iterator it = _tables[nextTableIndex]._columns.begin(); it != _tables[nextTableIndex]._columns.end(); it++) {
+            for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
                 it->second.data = realloc(it->second.data, it->second.capacity * 2);
                 
                 if (it->second.data == nullptr) {
@@ -190,20 +186,47 @@ namespace Wado::ECS {
                 };
 
                 it->second.capacity = it->second.capacity * 2;
-
             };
         };
 
         // Now perform data copies for overlapping components, 
-        // with guaranteed space. 
+        // with guaranteed space, first find overlapping components. 
+        TableType overlappingColumns;
+        // TODO: does this work if the set doesn't have capacity reserved for the overlapping elements? 
+        std::set_intersection(sourceTable._type.begin(), sourceTable._type.end(), destTable._type.begin(), destTable._type.end(), overlappingColumns.begin());
         // TODO: can I SIMD/vectorize this in any way?
         
         // Copy column content
-        for (ComponentID& componentID : _tables[currentTableIndex]._type) {
-            Column& copyFrom = _tables[currentTableIndex]._columns[componentID];
-            Column& copyTo = _tables[nextTableIndex]._columns[componentID];
-            std::memcpy(copyTo.data + copyTo.elementStride * freeRowIndex, copyFrom.data + copyFrom.elementStride * currentEntityColumnIndex, copyFrom.elementStride);
-        };
+        for (const ComponentID& componentID : overlappingColumns) {
+            size_t copySize = sourceTable._columns[componentID].elementStride;
+            // Always deal with byte increments 
+            void* copyFrom = static_cast<char*>(sourceTable._columns[componentID].data) + copySize * currentEntityRowIndex;
+            void* copyTo = static_cast<char*>(destTable._columns[componentID].data) + copySize * freeRowIndex;
+            std::memcpy(copyTo, copyFrom, copySize);
+        };  
+    };
+
+
+    // This is immediate mode. 
+    // For multiple components in quick succession,
+    // use the deferred mode. 
+    template <class T>
+    void Database::addComponent(EntityID entityID) {
+        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        size_t nextTableIndex = getNextTableOrAddEdges(currentTableIndex, getComponentID<T>());
+
+        moveToTable(entityID, currentTableIndex, nextTableIndex);
+    };
+
+    template <class T> 
+    void Database::removeComponent(EntityID entityID) {
+        // By construction, every remove edge will 
+        // already exist in immediate mode and point 
+        // to the unique table due to adding components first. 
+        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        size_t nextTableIndex = _tables[currentTableIndex]._removeComponentGraph[getComponentID<T>()];
+
+        moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
 };

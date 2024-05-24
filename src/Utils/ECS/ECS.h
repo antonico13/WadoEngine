@@ -4,6 +4,8 @@
 #include "MainClonePtr.h"
 
 #include <vector>
+#include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -92,6 +94,9 @@ namespace Wado::ECS {
 
             // sets an entity's component values. This uses the copy constructor of
             // the class.
+            // Warning: set and remove component never check if the component
+            // already exists. Remove component will silently exit,
+            // while set component have undefined behaviour. 
             template <class T> 
             void setComponent(EntityID entityID, T componentData) noexcept;
 
@@ -102,6 +107,8 @@ namespace Wado::ECS {
             void setComponent(EntityID entityID, T& componentData) noexcept;
 
             // removes a component to an entity based on its ID.
+            // Undefined behaviour if the entity doesn't have
+            // the component. 
             template <class T> 
             void removeComponent(EntityID entityID) noexcept;
 
@@ -167,7 +174,7 @@ namespace Wado::ECS {
             using TableType = std::set<ComponentID>; // The type of a table.
             // Just a vector of all its componets, in order. 
 
-            struct Column {
+            using Column = struct Column {
                 void* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
                 const size_t elementStride; // element stride in bytes  
@@ -177,7 +184,7 @@ namespace Wado::ECS {
 
             using Columns = std::map<ComponentID, Column>;
 
-            struct Table {
+            using Table = struct Table {
                 Table(TableType type, const Database& database);
                 // Empty table constructor
                 Table();
@@ -201,7 +208,7 @@ namespace Wado::ECS {
                 TableEdges _removeComponentGraph;
             };  
 
-            struct TableIndex {
+            using TableIndex = struct TableIndex {
                 // TODO: this adds another vector
                 // dereference basically, need to see if it's slower
                 // than storing pointer here directly. 
@@ -235,6 +242,8 @@ namespace Wado::ECS {
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
             inline size_t findOrAddTable(const TableType& fullType) noexcept;
             inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
+
+            inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) noexcept;
     };
 };
 
