@@ -4,6 +4,7 @@
 #include "MainClonePtr.h"
 
 #include <vector>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -85,6 +86,8 @@ namespace Wado::ECS {
             // in the container of the database. This component will be 
             // by default a contiguous array of bytes the size of 
             // the component all set to 0. 
+            // Warning: only works with valid IDs produced by the database, 
+            // undefined behaviour if the ID supplied is not valid. 
             template <class T> 
             void addComponent(EntityID entityID) noexcept;
 
@@ -162,10 +165,8 @@ namespace Wado::ECS {
 
             inline EntityID generateNewIDAndAddToEmptyTableRegistry();
 
-            using TableType = const std::vector<uint64_t>; // The type of a table, this should hopefully allow for 
-            // fast "has component" checks rather than looking up a map. Basically, do component ID mod 64. Each bit
-            // in one of the uints is meant to represent whether a component is present or not. Since tables are technically 
-            // immutable, once this vector is created it should never be modified. 
+            using TableType = std::set<ComponentID, std::less<ComponentID>>; // The type of a table.
+            // Just a vector of all its componets, in order. 
 
             struct Column {
                 void* data; // Raw data pointer, let these be managed by the ECS instead of using 
@@ -176,18 +177,27 @@ namespace Wado::ECS {
 
             struct Table {
                 Table(TableType type);
-                TableType _type;
+                const TableType _type;
                 std::vector<Column> _columns;
                 size_t _rowCount;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
-                // the current table +/- the key component ID. 
-                std::unordered_map<ComponentID, Table&> _addComponentGraph;
-                std::unordered_map<ComponentID, Table&> _removeComponentGraph;
+                // the current table +/- the key component ID.
+                using TableEdges = std::unordered_map<ComponentID, size_t>;
+
+                TableEdges _addComponentGraph;
+                TableEdges _removeComponentGraph;
             };  
 
             struct TableIndex {
-                Table& table;
+                // TODO: this adds another vector
+                // dereference basically, need to see if it's slower
+                // than storing pointer here directly. 
+                // Alternatively, malloc all tables and have a 
+                // vector of table pointers for cleanup,
+                // and this can be done the "ref" way 
+                // with no contention on the table vector.
+                size_t tableIndex;
                 size_t entityColumnIndex;
             };
 
@@ -207,7 +217,9 @@ namespace Wado::ECS {
             using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<Table&>>;
             ComponentRegistry _componentRegistry;
 
-            inline void addEntityToTableRegistry(EntityID entityID, Table& table) noexcept;
+            inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex) noexcept;
+            inline size_t findTableSuccessor(const TableType& fullType) noexcept;
+            inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
     };
 };
 
