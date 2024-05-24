@@ -235,4 +235,10 @@ namespace Wado::ECS {
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
+    template <class T>
+    bool Database::hasComponent(EntityID entityID) const {
+        size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        return _componentRegistry[getComponentID<T>()].find(tableIndex) != _componentRegistry[getComponentID<T>()].end();
+    };
+
 };

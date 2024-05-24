@@ -235,12 +235,12 @@ namespace Wado::ECS {
             // the main pointers need to be kept track of. 
             std::vector<Memory::WdMainPtr<Entity>> _entityMainPtrs;
             
-            using TableRegistry = std::unordered_map<EntityID, TableIndex>;
+            using TableRegistry = std::map<EntityID, TableIndex>;
             TableRegistry _tableRegistry;
 
             // Used for fast inverse look-ups, for example: getting all tables
             // that have a specific component
-            using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
+            using ComponentRegistry = std::map<ComponentID, std::set<size_t>>;
             ComponentRegistry _componentRegistry;
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
