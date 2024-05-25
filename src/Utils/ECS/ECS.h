@@ -136,6 +136,27 @@ namespace Wado::ECS {
             template <class T>
             bool hasComponent(EntityID entityID) const noexcept;
 
+            // Deferred versions of all operations. 
+            // The effects of these operations will only be visible
+            // on the database once flushDeferred or flushDeferredAll 
+            // is called. 
+
+            void flushDeferred(EntityID entityID);
+
+            void flushDeferredAll(EntityID entityID);
+
+            template <class T>
+            void addComponentDeferred(EntityID entityID) noexcept;
+
+            template <class T> 
+            void removeComponentDeferred(EntityID entityID) noexcept;
+
+            template <class T> 
+            void setComponentCopyDeferred(EntityID entityID, T* componentData) noexcept;
+
+            template <class T>
+            void setComponentMoveDeferred(EntityID entityID, T* componentData) noexcept;
+
         private:
 
             // The lower 32 bits of an entity ID 
@@ -248,6 +269,24 @@ namespace Wado::ECS {
             inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
 
             inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) noexcept;
+
+            // Deferred commands data types
+            // Deferred commands use raw pointers only, since
+            // its difficult to use generic references to hold data like this
+            using SetComponentPayload = std::map<ComponentID, void *>;
+            using AddComponentPayload = std::set<ComponentID>;
+            using RemoveComponentPayload = std::set<ComponentID>;
+
+            using DeferredPayload = struct DeferredPayload {
+                // TODO: could this be faster if instead 
+                // I stored per component whether it's an Add/Remove?
+                SetComponentPayload _setPayloadCopy;
+                SetComponentPayload _setPayloadMove;
+                AddComponentPayload _addPayload;
+                RemoveComponentPayload _removePayload;
+            };
+
+            std::map<EntityID, DeferredPayload> _deferredPayloads;
     };
 };
 

@@ -281,4 +281,33 @@ namespace Wado::ECS {
         *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = std::move(componentData);
     };
 
+
+    void Database::flushDeferred(EntityID entityID) {
+
+    };
+
+    void Database::flushDeferredAll(EntityID entityID) {
+
+    };
+
+    template <class T>
+    void Database::addComponentDeferred(EntityID entityID) {
+        _deferredPayloads[entityID]._addPayload.insert(getComponentID<T>());
+    };
+
+    template <class T> 
+    void Database::removeComponentDeferred(EntityID entityID) {
+        _deferredPayloads[entityID]._removePayload.insert(getComponentID<T>());
+    };
+
+    template <class T> 
+    void Database::setComponentCopyDeferred(EntityID entityID, T* componentData) {
+        _deferredPayloads[entityID]._setPayloadCopy.insert(getComponentID<T>(), static_cast<void *>(componentData));
+    };
+
+    template <class T>
+    void Database::setComponentMoveDeferred(EntityID entityID, T* componentData) {
+        _deferredPayloads[entityID]._setPayloadMove.insert(getComponentID<T>(), static_cast<void *>(componentData));
+    };
+
 };
