@@ -225,6 +225,11 @@ namespace Wado::ECS {
                 // remove operations that would invalidate the vector. 
                 // if the remove list is empty, a new element is pushed back
                 // at the end of each column.
+                // TODO: need to change delete list to be a sorted set,
+                // so we can always fill in gaps that are lower in index
+                // to avoid fragmentation, and so that we can resize 
+                // the column buffers to only accomodate up to the largest 
+                // free index
                 std::vector<size_t> deleteList;
                 size_t _rowCount;
                 // Traversing the add/remove component graphs gives a
@@ -266,22 +271,33 @@ namespace Wado::ECS {
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
             inline size_t findOrAddTable(const TableType& fullType) noexcept;
+            inline size_t findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) noexcept;
             inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
 
             inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) noexcept;
 
             // Deferred commands data types
             // Deferred commands use raw pointers only, since
-            // its difficult to use generic references to hold data like this
-            using SetComponentPayload = std::map<ComponentID, void *>;
+            // it's impossible as far as I know to use 
+            // generic references to hold data like this
+            
+            enum SetMode {
+                Copy,
+                Move
+            };
+
+            using SetComponentPayload = struct SetComponentPayload {
+                void* data;
+                SetMode mode;
+            }; // std::map<ComponentID, void *>;
+            using SetComponentMap = std::map<ComponentID, SetComponentPayload>;
             using AddComponentPayload = std::set<ComponentID>;
             using RemoveComponentPayload = std::set<ComponentID>;
 
             using DeferredPayload = struct DeferredPayload {
                 // TODO: could this be faster if instead 
                 // I stored per component whether it's an Add/Remove?
-                SetComponentPayload _setPayloadCopy;
-                SetComponentPayload _setPayloadMove;
+                SetComponentMap _setMap; 
                 AddComponentPayload _addPayload;
                 RemoveComponentPayload _removePayload;
             };

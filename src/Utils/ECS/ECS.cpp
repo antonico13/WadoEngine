@@ -157,6 +157,24 @@ namespace Wado::ECS {
         return currentTableIndex;
     };
 
+    size_t Database::findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) {
+        // By construction, table predecessors always exist,
+        // we just need to find the final one by removing components
+        // from this table.
+        size_t currentTableIndex = tableIndex; 
+        // Go through remove list in reverse order, since all
+        // components are added in increasing order.
+        TableType::const_iterator it = removeTypes.end();
+        it--; 
+        while (it != removeTypes.begin()) {
+            currentTableIndex = _tables[currentTableIndex]._removeComponentGraph[*it];
+            it--;
+        };
+
+        return _tables[currentTableIndex]._removeComponentGraph[*it];
+    };
+
+
     void Database::moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
         size_t currentEntityRowIndex = _tableRegistry[entityID].entityColumnIndex;
         Table& sourceTable = _tables[sourceTableIndex];
@@ -283,11 +301,22 @@ namespace Wado::ECS {
 
 
     void Database::flushDeferred(EntityID entityID) {
+        DeferredPayload& entityPayload = _deferredPayloads[entityID];
+        std::set<ComponentID> commonPayloads;
+        // TODO: this might be very, very, very slow. 
+        std::set_intersection(entityPayload._addPayload.begin(), entityPayload._addPayload.end(), entityPayload._removePayload.begin(), entityPayload._removePayload.end(), commonPayloads);
+        
+        TableType addType;
+        std::set_difference(entityPayload._addPayload.begin(), entityPayload._addPayload.end(), commonPayloads.begin(), commonPayloads.end(), addType);
+
+        TableType removeType;
+        std::set_difference(entityPayload._removePayload.begin(), entityPayload._removePayload.end(), commonPayloads.begin(), commonPayloads.end(), removeType);
 
     };
 
     void Database::flushDeferredAll(EntityID entityID) {
-
+        // TODO: maybe some payload sorting here could help...?
+        // Not sure how to reason about it
     };
 
     template <class T>
@@ -302,12 +331,12 @@ namespace Wado::ECS {
 
     template <class T> 
     void Database::setComponentCopyDeferred(EntityID entityID, T* componentData) {
-        _deferredPayloads[entityID]._setPayloadCopy.insert(getComponentID<T>(), static_cast<void *>(componentData));
+        _deferredPayloads[entityID]._setMap.emplace(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Copy);
     };
 
     template <class T>
     void Database::setComponentMoveDeferred(EntityID entityID, T* componentData) {
-        _deferredPayloads[entityID]._setPayloadMove.insert(getComponentID<T>(), static_cast<void *>(componentData));
+        _deferredPayloads[entityID]._setMap.emplace(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Move);
     };
 
 };
