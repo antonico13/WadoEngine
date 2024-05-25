@@ -157,6 +157,46 @@ namespace Wado::ECS {
         return createTableGraph(startingTableIndex, startingAddType);
     };
 
+    size_t Database::findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) {
+        size_t currentTableIndex = tableIndex;
+        Table::TableEdges::const_iterator removeGraphIt;
+        Table::TableEdges::const_iterator removeGraphEnd;
+        // Perform a backwards graph walk until we find a missing edge.
+        // Add all the edges up to that point then resume walk. 
+        TableType::reverse_iterator it;// = removeTypes.rbegin();
+        for (it = removeTypes.rbegin(); it != removeTypes.rend(); ++it) {
+            removeGraphIt = _tables[currentTableIndex]._removeComponentGraph.find(*it);
+            removeGraphEnd = _tables[currentTableIndex]._removeComponentGraph.end();
+            
+            // Edge not found, need to build graph from the beginning 
+            // and continue 
+            if (removeGraphIt == removeGraphEnd) {
+                break;
+            };
+
+            currentTableIndex = removeGraphIt->second;
+        };
+
+        if (it != removeTypes.rend()) {
+            TableType fullType;
+            std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), std::next(it, 1).base(), removeTypes.end(), fullType);
+            size_t nextTableIndex = createTableGraph(0, fullType);
+            _tables[currentTableIndex]._removeComponentGraph.insert(*it, nextTableIndex);
+            _tables[nextTableIndex]._addComponentGraph.insert(*it, currentTableIndex);
+            
+            // Graph edge has been made, can continue iteration 
+            while (it != removeTypes.rend()) {
+                removeGraphIt = _tables[currentTableIndex]._removeComponentGraph.find(*it);
+            
+                currentTableIndex = removeGraphIt->second;  
+                ++it;
+            };
+        };
+
+        return currentTableIndex;
+    };
+
+
     void Database::moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
         size_t currentEntityRowIndex = _tableRegistry[entityID].entityColumnIndex;
         Table& sourceTable = _tables[sourceTableIndex];
@@ -231,7 +271,7 @@ namespace Wado::ECS {
         // already exist in immediate mode and point 
         // to the unique table due to adding components first. 
         size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
-        size_t nextTableIndex = _tables[currentTableIndex]._removeComponentGraph[getComponentID<T>()];
+        size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
 
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
