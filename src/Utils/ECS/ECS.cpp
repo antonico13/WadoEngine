@@ -11,7 +11,7 @@ namespace Wado::ECS {
         _entityID(entityID), 
         _database(database) { };
 
-    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type) {
+    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(--type.end())) {
         for (const ComponentID componentID : type) {
             void* columnData = malloc(sizes.at(componentID) * defaultColumnSize);
             
@@ -23,7 +23,7 @@ namespace Wado::ECS {
     };
 
     // Empty constructor
-    Database::Table::Table() : _type({}) {
+    Database::Table::Table() : _type({}), _maxComponentID(0) {
 
     };
 
@@ -93,87 +93,69 @@ namespace Wado::ECS {
         return componentID;
     };
 
-    size_t Database::getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) {
-        Table::TableEdges::iterator nextTable = _tables[tableIndex]._addComponentGraph.find(componentID);
-        size_t nextTableID;
-        if (nextTable == _tables[tableIndex]._addComponentGraph.end()) {
-            // Successor doesn't exist, perform a full graph walk 
-            // to find or create the path to the successor.
+    size_t Database::createTableGraph(size_t startingTableIndex, const TableType& addType) {
+        size_t currentTableIndex = startingTableIndex;
+        TableType::const_iterator it;
+        Table::TableEdges::iterator addGraphIt;
+        Table::TableEdges::iterator addGraphEnd;;
 
-            // TODO: can optimize here. For example, if the requested
-            // componentID is greater than the maximum component ID 
-            // in the current table's full type, a full graph walk is not 
-            // required, since the current type will represent an ascending
-            // order. In that case, we can just create the new table directly 
-            // and add it. This also avoids unneccesary set operations.
+        for (it = addType.begin(); it != addType.end(); it++) {
+            addGraphIt = _tables[currentTableIndex]._addComponentGraph.find(*it);
+            addGraphEnd = _tables[currentTableIndex]._addComponentGraph.end();
 
-            // Can solve this by storing the max component ID on a table type
-            // at creation time. 
-            TableType newTableType(_tables[tableIndex]._type);
-            newTableType.insert(componentID);
-            nextTableID = findOrAddTable(newTableType);
-
-            // Add graph edges now, component registry will 
-            // have ben taken care of by the findOrAddTable function. 
-            // This can also be optimized away with the maximum component ID optimization. 
-            _tables[tableIndex]._addComponentGraph[componentID] = nextTableID;
-            _tables[nextTableID]._removeComponentGraph[componentID] = tableIndex; 
-
-        } else {
-            nextTableID = nextTable->second;
-        };
-
-        return nextTableID;
-    };
-
-
-    size_t Database::findOrAddTable(const TableType& fullType) {
-        size_t currentTableIndex = 0;
-        for (const ComponentID& componentID : fullType) {
-            Table::TableEdges::iterator nextTable = _tables[currentTableIndex]._addComponentGraph.find(componentID);
-            
-            // Next table doesn't exist, need to create. 
-            // TODO: this is slow, once a table is found not to exist 
-            // all of its successors will also not exist. 
-            if (nextTable == _tables[currentTableIndex]._addComponentGraph.end()) {
-                // Create type of the new table
-                TableType newType(_tables[currentTableIndex]._type);
-                newType.insert(componentID);
-                _tables.emplace_back(newType, *this);
-                // Size of table - 1 is the index of the newly inserted table, need
-                // to add this to the graph now.
-                _tables[currentTableIndex]._addComponentGraph[componentID] = _tables.size() - 1;
-                // need to add the backwards edge too 
-                _tables.back()._removeComponentGraph[componentID] = currentTableIndex;
-
-                currentTableIndex = _tables.size() - 1;
-                // Add new table to component registry too.
-                _componentRegistry[componentID].insert(currentTableIndex);
-
-            } else {
-                currentTableIndex = nextTable->second;
+            // TODO: find a way to do this without many branches 
+            if (addGraphIt == addGraphEnd) {
+                break;
             };
-        };
-        return currentTableIndex;
-    };
 
-    size_t Database::findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) {
-        // By construction, table predecessors always exist,
-        // we just need to find the final one by removing components
-        // from this table.
-        size_t currentTableIndex = tableIndex; 
-        // Go through remove list in reverse order, since all
-        // components are added in increasing order.
-        TableType::const_iterator it = removeTypes.end();
-        it--; 
-        while (it != removeTypes.begin()) {
-            currentTableIndex = _tables[currentTableIndex]._removeComponentGraph[*it];
-            it--;
+            currentTableIndex = addGraphIt->second;
         };
 
-        return _tables[currentTableIndex]._removeComponentGraph[*it];
+        if (it == addType.end()) {
+            // All edges existed in the table graph, can return
+            return currentTableIndex;
+        };
+
+        // At this point, we found an edge that doesn't exist, 
+        // but because all add components are greater than the 
+        // current table's max we can create & add all tables 
+        // in order here. 
+        while (it != addType.end()) {
+            // Type of this is the type of the entry table
+            // + every type until the it component  
+            TableType newType(_tables[currentTableIndex]._type);
+            newType.insert(addType.begin(), std::next(it, 1));
+            // TODO: maybe shouldnt do default common size here, since 
+            // the intermediary table might not immediately need
+            // as many components 
+            _tables.emplace_back(newType, _componentSizes, _defaultColumnSize);
+            _tables[currentTableIndex]._addComponentGraph.insert(*it, _tables.size() - 1);
+            _tables.back()._removeComponentGraph.insert(*it, currentTableIndex);
+
+            currentTableIndex = _tables.size() - 1; // TODO: This could potentially always be .back here after the first
+            // insert, maybe that would be faster.
+
+            // Add new table to component registry. 
+            _componentRegistry[*it].insert(currentTableIndex);
+        };
+
+        return currentTableIndex; // final table index 
     };
 
+    size_t Database::findTableSuccessor(const size_t tableIndex, const TableType& addType) {
+        size_t startingTableIndex = tableIndex;
+        TableType startingAddType = addType;
+        // If the first add component ID is greater than the 
+        // max component id of the table we need to perform the 
+        // graph search from the beginning
+        if (_tables[tableIndex]._maxComponentID > *addType.begin()) {
+            startingTableIndex = 0;
+            startingAddType.insert(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end());
+        };
+
+        // Now we can perform the graph search 
+        return createTableGraph(startingTableIndex, startingAddType);
+    };
 
     void Database::moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
         size_t currentEntityRowIndex = _tableRegistry[entityID].entityColumnIndex;
@@ -237,7 +219,8 @@ namespace Wado::ECS {
     template <class T>
     void Database::addComponent(EntityID entityID) {
         size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
-        size_t nextTableIndex = getNextTableOrAddEdges(currentTableIndex, getComponentID<T>());
+        // TODO: not sure if I should use the deferred version here 
+        size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
 
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };

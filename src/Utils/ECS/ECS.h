@@ -217,6 +217,8 @@ namespace Wado::ECS {
                 // Empty table constructor
                 Table();
                 const TableType _type;
+                // TODO: add this to constructor 
+                const ComponentID _maxComponentID;
                 // TODO: should this be const? Also, map might be slow here. 
                 Columns _columns;
                 // delete list keeps track of the 
@@ -235,7 +237,7 @@ namespace Wado::ECS {
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
                 // the current table +/- the key component ID.
-                using TableEdges = std::unordered_map<ComponentID, size_t>;
+                using TableEdges = std::map<ComponentID, size_t>;
 
                 TableEdges _addComponentGraph;
                 TableEdges _removeComponentGraph;
@@ -270,11 +272,13 @@ namespace Wado::ECS {
             ComponentRegistry _componentRegistry;
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
-            inline size_t findOrAddTable(const TableType& fullType) noexcept;
-            inline size_t findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) noexcept;
-            inline size_t getNextTableOrAddEdges(size_t tableIndex, const ComponentID componentID) noexcept;
-
             inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) noexcept;
+
+            inline size_t findTableSuccessor(const size_t tableIndex, const TableType& addType);
+            inline size_t createTableGraph(size_t startingTableIndex, const TableType& addType);
+            inline size_t findTablePredecessor(const size_t tableIndex, const TableType& removeTypes);
+
+
 
             // Deferred commands data types
             // Deferred commands use raw pointers only, since
