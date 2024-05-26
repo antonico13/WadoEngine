@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <optional>
+#include <iterator>
 
 namespace Wado::ECS {
     Entity::Entity(EntityID entityID, Database* database) : 
@@ -18,7 +19,8 @@ namespace Wado::ECS {
             if (columnData == nullptr) {
                 throw std::runtime_error("Ran out of memory for storing column data");
             };
-            _columns.emplace(componentID, columnData, sizes.at(componentID));
+            // TODO: won't let me emplace with arguments directly...?
+            _columns.emplace(componentID, Column(columnData, sizes.at(componentID)));
         };
     };
 
@@ -69,13 +71,17 @@ namespace Wado::ECS {
     };
 
 
-    void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) {
-        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, tableIndex, position);
+    void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept {
+        // TODO: fix this and use proper emplace 
+        TableIndex newIndex{};
+        newIndex.entityColumnIndex = position;
+        newIndex.tableIndex = tableIndex;
+        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, newIndex);
     };
 
-    Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
-        return _entityMainPtrs.emplace_back(new Entity(generateNewIDAndAddToEmptyTableRegistry(), this)).getClonePtr();
-    };
+    // Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
+    //     return _entityMainPtrs.emplace_back(new Entity(generateNewIDAndAddToEmptyTableRegistry(), this)).getClonePtr();
+    // };
 
     Entity Database::createEntityObj() {
         return Entity(generateNewIDAndAddToEmptyTableRegistry(), this);
@@ -85,7 +91,7 @@ namespace Wado::ECS {
         return generateNewIDAndAddToEmptyTableRegistry();
     };
 
-    void Database::destroyEntity(EntityID entityID) {
+    void Database::destroyEntity(EntityID entityID) noexcept {
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableRowIndex = _tableRegistry[entityID].entityColumnIndex;
         _tables[tableIndex].deleteList.insert(tableRowIndex);
@@ -143,8 +149,8 @@ namespace Wado::ECS {
             // the intermediary table might not immediately need
             // as many components 
             _tables.emplace_back(newType, _componentSizes, _defaultColumnSize);
-            _tables[currentTableIndex]._addComponentGraph.insert(*it, _tables.size() - 1);
-            _tables.back()._removeComponentGraph.insert(*it, currentTableIndex);
+            _tables[currentTableIndex]._addComponentGraph.emplace(*it, _tables.size() - 1);
+            _tables.back()._removeComponentGraph.emplace(*it, currentTableIndex);
 
             currentTableIndex = _tables.size() - 1; // TODO: This could potentially always be .back here after the first
             // insert, maybe that would be faster.
@@ -193,10 +199,10 @@ namespace Wado::ECS {
 
         if (it != removeTypes.rend()) {
             TableType fullType;
-            std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), std::next(it, 1).base(), removeTypes.end(), fullType);
+            std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), std::next(it, 1).base(), removeTypes.end(), std::inserter(fullType, fullType.begin()));
             size_t nextTableIndex = createTableGraph(0, fullType);
-            _tables[currentTableIndex]._removeComponentGraph.insert(*it, nextTableIndex);
-            _tables[nextTableIndex]._addComponentGraph.insert(*it, currentTableIndex);
+            _tables[currentTableIndex]._removeComponentGraph.emplace(*it, nextTableIndex);
+            _tables[nextTableIndex]._addComponentGraph.emplace(*it, currentTableIndex);
             
             // Graph edge has been made, can continue iteration 
             while (it != removeTypes.rend()) {
@@ -259,7 +265,7 @@ namespace Wado::ECS {
         // with guaranteed space, first find overlapping components. 
         TableType overlappingColumns;
         // TODO: does this work if the set doesn't have capacity reserved for the overlapping elements? 
-        std::set_intersection(sourceTable._type.begin(), sourceTable._type.end(), destTable._type.begin(), destTable._type.end(), overlappingColumns.begin());
+        std::set_intersection(sourceTable._type.begin(), sourceTable._type.end(), destTable._type.begin(), destTable._type.end(), std::inserter(overlappingColumns, overlappingColumns.begin()));
         // TODO: can I SIMD/vectorize this in any way?
         
         // Copy column content
@@ -286,7 +292,7 @@ namespace Wado::ECS {
     };
 
     template <class T> 
-    void Database::removeComponent(EntityID entityID) {
+    void Database::removeComponent(EntityID entityID) noexcept {
         // By construction, every remove edge will 
         // already exist in immediate mode and point 
         // to the unique table due to adding components first. 
@@ -297,7 +303,7 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    bool Database::hasComponent(EntityID entityID) const {
+    bool Database::hasComponent(EntityID entityID) const noexcept {
         //size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         std::set<size_t> typeSet& = _componentRegistry.at(tableIndex);
@@ -305,7 +311,7 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    const T& Database::getComponent(EntityID entityID) const {
+    const T& Database::getComponent(EntityID entityID) const noexcept {
         ComponentID componentID = getComponentID<T>();
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
@@ -314,7 +320,7 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    std::optional<const T&> Database::getComponentSafe(EntityID entityID) const {
+    std::optional<const T&> Database::getComponentSafe(EntityID entityID) const noexcept {
         if (!hasComponent<T>(entityID)) {
             return std::nullopt;
         } else {
@@ -393,22 +399,22 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    void Database::addComponentDeferred(EntityID entityID) {
+    void Database::addComponentDeferred(EntityID entityID) noexcept {
         _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Add);
     };
 
     template <class T> 
-    void Database::removeComponentDeferred(EntityID entityID) {
+    void Database::removeComponentDeferred(EntityID entityID) noexcept {
         _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Remove);
     };
 
     template <class T> 
-    void Database::setComponentCopyDeferred(EntityID entityID, T* componentData) {
+    void Database::setComponentCopyDeferred(EntityID entityID, T* componentData) noexcept {
         _deferredPayloads[entityID]._setMap.emplace(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Copy);
     };
 
     template <class T>
-    void Database::setComponentMoveDeferred(EntityID entityID, T* componentData) {
+    void Database::setComponentMoveDeferred(EntityID entityID, T* componentData) noexcept {
         _deferredPayloads[entityID]._setMap.emplace(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Move);
     };
 

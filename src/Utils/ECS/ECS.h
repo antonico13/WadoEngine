@@ -1,13 +1,14 @@
 #ifndef WADO_ECS_H
 #define WADO_ECS_H
 
-#include "MainClonePtr.h"
+//#include "MainClonePtr.h"
 
 #include <vector>
 #include <map>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <optional>
 
 namespace Wado::ECS {
 
@@ -72,7 +73,7 @@ namespace Wado::ECS {
             // if the main pointer is alive, then dereferencing the 
             // actual entity pointer, then using the database pointer for 
             // operations such as set/add component
-            Memory::WdClonePtr<Entity> createEntityClonePtr();
+            //Memory::WdClonePtr<Entity> createEntityClonePtr();
             // Using entity objects, the lifetime is managed by the caller of
             // this function. This only requires one pointer dereference for
             // database operations. 
@@ -165,7 +166,7 @@ namespace Wado::ECS {
 
             // Deletes all erased entities, resizes 
             // columns to only fit the minimal data required.
-            void cleanupMemory() noexcept;
+            void cleanupMemory();
         private:
 
             // The lower 32 bits of an entity ID 
@@ -176,7 +177,7 @@ namespace Wado::ECS {
             uint64_t ENTITY_ID = 1 << 31;
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
-            static const uint64_t MAX_ENTITY_ID = 1 << 32;
+            static const uint64_t MAX_ENTITY_ID = (uint64_t)1 << 32;
             static const uint64_t MAX_COMPONENT_ID = 1 << 31;
             static const uint64_t ENTITY_ID_MASK = 0xFFFFFFFF;
 
@@ -208,6 +209,8 @@ namespace Wado::ECS {
             // Just a vector of all its componets, in order. 
 
             using Column = struct Column {
+                Column() : data(nullptr), elementStride(0) {};
+                Column(void* _data, size_t _elementStride) : data(_data), elementStride(_elementStride) {};
                 void* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
                 const size_t elementStride; // element stride in bytes  
@@ -240,7 +243,7 @@ namespace Wado::ECS {
                 // the column buffers to only accomodate up to the largest 
                 // free index
                 struct DeleteListComp {
-                    bool operator() (size_t a, size_t b) {
+                    bool operator() (const size_t a, const size_t b) const {
                         return a > b; // Inverse insertion 
                         // order 
                     };
@@ -278,7 +281,7 @@ namespace Wado::ECS {
             // vector of main pointer for entities. The lifetime of 
             // these entities is managed by the database, so all
             // the main pointers need to be kept track of. 
-            std::vector<Memory::WdMainPtr<Entity>> _entityMainPtrs;
+            //std::vector<Memory::WdMainPtr<Entity>> _entityMainPtrs;
             
             using TableRegistry = std::map<EntityID, TableIndex>;
             TableRegistry _tableRegistry;
@@ -289,7 +292,7 @@ namespace Wado::ECS {
             ComponentRegistry _componentRegistry;
 
             inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
-            inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) noexcept;
+            inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex);
 
             inline size_t findTableSuccessor(const size_t tableIndex, const TableType& addType);
             inline size_t createTableGraph(size_t startingTableIndex, const TableType& addType);
