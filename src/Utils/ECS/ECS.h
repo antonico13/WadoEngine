@@ -82,6 +82,12 @@ namespace Wado::ECS {
             // on which to call add, set component, etc. without any 
             // pointer dereferences 
             EntityID createEntityID();
+            
+            // Passing invalid entity IDs leads to undefined behaviour
+            // This is a deferred function by default. To actually clear
+            // the memory used by this entity, cleanupMemory needs to
+            // be called. 
+            inline void destroyEntity(EntityID entityID) noexcept;
 
             // adds a component to an entity based on its ID. The component is
             // "empty" by default, since the underlying type is erased 

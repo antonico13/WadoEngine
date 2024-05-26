@@ -37,7 +37,12 @@ namespace Wado::ECS {
     };
 
     Database::~Database() {
-        // TODO: cleanup functions here 
+        // Go over every table and free the data in every column of the table. 
+        for (Table& table : _tables) {
+            for (Columns::iterator it = table._columns.begin(); it != table._columns.end(); ++it) {
+                free(it->second.data);
+            };
+        };
     };
 
     EntityID Database::generateNewEntityID() {
@@ -80,6 +85,14 @@ namespace Wado::ECS {
         return generateNewIDAndAddToEmptyTableRegistry();
     };
 
+    void Database::destroyEntity(EntityID entityID) {
+        size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        size_t tableRowIndex = _tableRegistry[entityID].entityColumnIndex;
+        _tables[tableIndex].deleteList.insert(tableRowIndex);
+        _tableRegistry.erase(entityID);
+        _reusableEntityIDs.emplace_back(entityID);
+    };
+
     ComponentID Database::generateNewComponentID() {
         if (COMPONENT_ID == MAX_COMPONENT_ID) {
                 throw std::runtime_error("Reached the maximum number of components, cannot create any new ones.");
@@ -97,9 +110,8 @@ namespace Wado::ECS {
     size_t Database::createTableGraph(size_t startingTableIndex, const TableType& addType) {
         size_t currentTableIndex = startingTableIndex;
         TableType::const_iterator it;
-        // TODO: change these to const iterators for performance 
-        Table::TableEdges::iterator addGraphIt;
-        Table::TableEdges::iterator addGraphEnd;;
+        Table::TableEdges::const_iterator addGraphIt;
+        Table::TableEdges::const_iterator addGraphEnd;;
 
         for (it = addType.begin(); it != addType.end(); it++) {
             addGraphIt = _tables[currentTableIndex]._addComponentGraph.find(*it);
@@ -407,8 +419,13 @@ namespace Wado::ECS {
         // row from their delete sets 
         // do this for every table except empty begin table..? 
         std::vector<Table>::iterator it = ++_tables.begin();
-
+        // TODO: need to make a map only with tables where capacity >= 
+        // maxRow, and only those are viable for cleanup
         for (it; it != _tables.end(); it++) {
+            // TODO: maybe should also fix all fragmentation issues 
+            // here. 
+            // TODO: for fixing fragmentation, need to do
+            // memcpy without overlapping memory ranges. 
             for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++it) {
                 columnIt->second.data = realloc(columnIt->second.data, it->_maxOccupiedRow * columnIt->second.elementStride);
                 
