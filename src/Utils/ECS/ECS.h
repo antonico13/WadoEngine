@@ -141,9 +141,9 @@ namespace Wado::ECS {
             // on the database once flushDeferred or flushDeferredAll 
             // is called. 
 
-            void flushDeferred(EntityID entityID);
+            inline void flushDeferred(EntityID entityID);
 
-            void flushDeferredAll(EntityID entityID);
+            inline void flushDeferredAll(EntityID entityID);
 
             template <class T>
             void addComponentDeferred(EntityID entityID) noexcept;
@@ -290,23 +290,28 @@ namespace Wado::ECS {
                 Move
             };
 
+            enum ComponentMode {
+                Add,
+                Remove,
+            };
+
             using SetComponentPayload = struct SetComponentPayload {
                 void* data;
                 SetMode mode;
             }; // std::map<ComponentID, void *>;
             using SetComponentMap = std::map<ComponentID, SetComponentPayload>;
-            using AddComponentPayload = std::set<ComponentID>;
-            using RemoveComponentPayload = std::set<ComponentID>;
+            using ComponentPayloadMap = std::map<ComponentID, ComponentMode>;
 
             using DeferredPayload = struct DeferredPayload {
                 // TODO: could this be faster if instead 
                 // I stored per component whether it's an Add/Remove?
                 SetComponentMap _setMap; 
-                AddComponentPayload _addPayload;
-                RemoveComponentPayload _removePayload;
+                ComponentPayloadMap _componentPayloadMap;
             };
 
             std::map<EntityID, DeferredPayload> _deferredPayloads;
+
+            inline void flushDeferredNoDelete(EntityID entityID);
     };
 };
 

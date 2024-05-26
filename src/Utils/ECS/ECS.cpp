@@ -96,6 +96,7 @@ namespace Wado::ECS {
     size_t Database::createTableGraph(size_t startingTableIndex, const TableType& addType) {
         size_t currentTableIndex = startingTableIndex;
         TableType::const_iterator it;
+        // TODO: change these to const iterators for performance 
         Table::TableEdges::iterator addGraphIt;
         Table::TableEdges::iterator addGraphEnd;;
 
@@ -322,34 +323,64 @@ namespace Wado::ECS {
         *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = std::move(componentData);
     };
 
+    void Database::flushDeferredNoDelete(EntityID entityID) {
+        const DeferredPayload& entityPayload = _deferredPayloads[entityID];
+        // First, add all components
+        TableType addType;
+        TableType removeType;
+        for (ComponentPayloadMap::const_iterator it = entityPayload._componentPayloadMap.begin(); it != entityPayload._componentPayloadMap.end(); it++) {
+            if (it->second == ComponentMode::Add) {
+                addType.insert(it->first);
+            } else {
+                removeType.insert(it->first);
+            }
+        };
+        
+        // TODO: this might be faster by just moving through the sorted 
+        // list one by one and changing table until the final one is found 
+
+        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        
+        size_t nextTableIndex = findTableSuccessor(currentTableIndex, addType);
+
+        nextTableIndex = findTableSuccessor(nextTableIndex, removeType);
+        moveToTable(entityID, currentTableIndex, nextTableIndex);
+
+        // Now, apply all the set deferred operations 
+        for (SetComponentMap::const_iterator it = entityPayload._setMap.begin(); it != entityPayload._setMap.end(); it++) {
+            if (it->second.mode == SetMode::Copy) {
+                size_t tableIndex = _tableRegistry[entityID].tableIndex;
+                size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+                const Column& column = _tables[tableIndex]._columns[it->first];
+                // This version uses the copy constructor. 
+                memcpy(static_cast<char*>(column.data) + column.elementStride * entityColumnIndex, it->second.data, column.elementStride);
+            } else {
+                // TODO;
+            };
+        };
+    };
 
     void Database::flushDeferred(EntityID entityID) {
-        DeferredPayload& entityPayload = _deferredPayloads[entityID];
-        std::set<ComponentID> commonPayloads;
-        // TODO: this might be very, very, very slow. 
-        std::set_intersection(entityPayload._addPayload.begin(), entityPayload._addPayload.end(), entityPayload._removePayload.begin(), entityPayload._removePayload.end(), commonPayloads);
-        
-        TableType addType;
-        std::set_difference(entityPayload._addPayload.begin(), entityPayload._addPayload.end(), commonPayloads.begin(), commonPayloads.end(), addType);
-
-        TableType removeType;
-        std::set_difference(entityPayload._removePayload.begin(), entityPayload._removePayload.end(), commonPayloads.begin(), commonPayloads.end(), removeType);
-
+        flushDeferredNoDelete(entityID);
+        _deferredPayloads.erase(entityID);
     };
 
     void Database::flushDeferredAll(EntityID entityID) {
-        // TODO: maybe some payload sorting here could help...?
-        // Not sure how to reason about it
+        for (std::map<EntityID, DeferredPayload>::const_iterator it = _deferredPayloads.begin(); it != _deferredPayloads.end(); it++) {
+            // TODO: maybe should pass both here so I don't do another lookup in the function?
+            flushDeferredNoDelete(it->first);
+        };
+        _deferredPayloads.clear();
     };
 
     template <class T>
     void Database::addComponentDeferred(EntityID entityID) {
-        _deferredPayloads[entityID]._addPayload.insert(getComponentID<T>());
+        _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Add);
     };
 
     template <class T> 
     void Database::removeComponentDeferred(EntityID entityID) {
-        _deferredPayloads[entityID]._removePayload.insert(getComponentID<T>());
+        _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Remove);
     };
 
     template <class T> 
