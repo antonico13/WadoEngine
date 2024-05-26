@@ -157,6 +157,9 @@ namespace Wado::ECS {
             template <class T>
             void setComponentMoveDeferred(EntityID entityID, T* componentData) noexcept;
 
+            // Deletes all erased entities, resizes 
+            // columns to only fit the minimal data required.
+            void cleanupMemory() noexcept;
         private:
 
             // The lower 32 bits of an entity ID 
@@ -232,7 +235,16 @@ namespace Wado::ECS {
                 // to avoid fragmentation, and so that we can resize 
                 // the column buffers to only accomodate up to the largest 
                 // free index
-                std::vector<size_t> deleteList;
+                struct DeleteListComp {
+                    bool operator() (size_t a, size_t b) {
+                        return a > b; // Inverse insertion 
+                        // order 
+                    };
+                };
+
+                using DeleteList = std::set<size_t, DeleteListComp>;
+
+                DeleteList deleteList;
                 size_t _rowCount;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with

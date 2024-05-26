@@ -204,7 +204,7 @@ namespace Wado::ECS {
         Table& destTable = _tables[destTableIndex];
 
         // the row for this entity is voided from the original table
-        sourceTable.deleteList.push_back(currentEntityRowIndex);
+        sourceTable.deleteList.insert(currentEntityRowIndex);
 
         // get next row index for the entity 
         size_t freeRowIndex;
@@ -212,8 +212,12 @@ namespace Wado::ECS {
             freeRowIndex = destTable._rowCount++;
             //destTable._rowCount++;
         } else {
-            freeRowIndex = destTable.deleteList.back();
-            destTable.deleteList.pop_back();
+            // Always pick the smallest ID avaialable to avoid
+            // fragmentation 
+            Table::DeleteList::const_iterator endID = destTable.deleteList.end();
+            endID--;
+            freeRowIndex = *endID;
+            destTable.deleteList.erase(endID);
         };
 
         // Now, update table registry
@@ -393,4 +397,7 @@ namespace Wado::ECS {
         _deferredPayloads[entityID]._setMap.emplace(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Move);
     };
 
+    void Database::cleanupMemory() {
+
+    };
 };
