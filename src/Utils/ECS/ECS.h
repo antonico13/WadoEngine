@@ -205,8 +205,6 @@ namespace Wado::ECS {
                 void* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
                 const size_t elementStride; // element stride in bytes  
-                size_t capacity; // element capacity. resizes are needed when 
-                // we exceed the capacity
             };
 
             using Columns = std::map<ComponentID, Column>;
@@ -245,7 +243,8 @@ namespace Wado::ECS {
                 using DeleteList = std::set<size_t, DeleteListComp>;
 
                 DeleteList deleteList;
-                size_t _rowCount;
+                size_t _maxOccupiedRow;
+                size_t _capacity;
                 // Traversing the add/remove component graphs gives a
                 // new table that has overlapping components with
                 // the current table +/- the key component ID.

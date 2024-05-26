@@ -11,19 +11,19 @@ namespace Wado::ECS {
         _entityID(entityID), 
         _database(database) { };
 
-    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(--type.end())) {
+    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize) {
         for (const ComponentID componentID : type) {
             void* columnData = malloc(sizes.at(componentID) * defaultColumnSize);
             
             if (columnData == nullptr) {
                 throw std::runtime_error("Ran out of memory for storing column data");
             };
-            _columns.emplace(componentID, columnData, sizes.at(componentID), defaultColumnSize);
+            _columns.emplace(componentID, columnData, sizes.at(componentID));
         };
     };
 
     // Empty constructor
-    Database::Table::Table() : _type({}), _maxComponentID(0) {
+    Database::Table::Table() : _type({}), _maxComponentID(0), _capacity(DEFAULT_COLUMN_SIZE) {
 
     };
 
@@ -58,7 +58,8 @@ namespace Wado::ECS {
         EntityID newID = generateNewEntityID();
         // The 0-th table will always be the default empty
         // table. 
-        addEntityToTableRegistry(newID, 0, _tables.front()._rowCount); // first table, the "empty" table
+        addEntityToTableRegistry(newID, 0, _tables.front()._maxOccupiedRow); // first table, the "empty" table
+        _tables.front()._maxOccupiedRow++;
         return newID;
     };
 
@@ -205,12 +206,15 @@ namespace Wado::ECS {
 
         // the row for this entity is voided from the original table
         sourceTable.deleteList.insert(currentEntityRowIndex);
+        // Last row
+        if (currentEntityRowIndex == sourceTable._maxOccupiedRow - 1) {
+            sourceTable._maxOccupiedRow--;
+        };
 
         // get next row index for the entity 
         size_t freeRowIndex;
         if (destTable.deleteList.empty()) {
-            freeRowIndex = destTable._rowCount++;
-            //destTable._rowCount++;
+            freeRowIndex = destTable._maxOccupiedRow++;
         } else {
             // Always pick the smallest ID avaialable to avoid
             // fragmentation 
@@ -226,17 +230,16 @@ namespace Wado::ECS {
         // If we are adding a new row and its index is greater than
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
-        if (freeRowIndex >= destTable._columns.begin()->second.capacity) {
+        if (freeRowIndex >= destTable._capacity) {
             // everything needs to be resized in this case. 
             // By default, just double capacity.
+            destTable._capacity = destTable._capacity * 2;
             for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
-                it->second.data = realloc(it->second.data, it->second.capacity * 2);
+                it->second.data = realloc(it->second.data, destTable._capacity);
                 
                 if (it->second.data == nullptr) {
                     throw std::runtime_error("Ran out of memory, cannot increase row count for table.");
                 };
-
-                it->second.capacity = it->second.capacity * 2;
             };
         };
 
@@ -398,6 +401,37 @@ namespace Wado::ECS {
     };
 
     void Database::cleanupMemory() {
+        // Go over every table and every column of their table
+        // resize columns to size of maxOccupiedRow
+        // remove every free index bigger than or equal to max occupied 
+        // row from their delete sets 
+        // do this for every table except empty begin table..? 
+        std::vector<Table>::iterator it = ++_tables.begin();
 
+        for (it; it != _tables.end(); it++) {
+            for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++it) {
+                columnIt->second.data = realloc(columnIt->second.data, it->_maxOccupiedRow * columnIt->second.elementStride);
+                
+                if (columnIt->second.data == nullptr) {
+                    throw std::runtime_error("Could not reallocatee column data");
+                };
+            };
+
+            // Now, remove from the delete list all rows >= maximum row.
+            Table::DeleteList::iterator delListIt = it->deleteList.begin();
+            while (delListIt != it->deleteList.end() && *(delListIt) >= it->_maxOccupiedRow) {
+                ++delListIt;
+            };
+
+            if (delListIt == it->deleteList.end()) {
+                // can clear the entire list
+                it->deleteList.clear();
+            } else {
+                // delListIt points to the first element that's less than
+                // max occupied row, need to delete everything from it 
+                // to the beginning 
+                it->deleteList.erase(it->deleteList.begin(), delListIt);
+            };
+        };
     };
 };
