@@ -105,7 +105,10 @@ namespace Wado::ECS {
             void addRelationship(EntityID mainID, EntityID targetID);
 
             template <typename T>
-            void removeRelationship(EntityID mainID, EntityID targetID);
+            void removeRelationship(EntityID mainID, EntityID targetID) noexcept;
+
+            template <typename T>
+            bool hasRelationShip(EntityID mainId, EntityID targetID) noexcept;
 
             template <typename T>
             std::set<EntityID> getRelationshipTargets(EntityID entityID);
@@ -395,7 +398,7 @@ namespace Wado::ECS {
             ComponentRegistry _componentRegistry;
 
             // Table indexing based on relationship
-            using RelationshipCount = std::map<const size_t, size_t>;
+            using RelationshipCount = std::set<const size_t>;
             using RelationshipCountRegistry = std::map<ComponentID, RelationshipCount>;
             RelationshipCountRegistry _relationshipCountRegistry;
 

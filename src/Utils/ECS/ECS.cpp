@@ -395,9 +395,6 @@ namespace Wado::ECS {
 
     template <class T> 
     void Database::removeComponent(EntityID entityID) noexcept {
-        // By construction, every remove edge will 
-        // already exist in immediate mode and point 
-        // to the unique table due to adding components first.
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
         //std::cout << "Current table index and type at remove: " << currentTableIndex << std::endl;
         for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
@@ -655,15 +652,35 @@ namespace Wado::ECS {
         
         // Finally, for the component registry
         if (_relationshipCountRegistry.find(relationshipTypeID) != _relationshipCountRegistry.end()) {
-            if (_relationshipCountRegistry.at(relationshipTypeID).find(nextTableIndex) != _relationshipCountRegistry.at(relationshipTypeID).end()) {
-                _relationshipCountRegistry.at(relationshipTypeID)[nextTableIndex]++;
-            } else {
-                _relationshipCountRegistry.at(relationshipID).emplace(nextTableIndex, 1);
-            };
+            _relationshipCountRegistry.at(relationshipTypeID).insert(nextTableIndex);
         } else {
-            _relationshipCountRegistry.emplace(relationshipTypeID, {{nextTableIndex, 1}});
+            _relationshipCountRegistry.emplace(relationshipTypeID, {nextTableIndex});
         };
     };
+
+    template <typename T>
+    void Database::removeRelationship(EntityID mainID, EntityID targetID) noexcept {
+        ComponentID relationshipTypeID = getComponentID<T>();
+        // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
+        // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
+        // component ID 
+        ComponentID relationshipID = relationshipTypeID | (targetID << 32);
+
+        size_t currentTableIndex = _tableRegistry.at(mainID).tableIndex;
+        //std::cout << "Current table index and type at remove: " << currentTableIndex << std::endl;
+        //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
+            //std::cout << "Component: " << componentID << " ";
+        //};
+        //std::cout << std::endl;
+        size_t nextTableIndex = findTablePredecessor(currentTableIndex, {relationshipID});
+        //std::cout << "Next table index and type at remove: " << nextTableIndex << std::endl;
+        //for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
+            //std::cout << "Component: " << componentID << " ";
+        //};
+        //std::cout << std::endl;
+        moveToTable(mainID, currentTableIndex, nextTableIndex);
+    };
+
 
     template <typename T>
     std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) {
