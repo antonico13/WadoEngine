@@ -36,14 +36,15 @@ namespace Wado::ECS {
             template <class T> 
             void removeComponent() noexcept;
 
+            // TODO: how to make these const??
             template <class T>
-            const T& getComponent() const noexcept;
+            const T& getComponent() noexcept;
 
             template <class T>
-            std::optional<const T&> getComponent() const noexcept;
+            std::optional<const T&> getComponent() noexcept;
             
             template <class T>
-            bool hasComponent() const noexcept;
+            bool hasComponent() noexcept;
 
             EntityID getID() const noexcept;
         private:
@@ -125,6 +126,8 @@ namespace Wado::ECS {
             // creation. All componet get return values are constant 
             // references. Updating component values should only be 
             // done through setters or systems. 
+            
+            // TODO: how to make getters safe??
 
             // Unsafe component getter. This will never check if 
             // the entity has a component and thus will never throw 
@@ -132,16 +135,16 @@ namespace Wado::ECS {
             // if it is provable the entity does have the component 
             // when called. 
             template <class T>
-            const T& getComponent(EntityID entityID) const noexcept;
+            const T& getComponent(EntityID entityID) noexcept;
 
             // This getter also does not throw an exception, however 
             // it will first check whether the entity has the requested component,
             // and if not return an empty optional. 
             template <class T>
-            std::optional<const T&> getComponentSafe(EntityID entityID) const noexcept;
+            std::optional<const T&> getComponentSafe(EntityID entityID) noexcept;
             
             template <class T>
-            bool hasComponent(EntityID entityID) const noexcept;
+            bool hasComponent(EntityID entityID) noexcept;
 
             // Deferred versions of all operations. 
             // The effects of these operations will only be visible
@@ -210,8 +213,8 @@ namespace Wado::ECS {
 
             using Column = struct Column {
                 Column() : data(nullptr), elementStride(0) {};
-                Column(void* _data, size_t _elementStride) : data(_data), elementStride(_elementStride) {};
-                void* data; // Raw data pointer, let these be managed by the ECS instead of using 
+                Column(char* _data, size_t _elementStride) : data(_data), elementStride(_elementStride) {};
+                char* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
                 const size_t elementStride; // element stride in bytes  
             };

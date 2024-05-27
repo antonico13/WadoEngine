@@ -18,7 +18,7 @@ namespace Wado::ECS {
 
     Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize), _maxOccupiedRow(0) {
         for (const ComponentID componentID : type) {
-            void* columnData = malloc(sizes.at(componentID) * defaultColumnSize);
+            char* columnData = static_cast<char*>(malloc(sizes.at(componentID) * defaultColumnSize));
             
             if (columnData == nullptr) {
                 throw std::runtime_error("Ran out of memory for storing column data");
@@ -81,6 +81,11 @@ namespace Wado::ECS {
         newIndex.entityColumnIndex = position;
         newIndex.tableIndex = tableIndex;
         auto res = _tableRegistry.insert_or_assign((entityID & ENTITY_ID_MASK), newIndex);
+        if (res.second == true) {
+            std::cout << "Inserted to registry " << std::endl;
+        } else {
+            std::cout << "Updated registry " << std::endl;
+        }
     };
 
     // Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
@@ -223,7 +228,7 @@ namespace Wado::ECS {
 
 
     void Database::moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
-        size_t currentEntityRowIndex = _tableRegistry[entityID].entityColumnIndex;
+        size_t currentEntityRowIndex = _tableRegistry.at(entityID).entityColumnIndex;
         Table& sourceTable = _tables[sourceTableIndex];
         Table& destTable = _tables[destTableIndex];
 
@@ -238,6 +243,7 @@ namespace Wado::ECS {
         size_t freeRowIndex;
         if (destTable.deleteList.empty()) {
             freeRowIndex = destTable._maxOccupiedRow++;
+            std::cout << "Free row index: " << freeRowIndex << std::endl;
             // TODO: fix this 
         } else {
             // Always pick the smallest ID avaialable to avoid
@@ -255,11 +261,12 @@ namespace Wado::ECS {
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
         if (freeRowIndex >= destTable._capacity) {
+            std::cout << "Bigger than dest capacity during move " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
             destTable._capacity = destTable._capacity * 2;
             for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
-                it->second.data = realloc(it->second.data, destTable._capacity);
+                it->second.data = static_cast<char *>(realloc(it->second.data, destTable._capacity));
                 
                 if (it->second.data == nullptr) {
                     throw std::runtime_error("Ran out of memory, cannot increase row count for table.");
@@ -276,12 +283,15 @@ namespace Wado::ECS {
         
         // Copy column content
         for (const ComponentID& componentID : overlappingColumns) {
+            std::cout << "Overlapping component ID: " << componentID << std::endl;
             size_t copySize = sourceTable._columns[componentID].elementStride;
             // Always deal with byte increments 
             void* copyFrom = static_cast<char*>(sourceTable._columns[componentID].data) + copySize * currentEntityRowIndex;
             void* copyTo = static_cast<char*>(destTable._columns[componentID].data) + copySize * freeRowIndex;
             std::memcpy(copyTo, copyFrom, copySize);
         };  
+
+        std::cout << "Finished moving entity to new table " << std::endl;
     };
 
 
@@ -290,42 +300,55 @@ namespace Wado::ECS {
     // use the deferred mode. 
     template <typename T>
     void Database::addComponent(EntityID entityID) {
-        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+        std::cout << "Current table index: " << currentTableIndex << std::endl;
         // TODO: not sure if I should use the deferred version here 
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
+        std::cout << "Next table index: " << nextTableIndex << std::endl;
+        for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
+            std::cout << "Component: " << componentID << " ";
+        }
+        std::cout << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
+        std::cout << "Finished adding component " << std::endl;
     };
 
     template <class T> 
     void Database::removeComponent(EntityID entityID) noexcept {
         // By construction, every remove edge will 
         // already exist in immediate mode and point 
-        // to the unique table due to adding components first. 
-        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
-        size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
-
-        moveToTable(entityID, currentTableIndex, nextTableIndex);
+        // to the unique table due to adding components first.
+        TableRegistry::const_iterator it = _tableRegistry.find(entityID);
+        std::cout << (it != _tableRegistry.end()) << std::endl;
+        //std::cout << _tableRegistry.at(entityID).entityColumnIndex << std::endl;
+        //size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+        //std::cout << "Current table index" << currentTableIndex << std::endl;
+        //size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
+        //std::cout << "Next table index" << nextTableIndex << std::endl;
+        //moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
     template <class T>
-    bool Database::hasComponent(EntityID entityID) const noexcept {
+    bool Database::hasComponent(EntityID entityID) noexcept {
         //size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-        const std::set<size_t>& typeSet = _componentRegistry.at(tableIndex);
+        std::cout << "Entity's table index is: " << tableIndex << std::endl;
+        const std::set<size_t>& typeSet = _componentRegistry.at(getComponentID<T>());
+        std::cout << "How many tables have component T " << typeSet.size() << std::endl;
         return typeSet.find(tableIndex) != typeSet.end();
     };
 
     template <class T>
-    const T& Database::getComponent(EntityID entityID) const noexcept {
+    const T& Database::getComponent(EntityID entityID) noexcept {
         ComponentID componentID = getComponentID<T>();
-        size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
-        const Column& column = _tables[tableIndex]._columns[componentID];
-        return *static_cast<T*>(column.data + column.elementStride * entityColumnIndex);
+        size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
+        size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+        const Column& column = _tables[tableIndex]._columns.at(componentID);
+        return *static_cast<T*>(static_cast<void*>(column.data + column.elementStride * entityColumnIndex));
     };
 
     template <class T>
-    std::optional<const T&> Database::getComponentSafe(EntityID entityID) const noexcept {
+    std::optional<const T&> Database::getComponentSafe(EntityID entityID) noexcept {
         if (!hasComponent<T>(entityID)) {
             return std::nullopt;
         } else {
@@ -334,13 +357,13 @@ namespace Wado::ECS {
     };
 
     template <class T> 
-    void setComponentCopy(EntityID entityID, T componentData) {
+    void Database::setComponentCopy(EntityID entityID, T& componentData) noexcept {
         ComponentID componentID = getComponentID<T>();
-        size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
-        const Column& column = _tables[tableIndex]._columns[componentID];
+        size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
+        size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+        Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the copy constructor. 
-        *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = componentData;
+        *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = componentData;
     };
 
     template <class T>
@@ -438,7 +461,7 @@ namespace Wado::ECS {
             // TODO: for fixing fragmentation, need to do
             // memcpy without overlapping memory ranges. 
             for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++it) {
-                columnIt->second.data = realloc(columnIt->second.data, it->_maxOccupiedRow * columnIt->second.elementStride);
+                columnIt->second.data = static_cast<char*>(realloc(columnIt->second.data, it->_maxOccupiedRow * columnIt->second.elementStride));
                 
                 if (columnIt->second.data == nullptr) {
                     throw std::runtime_error("Could not reallocatee column data");
