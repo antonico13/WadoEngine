@@ -853,6 +853,7 @@ namespace Wado::ECS {
             queryTables.emplace_back(columnData, std::vector<EntityID>(), table._maxOccupiedRow, tableIndex);
         };
 
+        return std::move(Query(queryTables, 0, this));
     };
 
     // Query builder stuff 

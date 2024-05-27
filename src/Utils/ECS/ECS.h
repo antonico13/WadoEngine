@@ -671,7 +671,9 @@ namespace Wado::ECS {
 
             };
 
-            ~Query();
+            ~Query() {
+                // nothing for now?
+            };
 
             // db pointer for destruct and component IDs
             Database* _db;
