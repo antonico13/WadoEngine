@@ -60,6 +60,7 @@ namespace Wado::ECS {
     class Database {
         public:
             friend class QueryBuilder;
+            friend class Query;
 
             static const size_t DEFAULT_COLUMN_SIZE = 8;
             Database(size_t defaultColumnSize = DEFAULT_COLUMN_SIZE);
@@ -552,6 +553,122 @@ namespace Wado::ECS {
             std::set<ComponentID> _getComponents;
             // Relationships we want to get the target of 
             std::set<ComponentID> _getRelationships;
+    };
+
+    class Query {
+        public:
+            friend class Database;
+
+            struct FullIterator {
+                public:
+                    FullIterator(size_t tableIndex, size_t rowIndex, const size_t maxRows, const size_t maxTables, Query& query) : 
+                        _tableIndex(tableIndex), 
+                        _rowIndex(rowIndex),
+                        _query(query),
+                        _maxRows(maxRows),
+                        _maxTables(maxTables) { };
+
+                    template <typename T>
+                    T& operator*() {
+                        // TODO: make all of these static, dereference is too slow
+                        ComponentID columnID = _query._db->getComponentID<T>();
+                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(ComponentID);
+                        return *static_cast<T*>(columnData->data + columnData->elementStride * _rowIndex);
+                    };
+
+                    template <typename T>
+                    T* operator->() { 
+                        // TODO: make all of these static, dereference is too slow
+                        ComponentID columnID = _query._db->getComponentID<T>();
+                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(ComponentID);
+                        return static_cast<T*>(columnData->data + columnData->elementStride * _rowIndex);
+                    };
+
+                    // Prefix increment
+                    FullIterator& operator++() {
+                        _rowIndex++;
+                        if (_rowIndex == _maxRows) {
+                            _rowIndex = 0;
+                            _tableIndex++;
+                        };
+                        return *this;
+                    };
+
+                    // Postfix increment
+                    FullIterator operator++(int) { 
+                        FullIterator current = *this; 
+                        ++(*this); 
+                        return current; 
+                    };
+
+                    friend bool operator== (const FullIterator& obj, const FullIterator& other) { 
+                        if (obj._query != other._query) {
+                            return false;
+                        };
+
+                        if (obj._tableIndex != other._tableIndex) {
+                            return false;
+                        };
+
+                        return obj._rowIndex == other._rowIndex;
+                    };
+
+                    friend bool operator!= (const FullIterator& obj, const FullIterator& other) {
+                        if (obj._query != other._query) {
+                            return true;
+                        };
+
+                        if (obj._tableIndex != other._tableIndex) {
+                            return true;
+                        };
+
+                        return obj._rowIndex != other._rowIndex;
+                    }; 
+
+
+                private:
+                    size_t _tableIndex;
+                    size_t _rowIndex;
+                    const size_t _maxRows;
+                    const size_t _maxTables;
+                    Query& _query;
+            };
+
+            friend bool operator== (const Query& obj, const Query& other) { 
+                return obj._queryID == other._queryID;
+            };
+
+            friend bool operator!= (const Query& obj, const Query& other) { 
+                return obj._queryID != other._queryID;
+            };
+
+        private:
+
+            using QueryTable = struct QueryTable {
+                // TODO: should this maybe be a sparse set?
+                // we know at construction time how many component IDs
+                // we have, and the max value.
+                // but it might be way too big actually 
+                const std::map<ComponentID, Database::Column*> _columnData;
+                const std::vector<EntityID> _entityIDs;
+                const size_t _elementCount;
+                const size_t _dbTableIndex;
+            };
+
+            Query(const std::vector<QueryTable>& tables, const size_t queryID, Database* database) : 
+                _queryID(queryID),
+                _tables(tables),
+                _db(database)  {
+
+            };
+            
+            ~Query();
+
+            // db pointer for destruct and component IDs
+            Database* _db;
+            // TODO: should this be const?
+            std::vector<QueryTable> _tables;
+            const size_t _queryID;
     };
 };
 
