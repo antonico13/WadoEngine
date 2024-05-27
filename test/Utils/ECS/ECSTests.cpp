@@ -173,3 +173,34 @@ TEST(ComponentTest, CanSetComponentMove) {
     EXPECT_EQ(dbPos.y, 2.0) << "Expected y component of position to be equal, but it isn't";
 };
 
+TEST(ComponentTest, CanSetComponentMoveVector) {
+    using namespace Wado::ECS;
+    using Vec = std::vector<int>;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponent<Vec>(testID);
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have component, but it doesn't";
+    Vec vec({1, 2, 3});
+    db.setComponentMove<Vec>(testID, vec);
+    const Vec& dbVec = db.getComponent<Vec>(testID);
+    EXPECT_EQ(dbVec[0], 1) << "Expected first component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[1], 2) << "Expected second component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[2], 3) << "Expected third component of position to be equal, but it isn't";
+    EXPECT_EQ(vec.size(), 0) << "Expected original vector not to have any components";
+};
+
+TEST(ComponentTest, CanSetComponentCopyVector) {
+    using namespace Wado::ECS;
+    using Vec = std::vector<int>;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponent<Vec>(testID);
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have component, but it doesn't";
+    Vec vec({1, 2, 3});
+    db.setComponentCopy<Vec>(testID, vec);
+    const Vec& dbVec = db.getComponent<Vec>(testID);
+    EXPECT_EQ(dbVec[0], vec[0]) << "Expected first component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[1], vec[1]) << "Expected second component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[2], vec[2]) << "Expected third component of position to be equal, but it isn't";
+    EXPECT_EQ(vec.size(), 3) << "Expected original vector to keep all components";
+};

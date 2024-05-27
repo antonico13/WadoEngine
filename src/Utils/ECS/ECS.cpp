@@ -357,25 +357,37 @@ namespace Wado::ECS {
         };
     };
 
-    template <class T> 
+    template <typename T> 
     void Database::setComponentCopy(EntityID entityID, T& componentData) noexcept {
         ComponentID componentID = getComponentID<T>();
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
         size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
         Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the copy constructor. 
-        *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = componentData;
+        void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
+        new(address) T(componentData);
+        //*static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = T(componentData); 
+        /*std::vector<int>& obj_vec = reinterpret_cast<std::vector<int>&>(obj);
+        std::vector<int>& data_vec = reinterpret_cast<std::vector<int>&>(componentData);
+        std::cout << data_vec.size() << std::endl;
+        std::cout << obj_vec.size() << std::endl;
+        obj_vec.assign(data_vec.begin(), data_vec.end()); */
+        // = componentData;
     };
 
-    template <class T>
+    template <typename T>
     void Database::setComponentMove(EntityID entityID, T& componentData) noexcept {
         ComponentID componentID = getComponentID<T>();
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
         size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
         const Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the move constructor
-        *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = std::move(componentData);
-    }
+        void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
+        new(address) T(std::move(componentData));        
+        /*std::cout << "Made it to here " << std::endl;
+        std::cout << "Size of T: " << sizeof(T) << std::endl;
+        *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = std::move(componentData); */
+    };
 
     void Database::flushDeferredNoDelete(EntityID entityID) {
         const DeferredPayload& entityPayload = _deferredPayloads[entityID];

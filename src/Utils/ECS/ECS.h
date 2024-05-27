@@ -106,13 +106,13 @@ namespace Wado::ECS {
             // Warning: set and remove component never check if the component
             // already exists. Remove component will silently exit,
             // while set component have undefined behaviour. 
-            template <class T> 
+            template <typename T> 
             void setComponentCopy(EntityID entityID, T& componentData) noexcept;
 
             // sets an entity's component values. However, be careful as this
             // uses the move constructor, and the value passed in becomes invalid 
             // in the caller's scope.
-            template <class T>
+            template <typename T>
             void setComponentMove(EntityID entityID, T& componentData) noexcept;
 
             // removes a component to an entity based on its ID.
