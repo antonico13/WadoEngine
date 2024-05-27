@@ -117,8 +117,8 @@ namespace Wado::ECS {
         };
         //std::cout << std::endl;
 
-        if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow - 1) {
-            //std::cout << "Deleting the largest unused block at the end. " << std::endl;
+        if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow -  1) {
+            //std::cout << "Deleting the largest unused block at the endl;. " << std::e ndl;
             Table::FreeBlockList::iterator endBlock = --(_tables[tableIndex]._freeBlockList.end());
             //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
             _tables[tableIndex]._maxOccupiedRow = endBlock->startRow;
@@ -152,6 +152,7 @@ namespace Wado::ECS {
         // initialize all of this 
         _componentSizes.try_emplace(componentID, sizeof(T));
         _componentRegistry.try_emplace(componentID, std::set<size_t>());
+        std::cout << "Trying to get component ID " << componentID << " " << std::endl;
         return componentID;
     };
 
@@ -159,7 +160,7 @@ namespace Wado::ECS {
         size_t currentTableIndex = startingTableIndex;
         TableType::const_iterator it;
         Table::TableEdges::const_iterator addGraphIt;
-        Table::TableEdges::const_iterator addGraphEnd;;
+        Table::TableEdges::const_iterator addGraphEnd;
 
         for (it = addType.begin(); it != addType.end(); ++it) {
             addGraphIt = _tables[currentTableIndex]._addComponentGraph.find(*it);
@@ -172,7 +173,7 @@ namespace Wado::ECS {
             };
             //std::cout << "Found existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
             currentTableIndex = addGraphIt->second;
-        };
+         };
 
         if (it == addType.end()) {
             // All edges existed in the table graph, can return
@@ -183,7 +184,7 @@ namespace Wado::ECS {
         // At this point, we found an edge that doesn't exist, 
         // but because all add components are greater than the 
         // current table's max we can create & add all tables 
-        // in order here. 
+        // in order he re. 
         while (it != addType.end()) {
             // Type of this is the type of the entry table
             // + every type until the it component  
@@ -223,7 +224,7 @@ namespace Wado::ECS {
         // graph search from the beginning
         if (addType.size() > 0 && _tables[tableIndex]._maxComponentID > *addType.begin()) {
             //std::cout << "Performing graph search from the start: " << std::endl;
-            startingTableIndex = 0;
+            startingTableIndex  = 0;
             startingAddType.insert(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end());
         };
 
@@ -297,9 +298,9 @@ namespace Wado::ECS {
         sourceTable.addToFreeBlockList(Table::ColumnBlock(currentEntityRowIndex, currentEntityRowIndex, 1));
         //std::cout << "Finished adding to free block list " << std::endl;
 
-        if (currentEntityRowIndex == sourceTable._maxOccupiedRow - 1) {
-            //std::cout << "Deleting the largest unused block at the end. " << std::endl;
-            // TODO: should I use rbegin here?
+        if (currentEntityRowIndex == sourceTable._maxOccupiedRow -  1) {
+            //std::cout << "Deleting the largest unused block at the endl;. " << std::endl;
+            // TODO: should I use rbegin h ere?
             Table::FreeBlockList::iterator endBlock = --(sourceTable._freeBlockList.end());
             //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
             sourceTable._maxOccupiedRow = endBlock->startRow;
@@ -340,7 +341,7 @@ namespace Wado::ECS {
             //std::cout << "Bigger than dest capacity during move " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
-            destTable._capacity = destTable._capacity * 2;
+            destTable._capacity = destTable._capacity  * 2;
             for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
                 it->second.data = static_cast<char *>(realloc(it->second.data, destTable._capacity * it->second.elementStride));
                 
@@ -353,7 +354,7 @@ namespace Wado::ECS {
         // Now perform data copies for overlapping components, 
         // with guaranteed space, first find overlapping components. 
         TableType overlappingColumns;
-        // TODO: does this work if the set doesn't have capacity reserved for the overlapping elements? 
+        // TODO: does this work if the set doesn't have capacity reserved fo r the overlapping elemen ts? 
         std::set_intersection(sourceTable._type.begin(), sourceTable._type.end(), destTable._type.begin(), destTable._type.end(), std::inserter(overlappingColumns, overlappingColumns.begin()));
         // TODO: can I SIMD/vectorize this in any way?
         
@@ -416,7 +417,7 @@ namespace Wado::ECS {
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
         //std::cout << "Entity's table index is: " << tableIndex << std::endl;
         const std::set<size_t>& typeSet = _componentRegistry.at(getComponentID<T>());
-        //std::cout << "How many tables have component T " << typeSet.size() << std::endl;
+        //std::cout << "How many tables have compone nt T " << typeSet.size() << std::endl;
         return typeSet.find(tableIndex) != typeSet.end();
     };
 
@@ -455,7 +456,7 @@ namespace Wado::ECS {
         /*std::vector<int>& obj_vec = reinterpret_cast<std::vector<int>&>(obj);
         std::vector<int>& data_vec = reinterpret_cast<std::vector<int>&>(componentData);
         //std::cout << data_vec.size() << std::endl;
-        //std::cout << obj_vec.size() << std::endl;
+        //std::cout << obj_vec.size() << std::e ndl;
         obj_vec.assign(data_vec.begin(), data_vec.end()); */
         // = componentData;
     };
@@ -504,7 +505,7 @@ namespace Wado::ECS {
         
         moveToTable(entityID, currentTableIndex, nextTableIndex);
 
-        // Now, apply all the set deferred operations 
+        // Now, apply all the set deferred operati ons 
         for (SetComponentMap::const_iterator it = entityPayload._setMap.begin(); it != entityPayload._setMap.end(); ++it) {
             if (it->second.mode == SetMode::Copy) {
                 size_t tableIndex = _tableRegistry[entityID].tableIndex;
@@ -524,7 +525,7 @@ namespace Wado::ECS {
         _deferredPayloads.erase(entityID);
     };
 
-    void Database::flushDeferredAll() {
+    void Database::flushDeferredAll () {
         for (std::map<EntityID, DeferredPayload>::const_iterator it = _deferredPayloads.begin(); it != _deferredPayloads.end(); it++) {
             // TODO: maybe should pass both here so I don't do another lookup in the function?
             flushDeferredNoDelete(it->first);
@@ -566,14 +567,14 @@ namespace Wado::ECS {
 
         // do this for every table except empty begin table..? 
         // TODO: need to make a map only with tables where capacity >= 
-        // maxRow, and only those are viable for cleanup
+        // maxRow, and only those are viable for cle anup
         for (std::vector<Table>::iterator it = _tables.begin(); it != _tables.end(); ++it) {
             // TODO: maybe should also fix all fragmentation issues 
             // here. 
             // TODO: for fixing fragmentation, need to do
             // memcpy without overlapping memory ranges. 
             //std::cout << "Old capacity: " << it->_capacity << std::endl;
-            //std::cout << "New capacity: " << it->_maxOccupiedRow << std::endl;
+            //std::cout << "New capacity: " << it->_maxOccupiedRow << std::e ndl;
             for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++columnIt) {
                 columnIt->second.data = static_cast<char*>(realloc(columnIt->second.data, (it->_maxOccupiedRow + 1) * columnIt->second.elementStride));
                 
@@ -586,7 +587,7 @@ namespace Wado::ECS {
             Table::DeleteList::iterator delListIt = it->deleteList.begin();
             while (delListIt != it->deleteList.end() && *(delListIt) >= it->_maxOccupiedRow) {
                 ++delListIt;
-            };
+             };
 
             if (delListIt == it->deleteList.end()) {
                 // can clear the entire list
@@ -637,13 +638,13 @@ namespace Wado::ECS {
         //std::cout << std::endl;
         moveToTable(mainID, currentTableIndex, nextTableIndex);
         //std::cout << "Finished adding component " << std::endl;
-        // TODO: see if all fo these can be static initialized somehow 
+        // TODO: see if all fo these can be static initialized some how 
         if (_relationshipRegistry.find(relationshipTypeID) == _relationshipRegistry.end()) {
             TargetRegistry registry = TargetRegistry();
             registry.emplace(targetID, std::set<size_t>({nextTableIndex}));
             _relationshipRegistry.emplace(relationshipTypeID, registry);
         } else {
-            // Nasty 
+            // Na sty 
             if (_relationshipRegistry.at(relationshipTypeID).find(targetID) != _relationshipRegistry.at(relationshipTypeID).end()) {
                 _relationshipRegistry.at(relationshipTypeID).at(targetID).insert(nextTableIndex);
             } else {
@@ -651,7 +652,7 @@ namespace Wado::ECS {
             };
         };
 
-        // Now add the inverse one 
+        // Now add the inverse  one 
         if (_inverseTargetRegistry.find(targetID) == _inverseTargetRegistry.end()) {
             InverseRelationshipRegistry inverseRegistry = InverseRelationshipRegistry();
             inverseRegistry.emplace(relationshipTypeID, std::set<size_t>({nextTableIndex}));
@@ -664,7 +665,7 @@ namespace Wado::ECS {
             };
         };
         
-        // Finally, for the component registry
+        // Finally, for the component regi stry
         if (_relationshipCountRegistry.find(relationshipTypeID) != _relationshipCountRegistry.end()) {
             _relationshipCountRegistry.at(relationshipTypeID).insert(nextTableIndex);
         } else {
@@ -702,8 +703,8 @@ namespace Wado::ECS {
         // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
         // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
         // component ID 
-        ComponentID relationshipID = relationshipTypeID | (targetID << 32);
-        if (_componentRegistry.find(relationshipID) != _componentRegistry.end()) {
+        ComponentID relationshipID = relationshipTypeID | (targetID <<  32);
+        if (_componentRegistry.find(relationshipID) != _componentRegistry.end( )) {
             return _componentRegistry.at(relationshipID).find(_tableRegistry[mainId].tableIndex) != _componentRegistry.at(relationshipID).end();
         };
         return false;
@@ -746,6 +747,11 @@ namespace Wado::ECS {
         // TODO:
     };
 
+    QueryBuilder& Database::makeQueryBuilder() {
+        return std::move(QueryBuilder(QueryBuilder::BuildMode::Transient, *this));
+    };
+
+
     Query& Database::buildQuery(const QueryBuilder& builder) {
         // TODO: add caching 
         // First, get set of all tables
@@ -764,6 +770,8 @@ namespace Wado::ECS {
             currentTableIDs.clear();
         };
 
+        std::cout << "Filtered required components " << std::endl;
+
         // Now filter all required explict relationships
         for (const ComponentID& componentID : builder._requiredRelationshipsTargets) {
             for (const size_t& tableID : prevTableIDs) {
@@ -774,6 +782,8 @@ namespace Wado::ECS {
             prevTableIDs.swap(currentTableIDs);
             currentTableIDs.clear();
         };
+
+        std::cout << "Filtered required relationships " << std::endl;
 
         // Only keep tables where the entity is a relationship holder.
         for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
@@ -786,9 +796,11 @@ namespace Wado::ECS {
             currentTableIDs.clear();
         };
 
+        std::cout << "Filtered required relationship holdings " << std::endl;
+
         // Only keep tables where the entity is a target..???
         /*for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
-            for (const size_t& tableID : prevTableIDs) {
+            for (const size_t& tableID : prevTableID s) {
                 if (_relationshipCountRegistry[componentID].find(tableID) != _relationshipCountRegistry[componentID].end()) {
                     currentTableIDs.emplace(tableID);
                 };
@@ -809,6 +821,8 @@ namespace Wado::ECS {
             currentTableIDs.clear();
         };
 
+        std::cout << "Filtered banned components " << std::endl;
+
         // filter all tables that have banned relationships 
         for (const ComponentID& componentID : builder._bannedRelationshipsTargets) {
             for (const size_t& tableID : prevTableIDs) {
@@ -820,6 +834,8 @@ namespace Wado::ECS {
             currentTableIDs.clear();
         };
 
+        std::cout << "Filtered banned relationships " << std::endl;
+
         // Filter all tables with banned relationship holders 
         for (const ComponentID& componentID : builder._bannedRelationshipsHolder) {
             for (const size_t& tableID : prevTableIDs) {
@@ -830,6 +846,8 @@ namespace Wado::ECS {
             prevTableIDs.swap(currentTableIDs);
             currentTableIDs.clear();
         };
+
+        std::cout << "Filtered banned relationship holdings " << std::endl;
 
         // Now, need to get the column data pointers from all 
         // tables according tot he get component sets 
@@ -870,9 +888,13 @@ namespace Wado::ECS {
 
     template <typename T>
     QueryBuilder& QueryBuilder::withComponent() {
-        _requiredComponents.insert(_db.getComponentID<T>());
-        _getComponents.insert(_db.getComponentID<T>());
-        return *this;
+        std::cout << "Inserting in required components " << std::endl;
+        std::cout << _db.getComponentID<T>() << std::endl;
+        //_requiredComponents.emplace(std::move(_db.getComponentID<T>()));
+        //std::cout << "Inserted in required components" << std::endl;
+        ///_getComponents.emplace(std::move(_db.getComponentID<T>()));
+        //std::cout << "Inserted in get components" << std::endl;
+        return std::move(*this);
     };
     
     template <typename T>
@@ -917,7 +939,7 @@ namespace Wado::ECS {
     QueryBuilder::QueryBuilder(const BuildMode buildMode, Database& database) : _buildMode(buildMode), _db(database) {};
     
     Query& QueryBuilder::build() {
-        return _db.buildQuery(*this);
+        return std::move(_db.buildQuery(*this));
     };
 };
 

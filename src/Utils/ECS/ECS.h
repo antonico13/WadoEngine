@@ -213,6 +213,8 @@ namespace Wado::ECS {
             // Deletes all erased entities, resizes 
             // columns to only fit the minimal data required.
             void cleanupMemory();
+
+            QueryBuilder& makeQueryBuilder();
         private:
 
             // The lower 32 bits of an entity ID 
@@ -526,10 +528,10 @@ namespace Wado::ECS {
 
             Query& build();
 
-        private: 
-            QueryBuilder(const BuildMode buildMode, Database& database);
             ~QueryBuilder() {};
 
+        private: 
+            QueryBuilder(const BuildMode buildMode, Database& database);
             const BuildMode _buildMode;
             Database& _db;
             
@@ -563,35 +565,38 @@ namespace Wado::ECS {
         public:
             friend class Database;
 
+            ~Query() {
+                // nothing for now?
+            };
+
             struct FullIterator {
                 public:
-                    FullIterator(size_t tableIndex, size_t rowIndex, const size_t maxRows, const size_t maxTables, Query& query) : 
+                    FullIterator(size_t tableIndex, size_t rowIndex, Query& query) : 
                         _tableIndex(tableIndex), 
                         _rowIndex(rowIndex),
-                        _query(query),
-                        _maxRows(maxRows),
-                        _maxTables(maxTables) { };
+                        _query(query) { };
 
                     template <typename T>
                     T& operator*() {
                         // TODO: make all of these static, dereference is too slow
                         ComponentID columnID = _query._db->getComponentID<T>();
-                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(ComponentID);
-                        return *static_cast<T*>(columnData->data + columnData->elementStride * _rowIndex);
+                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(columnID);
+                        return *static_cast<T*>(static_cast<void *>(columnData->data + columnData->elementStride * _rowIndex));
                     };
 
                     template <typename T>
                     T* operator->() { 
                         // TODO: make all of these static, dereference is too slow
                         ComponentID columnID = _query._db->getComponentID<T>();
-                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(ComponentID);
-                        return static_cast<T*>(columnData->data + columnData->elementStride * _rowIndex);
+                        Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(columnID);
+                        return static_cast<T*>(static_cast<void *>(columnData->data + columnData->elementStride * _rowIndex));
                     };
 
                     // Prefix increment
                     FullIterator& operator++() {
+                        std::cout << "increment" << std::endl;
                         _rowIndex++;
-                        if (_rowIndex == _maxRows) {
+                        if (_rowIndex == _query._tables[_tableIndex]._elementCount) {
                             _rowIndex = 0;
                             _tableIndex++;
                         };
@@ -633,8 +638,6 @@ namespace Wado::ECS {
                 private:
                     size_t _tableIndex;
                     size_t _rowIndex;
-                    const size_t _maxRows;
-                    const size_t _maxTables;
                     Query& _query;
             };
 
@@ -644,6 +647,14 @@ namespace Wado::ECS {
 
             friend bool operator!= (const Query& obj, const Query& other) { 
                 return obj._queryID != other._queryID;
+            };
+
+            FullIterator begin() { 
+                return FullIterator(0, 0, *this); 
+            };
+
+            FullIterator end() { 
+                return FullIterator(_tables.size(), _tables.rbegin()->_elementCount, *this); 
             };
 
         private:
@@ -669,10 +680,6 @@ namespace Wado::ECS {
                 _tables(tables),
                 _db(database)  {
 
-            };
-
-            ~Query() {
-                // nothing for now?
             };
 
             // db pointer for destruct and component IDs

@@ -551,3 +551,42 @@ TEST(RelationShipTest, CanGetAllTargetIDs) {
     std::set<EntityID> parentIDs = db.getAllRelationshipTargets<ChildOf>();
     ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expected both test entity 2 and 3 to be in the global parent set";
 };
+
+TEST(QueryTest, CanCreateAndIterateSimpleQueries) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    EntityID testID3 = db.createEntityID();
+    EntityID testID4 = db.createEntityID();
+    db.addComponent<Position>(testID1);
+    Position pos1{1.0, 2.0};
+    db.setComponentMove<Position>(testID1, pos1);
+    db.addComponent<float>(testID1);
+    db.addComponent<float>(testID2);
+    db.addComponent<Position>(testID3);
+    Position pos2{3.0, 2.0};
+    db.setComponentMove<Position>(testID3, pos2);
+    db.addComponent<float>(testID4);
+    db.addComponent<Position>(testID4);
+    Position pos3{4.0, 2.0};
+    db.setComponentMove<Position>(testID4, pos3);
+
+    QueryBuilder& builder = db.makeQueryBuilder(); //.withComponent<Position>().build();
+    
+    QueryBuilder& builder2 = builder.withComponent<Position>();
+
+    std::vector<Position> positions;
+
+    /*for (Query::FullIterator it = query.begin(); it != query.end(); ++it) {
+        //Position& p = it.operator*<Position>();
+        positions.push_back({1.0, 2.0});
+        //p.x += 1.0;
+        //p.y += 1.0;
+    };*/
+/*
+    const Position& newPos1 = db.getComponent<Position>(testID1);
+
+    ASSERT_EQ(newPos1.x, 2.0) << "Expected query to increase values";
+    ASSERT_EQ(newPos1.x, 3.0) << "Expected query to increase values"; */
+};
