@@ -318,3 +318,80 @@ TEST(DeferredTest, RemovingManyComponentsDeferredAddsNewEdges) {
     db.addComponentDeferred<int>(testID2);
     db.flushDeferred(testID2);
 };
+
+TEST(DeferredTest, DeferredCommandsOverwrite) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.addComponentDeferred<int>(testID);
+    db.removeComponentDeferred<float>(testID);
+    db.addComponentDeferred<float>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<float>(testID)) << "Expected entity to have float component after single deferred flush with overwrite";
+    ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity to have int component after single deferred flush";
+};
+
+TEST(DeferredTest, CanFlushAllEntities) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.addComponentDeferred<Vec>(testID2);
+    db.addComponentDeferred<float>(testID2);
+    db.flushDeferredAll();
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity 1 to have map component after all deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity 1 to have vec component after all deferred flush";
+    ASSERT_TRUE(db.hasComponent<float>(testID2)) << "Expected entity 2 to have float component after all deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID2)) << "Expected entity 2 to have int component after all deferred flush";
+    
+    db.addComponentDeferred<float>(testID);
+    db.addComponentDeferred<Map>(testID2);
+    db.flushDeferredAll();
+
+    ASSERT_TRUE(db.hasComponent<Map>(testID2)) << "Expected entity 2 to have map component after all deferred flush";
+    ASSERT_TRUE(db.hasComponent<float>(testID)) << "Expected entity 1 to have float component after all deferred flush";
+};
+
+TEST(DeferredTest, CanSetComponentsDeferred) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<float>(testID);
+    db.addComponentDeferred<int>(testID);
+    db.flushDeferredAll();
+    ASSERT_TRUE(db.hasComponent<float>(testID)) << "Expected entity 1 to have float component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity 1 to have int component after single deferred flush";
+
+    float x = 5.0;
+    int y = 3;
+    db.setComponentCopyDeferred<float>(testID, &x);
+    db.setComponentCopyDeferred<int>(testID, &y);
+
+    db.flushDeferredAll();
+
+    ASSERT_EQ(db.getComponent<float>(testID), 5.0) << "Expected deferred copy to copy local float pointer data to entity";
+    ASSERT_EQ(db.getComponent<int>(testID), 3) << "Expected deferred copy to copy local int pointer data to entity";
+};
+
+TEST(DeferredTest, CanSetAndAddComponentsDeferred) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<float>(testID);
+    db.addComponentDeferred<int>(testID);
+    float x = 5.0;
+    int y = 3;
+    db.setComponentCopyDeferred<float>(testID, &x);
+    db.setComponentCopyDeferred<int>(testID, &y);
+    db.flushDeferredAll();
+    ASSERT_TRUE(db.hasComponent<float>(testID)) << "Expected entity 1 to have float component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity 1 to have int component after single deferred flush";
+    ASSERT_EQ(db.getComponent<float>(testID), 5.0) << "Expected deferred copy to copy local float pointer data to entity";
+    ASSERT_EQ(db.getComponent<int>(testID), 3) << "Expected deferred copy to copy local int pointer data to entity";
+};

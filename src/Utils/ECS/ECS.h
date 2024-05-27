@@ -153,7 +153,7 @@ namespace Wado::ECS {
 
             void flushDeferred(EntityID entityID);
 
-            void flushDeferredAll(EntityID entityID);
+            void flushDeferredAll();
 
             template <typename T>
             void addComponentDeferred(EntityID entityID) noexcept;
