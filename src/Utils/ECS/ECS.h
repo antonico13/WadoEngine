@@ -55,8 +55,12 @@ namespace Wado::ECS {
             Database* _database; 
     };
 
+    class QueryBuilder; // forward
+
     class Database {
         public:
+            friend class QueryBuilder;
+
             static const size_t DEFAULT_COLUMN_SIZE = 8;
             Database(size_t defaultColumnSize = DEFAULT_COLUMN_SIZE);
             ~Database();
@@ -465,6 +469,86 @@ namespace Wado::ECS {
             std::map<EntityID, DeferredPayload> _deferredPayloads;
 
             void flushDeferredNoDelete(EntityID entityID);
+    };
+
+    class QueryBuilder {
+        public:
+            enum BuildMode {
+                Transient,
+                Cached,
+            };
+
+            enum ConditionOperator {
+                None,
+                Not,
+                // Or and And are unused for now 
+                Or,
+                And,
+            };
+
+            // Works for any component, tag and even 
+            // a relationship pair if made from the 
+            // database. 
+
+            // TODO: add relationship pair constructor to DB
+            template <typename T>
+            QueryBuilder& componentCondition(const ConditionOperator op = ConditionOperator::None);
+            
+            // Determines the actual data that will be 
+            // in the iterator of the final query, implicitly
+            // defines a component condition 
+            template <typename T>
+            QueryBuilder& withComponent();
+
+            // Equivalent to checking if a relationship 
+            // actually exists 
+            template <typename T>
+            QueryBuilder& relationshipCondition(const EntityID targetEntity = 0, const ConditionOperator op = ConditionOperator::None);
+            
+            // Entity ID of the relationship target will be 
+            // included in the iterator 
+            // implicitly defines a relationship condition 
+            template <typename T>
+            QueryBuilder& withRelationshipTarget(const EntityID targetEntity);
+
+            // condition that specifies the entity you're 
+            // querying is or is not a target of the relationship
+            template <typename T>
+            QueryBuilder& relationshipTargetCondition(const ConditionOperator op = ConditionOperator::None);
+
+            void build();
+
+        private: 
+            QueryBuilder(const BuildMode buildMode, Database& database);
+            ~QueryBuilder();
+
+            const BuildMode _buildMode;
+            Database& _db;
+            
+            // Pure components and tags 
+            std::set<ComponentID> _requiredComponents;
+            // These only include relationships + targets
+            std::set<ComponentID> _requiredRelationshipsTargets;
+            // Relationships for which the entity must be a holder of
+            // with any target 
+            std::set<ComponentID> _requiredRelationshipsHolder;
+            // Relationships for which the entity must be a target
+            std::set<ComponentID> _requiredRelationshipsAsTarget;
+            // Components that must not be in an entity's row
+            std::set<ComponentID> _bannedComponents;
+            // Relationships + targets that must not be in an 
+            // entity's row 
+            std::set<ComponentID> _bannedRelationshipsTargets;
+            // Relationships for which the entity must not be a 
+            // holder of with any target 
+            std::set<ComponentID> _bannedRelationshipsHolder;
+            // Relationships for which the entity must not be a target
+            std::set<ComponentID> _bannedRelationshipsAsTarget;
+
+            // Components we want to get the values of 
+            std::set<ComponentID> _getComponents;
+            // Relationships we want to get the target of 
+            std::set<ComponentID> _getRelationships;
     };
 };
 
