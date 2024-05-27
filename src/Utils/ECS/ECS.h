@@ -267,7 +267,7 @@ namespace Wado::ECS {
 
                 struct FreeBlockListComp {
                     bool operator() (const ColumnBlock& b1, const ColumnBlock& b2) const {
-                        return b1.startRow > b2.endRow; // Inverse insertion order 
+                        return b1.startRow < b2.startRow;
                     };
                 };
 
@@ -278,36 +278,59 @@ namespace Wado::ECS {
                 FreeBlockSizeMap _blockSizeMap;
 
                 inline void addToFreeBlockList(const ColumnBlock& block) noexcept {
-                    FreeBlockList::iterator lowerBound = _freeBlockList.lower_bound(block);
-                    FreeBlockList::iterator nextBound = std::next(lowerBound, 1);
+                    if (_freeBlockList.empty()) {
+                        //std::cout << "First block inserted: [" << block.startRow << ", " << block.endRow << "]" << std::endl;
+                        _blockSizeMap.emplace(block.size, FreeBlockList{block});
+                        _freeBlockList.insert(block);
+                        return;
+                    };
 
-                    size_t newStartRow = block.startRow;
-                    size_t newEndRow = block.endRow;
+                    FreeBlockList::iterator upperBound = _freeBlockList.upper_bound(block);
 
-                    bool mergedUp = false;
-                    bool mergedDown = false;
-                    FreeBlockList::iterator toInsert; 
-                    if ( (nextBound != _freeBlockList.end()) && nextBound->endRow + 1 == newStartRow) {
-                        newStartRow = nextBound->startRow;
-                        _blockSizeMap.at(nextBound->size).erase(*(nextBound));
-                        mergedUp = true;
-                        toInsert = nextBound;
-                    };
-                    if (lowerBound->startRow - 1 == newEndRow) {
-                        newEndRow = lowerBound->endRow;
-                        _blockSizeMap.at(lowerBound->size).erase(*(lowerBound));
-                        mergedDown = true;
-                        toInsert = lowerBound;
-                    };
-                    ColumnBlock newBlock(newStartRow, newEndRow, newEndRow - newStartRow + 1);
-                    //TODO: Not sure if this invalidates anything here
-                    _freeBlockList.insert(toInsert, newBlock);
-                    if (mergedDown && mergedUp) {
-                        _freeBlockList.erase(nextBound);
-                    };
+                    size_t startRow = block.startRow;
+                    size_t endRow = block.endRow;
                     
+                    //std::cout << "Block: [" << block.startRow << ", " << block.endRow << "]" << std::endl;
+                    
+                    //bool mergedUp = false;
+                    //bool mergedDown = false;
+
+                    if (upperBound != _freeBlockList.begin()) {
+                        //std::cout << "Trying to merge with block below" << std::endl;
+                        FreeBlockList::iterator prevBound = std::prev(upperBound, 1);
+                        if (prevBound->endRow + 1 == block.startRow) {
+                            //std::cout << "Merging with block before" << std::endl;
+                            startRow = prevBound->startRow;
+                            _blockSizeMap.at(prevBound->size).erase((*prevBound));
+                            //mergedDown = true;
+                            _freeBlockList.erase(prevBound);
+                        };
+                    };
+
+                    if (upperBound != _freeBlockList.end()) {
+                        //std::cout << "Trying to merge with block above" << std::endl;
+                        if (upperBound->startRow == block.endRow + 1) {
+                            //std::cout << "Merging with block above" << std::endl;
+                            endRow = upperBound->endRow;
+                            _blockSizeMap.at(upperBound->size).erase((*upperBound));
+                            //mergedUp = true;
+                            _freeBlockList.erase(upperBound);
+                        };
+                    };
+
+                    ColumnBlock newBlock(startRow, endRow, endRow - startRow + 1);
+                    
+                    // if (mergedUp && mergedDown) {
+                    //     _freeBlockList.erase(std::prev(upperBound, 1), std::next(upperBound, 1));
+                    // } else if (mergedUp) {
+                    //     _freeBlockList.erase(upperBound);
+                    // } else if (mergedDown) {
+                    //     _freeBlockList.erase(std::prev(upperBound, 1));
+                    // };
+
+                    _freeBlockList.insert(newBlock);
+
                     if (_blockSizeMap.find(newBlock.size) == _blockSizeMap.end()) {
-                        // TODO: fix this emplace too 
                         _blockSizeMap.emplace(newBlock.size, FreeBlockList({newBlock}));
                     } else {
                         _blockSizeMap.at(newBlock.size).insert(newBlock);

@@ -104,33 +104,34 @@ namespace Wado::ECS {
 
     // TODO: entity destroys should also be deferred 
     void Database::destroyEntity(EntityID entityID) noexcept {
+        // TODO: repalce vector lookups with table refs 
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
         //std::cout << "Delete table index: " << tableIndex << std::endl;
         size_t tableRowIndex = _tableRegistry[entityID].entityColumnIndex;
-        _tables[tableIndex].deleteList.insert(tableRowIndex);
+        // Add a block of size 1 to the list 
+        _tables[tableIndex].addToFreeBlockList(Table::ColumnBlock(tableRowIndex, tableRowIndex, 1));
 
-        // TODO: this might be faster if I just store ranges instead, this is 
-        // also slow as shit every time.  
-        if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow - 1) {
-            //std::cout << "We are deleting the max occupied row" << std::endl;
-            //std::cout << "Delete row index: " << tableRowIndex << std::endl;
-            size_t prevFreeIndex = tableRowIndex;
-            Table::DeleteList::iterator it = ++_tables[tableIndex].deleteList.begin();
-            while (it != _tables[tableIndex].deleteList.end() && (prevFreeIndex == (*it) + 1)) {
-                prevFreeIndex = *it;
-                //std::cout << prevFreeIndex << std::endl;
-                ++it;
-            };
-            _tables[tableIndex]._maxOccupiedRow = prevFreeIndex;
-            //std::cout << "New max occupied row: " << _tables[tableIndex]._maxOccupiedRow << std::endl;
-            _tables[tableIndex].deleteList.erase(_tables[tableIndex].deleteList.begin(), it);
-
-            std::cout << "New delete list: " << std::endl;
-            for (const size_t& deleteListItem: _tables[tableIndex].deleteList) {
-                std::cout << deleteListItem << " ";
-            };
-            std::cout << std::endl;
+        //std::cout << "Free block list looks like: " << std::endl;
+        for (const Table::ColumnBlock& freeBlock : _tables[tableIndex]._freeBlockList) {
+            //std::cout << "[" << freeBlock.startRow << ", " << freeBlock.endRow << "]" << ", ";
         };
+        //std::cout << std::endl;
+
+        if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow - 1) {
+            //std::cout << "Deleting the largest unused block at the end. " << std::endl;
+            Table::FreeBlockList::iterator endBlock = --(_tables[tableIndex]._freeBlockList.end());
+            //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
+            _tables[tableIndex]._maxOccupiedRow = endBlock->startRow;
+            _tables[tableIndex]._blockSizeMap.at(endBlock->size).erase(*endBlock);
+            _tables[tableIndex]._freeBlockList.erase(endBlock);
+            //std::cout << "Finished deleting" << std::endl;
+        };
+
+        //std::cout << "Free block list looks like: " << std::endl;
+        for (const Table::ColumnBlock& freeBlock : _tables[tableIndex]._freeBlockList) {
+            //std::cout << "[" << freeBlock.startRow << ", " << freeBlock.endRow << "]" << ", ";
+        };
+        //std::cout << std::endl;
 
         _tableRegistry.erase(entityID);
         _reusableEntityIDs.emplace_back(entityID);
@@ -290,36 +291,42 @@ namespace Wado::ECS {
         size_t currentEntityRowIndex = _tableRegistry.at(entityID).entityColumnIndex;
         Table& sourceTable = _tables[sourceTableIndex];
         Table& destTable = _tables[destTableIndex];
+        
+        // Add a block of size 1 to the list 
+        //std::cout << "About to add to free block list " << std::endl;
+        sourceTable.addToFreeBlockList(Table::ColumnBlock(currentEntityRowIndex, currentEntityRowIndex, 1));
+        //std::cout << "Finished adding to free block list " << std::endl;
 
-        // the row for this entity is voided from the original table
-        sourceTable.deleteList.insert(currentEntityRowIndex);
-        // Find the last occupied row and clean up source
-        // table delete list 
-        // TODO: this might be faster if I just store ranges instead 
         if (currentEntityRowIndex == sourceTable._maxOccupiedRow - 1) {
-            size_t prevFreeIndex = currentEntityRowIndex;
-            Table::DeleteList::iterator it = ++sourceTable.deleteList.begin();
-            while (it != sourceTable.deleteList.end() && (prevFreeIndex == (*it) + 1)) {
-                prevFreeIndex = *it;
-                ++it;
-            };
-            sourceTable._maxOccupiedRow = prevFreeIndex;
-            sourceTable.deleteList.erase(sourceTable.deleteList.begin(), it);
+            //std::cout << "Deleting the largest unused block at the end. " << std::endl;
+            // TODO: should I use rbegin here?
+            Table::FreeBlockList::iterator endBlock = --(sourceTable._freeBlockList.end());
+            //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
+            sourceTable._maxOccupiedRow = endBlock->startRow;
+            sourceTable._blockSizeMap.at(endBlock->size).erase(*endBlock);
+            sourceTable._freeBlockList.erase(endBlock);
+            //std::cout << "Finished deleting" << std::endl;
         };
 
         // get next row index for the entity 
         size_t freeRowIndex;
-        if (destTable.deleteList.empty()) {
+        if (destTable._freeBlockList.empty()) {
             freeRowIndex = destTable._maxOccupiedRow++;
             //std::cout << "Free row index: " << freeRowIndex << std::endl;
             // TODO: fix this 
         } else {
-            // Always pick the smallest ID avaialable to avoid
-            // fragmentation 
-            Table::DeleteList::const_iterator endID = destTable.deleteList.end();
-            endID--;
-            freeRowIndex = *endID;
-            destTable.deleteList.erase(endID);
+            // Always pick a block with the smallest size first
+            // to combat fragmentation. Pick the lowest index block
+            // from the smallest size table 
+            Table::FreeBlockList::iterator blockIt = destTable._blockSizeMap.begin()->second.begin();
+            Table::ColumnBlock newBlock(blockIt->startRow + 1, blockIt->endRow, blockIt->size - 1);
+            freeRowIndex = blockIt->startRow;
+            // Cleanup 
+            destTable._freeBlockList.erase(*(blockIt));
+            destTable._blockSizeMap.begin()->second.erase(blockIt);
+            // TODO: this might be very slow, could modify the original
+            // block in the list in place instead?
+            destTable.addToFreeBlockList(newBlock);
         };
 
         // Now, update table registry
@@ -327,7 +334,8 @@ namespace Wado::ECS {
         
         // If we are adding a new row and its index is greater than
         // the column capacity, we need to realloc all columns. 
-        // TODO: this can also be vectorized with SIMD I think. 
+        // TODO: this can also be vectorized with SIMD I think.
+        // In this case we know for sure there is no fragmentation  
         if (freeRowIndex + 1 > destTable._capacity) {
             //std::cout << "Bigger than dest capacity during move " << std::endl;
             // everything needs to be resized in this case. 

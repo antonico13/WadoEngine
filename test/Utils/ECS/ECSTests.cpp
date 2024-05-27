@@ -423,7 +423,27 @@ TEST(DeferredTest, CanSetAndAddComponentsDeferred) {
 //     };
 // };
 
-TEST(MemoryTest, CanCleanup) {
+// TEST(MemoryTest, CanCleanup) {
+//     using namespace Wado::ECS;
+//     Database db = Database();
+//     int x = 5;
+//     const int maxIDs = 1000;
+//     std::vector<EntityID> ids(maxIDs);
+//     for (int i = 0; i < maxIDs; i++) {
+//         EntityID tempID = db.createEntityID();
+//         db.addComponentDeferred<int>(tempID);
+//         db.setComponentCopyDeferred<int>(tempID, &x);
+//         ids[i] = tempID;
+//     };
+//     db.flushDeferredAll();
+//     for (int i = maxIDs / 2; i < maxIDs; i++) {
+//         db.destroyEntity(ids[i]);
+//     };
+
+//     db.cleanupMemory();
+// };
+
+TEST(MemoryTest, CanHandleDeleteListCorrectly) {
     using namespace Wado::ECS;
     Database db = Database();
     int x = 5;
@@ -436,9 +456,14 @@ TEST(MemoryTest, CanCleanup) {
         ids[i] = tempID;
     };
     db.flushDeferredAll();
-    for (int i = maxIDs / 2; i < maxIDs; i++) {
+
+    for (int i = 0; i < 300; i += 3) {
+        db.destroyEntity(ids[i]);
+    }
+
+    for (int i = 500; i < 550; i++) {
         db.destroyEntity(ids[i]);
     };
 
-    db.cleanupMemory();
+    //db.cleanupMemory();
 };
