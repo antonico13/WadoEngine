@@ -77,12 +77,10 @@ namespace Wado::ECS {
 
     void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept {
         // TODO: fix this and use proper emplace 
-        std::cout << "Entity ID is: " << entityID << std::endl;
-        std::cout << "Masked ID is: " << (entityID & ENTITY_ID_MASK) << std::endl;
         TableIndex newIndex{};
         newIndex.entityColumnIndex = position;
         newIndex.tableIndex = tableIndex;
-        _tableRegistry.emplace(entityID & ENTITY_ID_MASK, newIndex);
+        auto res = _tableRegistry.insert_or_assign((entityID & ENTITY_ID_MASK), newIndex);
     };
 
     // Memory::WdClonePtr<Entity> Database::createEntityClonePtr() {
@@ -232,9 +230,7 @@ namespace Wado::ECS {
         // the row for this entity is voided from the original table
         sourceTable.deleteList.insert(currentEntityRowIndex);
         // Last row
-        std::cout << "Current entity row index " << currentEntityRowIndex << std::endl;
         if (currentEntityRowIndex == sourceTable._maxOccupiedRow && currentEntityRowIndex > 0) {
-            std::cout << "Is the max occupied row" << std::endl;
             sourceTable._maxOccupiedRow--;
         };
 
@@ -242,9 +238,7 @@ namespace Wado::ECS {
         size_t freeRowIndex;
         if (destTable.deleteList.empty()) {
             freeRowIndex = destTable._maxOccupiedRow++;
-            std::cout << "Free row index is: " << freeRowIndex << std::endl;
             // TODO: fix this 
-            std::cout << "Max occupied row is: " << destTable._maxOccupiedRow << std::endl;
         } else {
             // Always pick the smallest ID avaialable to avoid
             // fragmentation 
@@ -261,7 +255,6 @@ namespace Wado::ECS {
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
         if (freeRowIndex >= destTable._capacity) {
-            std::cout << "Index greater than capacity " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
             destTable._capacity = destTable._capacity * 2;
@@ -318,7 +311,6 @@ namespace Wado::ECS {
     bool Database::hasComponent(EntityID entityID) const noexcept {
         //size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-        std::cout << "Table index is: " << tableIndex << std::endl;
         const std::set<size_t>& typeSet = _componentRegistry.at(tableIndex);
         return typeSet.find(tableIndex) != typeSet.end();
     };
