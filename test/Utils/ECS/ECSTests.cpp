@@ -467,3 +467,13 @@ TEST(MemoryTest, CanHandleDeleteListCorrectly) {
 
     //db.cleanupMemory();
 };
+
+using Player = struct Player{};
+// TODO: for tags, make sure no mallocs are ever called 
+TEST(TagTest, SupportsEmptyStructTags) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID tempID = db.createEntityID();
+    db.addComponent<Player>(tempID);
+    ASSERT_TRUE(db.hasComponent<Player>(tempID)) << "Expected entity to have player tag";
+};

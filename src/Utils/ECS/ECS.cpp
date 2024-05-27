@@ -378,16 +378,16 @@ namespace Wado::ECS {
     void Database::addComponent(EntityID entityID) {
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
         //std::cout << "Type for current table: " << std::endl;
-        for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
+        //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
             //std::cout << "Component: " << componentID << " ";
-        }
+        //}
         //std::cout << std::endl;
         // TODO: not sure if I should use the deferred version here 
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
         //std::cout << "Next table index and type: " << nextTableIndex << std::endl;
-        for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
+        //for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
             //std::cout << "Component: " << componentID << " ";
-        };
+        //};
         //std::cout << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
         //std::cout << "Finished adding component " << std::endl;
@@ -601,6 +601,88 @@ namespace Wado::ECS {
                 it->deleteList.erase(it->deleteList.begin(), delListIt);
             };
         };
+    };
+
+
+    template <typename T>
+    void Database::addRelationship(EntityID mainID, EntityID targetID) {
+        ComponentID relationshipTypeID = getComponentID<T>();
+        // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
+        // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
+        // component ID 
+        ComponentID relationshipID = relationshipTypeID | (targetID << 32);
+        // TODO this is slow 
+        _componentSizes.insert_or_assign(relationshipID, 0);
+
+        // Mostly the same as normal immediate component add 
+        size_t currentTableIndex = _tableRegistry.at(mainID).tableIndex;
+        //std::cout << "Type for current table: " << std::endl;
+        //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
+            //std::cout << "Component: " << componentID << " ";
+        //}
+        //std::cout << std::endl;
+        // TODO: not sure if I should use the deferred version here 
+        size_t nextTableIndex = findTableSuccessor(currentTableIndex, {relationshipID});
+        //std::cout << "Next table index and type: " << nextTableIndex << std::endl;
+        //for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
+            //std::cout << "Component: " << componentID << " ";
+        //};
+        //std::cout << std::endl;
+        moveToTable(mainID, currentTableIndex, nextTableIndex);
+        //std::cout << "Finished adding component " << std::endl;
+        // TODO: see if all fo these can be static initialized somehow 
+        if (_relationshipRegistry.find(relationshipTypeID) == _relationshipRegistry.end()) {
+            _relationshipRegistry.emplace(relationshipTypeID, {targetID, {nextTableIndex}});
+        } else {
+            // Nasty 
+            if (_relationshipRegistry.at(relationshipTypeID).find(targetID) != _relationshipRegistry.at(relationshipTypeID).end()) {
+                _relationshipRegistry.at(relationshipTypeID).at(targetID).insert(nextTableIndex);
+            } else {
+                _relationshipRegistry.at(relationshipTypeID).emplace(targetID, {nextTableIndex});
+            };
+        };
+
+        // Now add the inverse one 
+        if (_inverseTargetRegistry.find(targetID) == _inverseTargetRegistry.end()) {
+            _inverseTargetRegistry.emplace(targetID, {relationshipTypeID, {nextTableIndex}});
+        } else {
+            if (_inverseTargetRegistry.at(targetID).find(relationshipTypeID) != _inverseTargetRegistry.at(targetID).end()) {
+                _inverseTargetRegistry.at(targetID).at(relationshipTypeID).insert(nextTableIndex);
+            } else {
+                _inverseTargetRegistry.at(targetID).emplace(relationshipTypeID, {nextTableIndex});
+            };
+        };
+        
+        // Finally, for the component registry
+        if (_relationshipCountRegistry.find(relationshipTypeID) != _relationshipCountRegistry.end()) {
+            if (_relationshipCountRegistry.at(relationshipTypeID).find(nextTableIndex) != _relationshipCountRegistry.at(relationshipTypeID).end()) {
+                _relationshipCountRegistry.at(relationshipTypeID)[nextTableIndex]++;
+            } else {
+                _relationshipCountRegistry.at(relationshipID).emplace(nextTableIndex, 1);
+            };
+        } else {
+            _relationshipCountRegistry.emplace(relationshipTypeID, {{nextTableIndex, 1}});
+        };
+    };
+
+    template <typename T>
+    std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) {
+
+    };
+
+    template <typename T>
+    std::set<EntityID> Database::getAllRelationshipTargets() {
+
+    };
+
+    template <typename T>
+    std::set<EntityID> Database::getRelationshipHolders(EntityID targetID) {
+
+    };
+
+    template <typename T>
+    std::set<EntityID> Database::getAllRelationshipHolders() {
+
     };
 };
 

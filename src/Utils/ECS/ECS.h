@@ -101,6 +101,24 @@ namespace Wado::ECS {
             template <typename T> 
             void addComponent(EntityID entityID);
 
+            template <typename T>
+            void addRelationship(EntityID mainID, EntityID targetID);
+
+            template <typename T>
+            void removeRelationship(EntityID mainID, EntityID targetID);
+
+            template <typename T>
+            std::set<EntityID> getRelationshipTargets(EntityID entityID);
+
+            template <typename T>
+            std::set<EntityID> getAllRelationshipTargets();
+
+            template <typename T>
+            std::set<EntityID> getRelationshipHolders(EntityID targetID);
+
+            template <typename T>
+            std::set<EntityID> getAllRelationshipHolders();
+
             // sets an entity's component values. This uses the copy constructor of
             // the class.
             // Warning: set and remove component never check if the component
@@ -276,7 +294,7 @@ namespace Wado::ECS {
 
                 FreeBlockList _freeBlockList;
                 FreeBlockSizeMap _blockSizeMap;
-
+                // TODO: change so these can be batched as well 
                 inline void addToFreeBlockList(const ColumnBlock& block) noexcept {
                     if (_freeBlockList.empty()) {
                         //std::cout << "First block inserted: [" << block.startRow << ", " << block.endRow << "]" << std::endl;
@@ -375,6 +393,21 @@ namespace Wado::ECS {
             // that have a specific component
             using ComponentRegistry = std::map<ComponentID, std::set<size_t>>;
             ComponentRegistry _componentRegistry;
+
+            // Table indexing based on relationship
+            using RelationshipCount = std::map<const size_t, size_t>;
+            using RelationshipCountRegistry = std::map<ComponentID, RelationshipCount>;
+            RelationshipCountRegistry _relationshipCountRegistry;
+
+            // Relationship indexing 
+            using TargetRegistry = std::map<EntityID, std::set<size_t>>;
+            using RelationshipRegistry = std::map<ComponentID, TargetRegistry>;
+            RelationshipRegistry _relationshipRegistry;
+
+            // Support inverse lookup too.
+            using InverseRelationshipRegistry = std::map<ComponentID, std::set<size_t>>;
+            using InverseTargetRegistry = std::map<EntityID, InverseRelationshipRegistry>;
+            InverseTargetRegistry _inverseTargetRegistry;
 
             void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
             void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex);
