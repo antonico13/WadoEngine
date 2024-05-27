@@ -184,7 +184,7 @@ namespace Wado::ECS {
 
             ++it;
         };
-
+        std::cout << "Finished creating table " << std::endl;
         return currentTableIndex; // final table index 
     };
 
@@ -194,7 +194,7 @@ namespace Wado::ECS {
         // If the first add component ID is greater than the 
         // max component id of the table we need to perform the 
         // graph search from the beginning
-        if (_tables[tableIndex]._maxComponentID > *addType.begin()) {
+        if (addType.size() > 0 && _tables[tableIndex]._maxComponentID > *addType.begin()) {
             std::cout << "Performing graph search from the start: " << std::endl;
             startingTableIndex = 0;
             startingAddType.insert(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end());
@@ -218,32 +218,42 @@ namespace Wado::ECS {
             // Edge not found, need to build graph from the beginning 
             // and continue 
             if (removeGraphIt == removeGraphEnd) {
-                std::cout << "Did not find remove edge" << std::endl;
+                std::cout << "Did not find remove in table " << currentTableIndex << " for component: " << (*it) << std::endl;
                 break;
             };
-            std::cout << "Found remove edge" << std::endl;
+            std::cout << "Found remove edge from table " << currentTableIndex << " to component ID: " << (*it) << std::endl;
             currentTableIndex = removeGraphIt->second;
+        };
+
+        if (it == removeTypes.rend()) {
+            std::cout << "Found all remove edges" << std::endl;
+            return currentTableIndex;
         };
 
         if (it != removeTypes.rend()) {
             TableType fullType;
-            std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), std::next(it, 1).base(), removeTypes.end(), std::inserter(fullType, fullType.begin()));
-            std::cout << "Type that needs to be created for remove: " << std::endl;
+            std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), removeTypes.begin(), removeTypes.end(), std::inserter(fullType, fullType.begin()));
+            std::cout << "Final type that needs to be created for remove: " << std::endl;
             for (const ComponentID& componentID : fullType) {
                 std::cout << "Component: " << componentID << " ";
             };
             std::cout << std::endl;
-            size_t nextTableIndex = createTableGraph(0, fullType);
-            _tables[currentTableIndex]._removeComponentGraph.emplace(*it, nextTableIndex);
-            _tables[nextTableIndex]._addComponentGraph.emplace(*it, currentTableIndex);
-            
-            // Graph edge has been made, can continue iteration 
-            while (it != removeTypes.rend()) {
-                removeGraphIt = _tables[currentTableIndex]._removeComponentGraph.find(*it);
-            
-                currentTableIndex = removeGraphIt->second;  
-                ++it;
+            size_t finalTableIndex = createTableGraph(0, fullType);
+            std::cout << "Final table has index: " << finalTableIndex << std::endl;
+
+            std::cout << "Now, creating remaining connections: " << std::endl;
+            TableType remainingTypes;
+            remainingTypes.insert(removeTypes.begin(), std::next(it, 1).base());
+            for (const ComponentID& componentID : remainingTypes) {
+                std::cout << "Component: " << componentID << " ";
             };
+            std::cout << std::endl;
+            size_t missingTableIndex = createTableGraph(finalTableIndex, remainingTypes);
+            std::cout << "Missing link table index is: " << missingTableIndex << std::endl;
+            _tables[currentTableIndex]._removeComponentGraph.emplace(*it, missingTableIndex);
+            _tables[missingTableIndex]._addComponentGraph.emplace(*it, currentTableIndex);
+            
+            currentTableIndex = finalTableIndex;
         };
 
         return currentTableIndex;
@@ -481,12 +491,13 @@ namespace Wado::ECS {
     template <typename T>
     void Database::addComponentDeferred(EntityID entityID) noexcept {
         _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Add);
-        std::cout << "Inserted component with ID: " << getComponentID<T>() << std::endl;
+        std::cout << "Inserted add component with ID: " << getComponentID<T>() << std::endl;
     };
 
     template <class T> 
     void Database::removeComponentDeferred(EntityID entityID) noexcept {
         _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Remove);
+        std::cout << "Inserted remove component with ID: " << getComponentID<T>() << std::endl;
     };
 
     template <class T> 

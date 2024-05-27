@@ -267,3 +267,54 @@ TEST(DeferredTest, CanAddMultipleComponentsDeferred) {
     ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
     ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
 };
+
+TEST(DeferredTest, CanRemoveComponentsDeferred) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
+    db.removeComponentDeferred<Map>(testID);
+    db.flushDeferred(testID);
+    ASSERT_FALSE(db.hasComponent<Map>(testID)) << "Expected entity not to have map component";
+};
+
+TEST(DeferredTest, RemovingComponentsDeferredAddsNewTable) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
+    db.removeComponentDeferred<Vec>(testID);
+    db.flushDeferred(testID);
+    ASSERT_FALSE(db.hasComponent<Vec>(testID)) << "Expected entity not to have map component";
+};
+
+TEST(DeferredTest, RemovingManyComponentsDeferredAddsNewEdges) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.addComponentDeferred<int>(testID);
+    db.addComponentDeferred<float>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
+    db.removeComponentDeferred<Vec>(testID);
+    db.removeComponentDeferred<float>(testID);
+    db.flushDeferred(testID);
+    ASSERT_FALSE(db.hasComponent<Vec>(testID)) << "Expected entity not to have map component";
+    ASSERT_FALSE(db.hasComponent<float>(testID)) << "Expected entity not to have map component";
+
+    EntityID testID2 = db.createEntityID();
+    db.addComponentDeferred<Map>(testID2);
+    db.addComponentDeferred<int>(testID2);
+    db.flushDeferred(testID2);
+};
