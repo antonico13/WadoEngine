@@ -1,3 +1,5 @@
+#ifndef WADO_ECS_CPP
+#define WADO_ECS_CPP
 #include "ECS.h"
 
 #include <stdlib.h> 
@@ -7,12 +9,14 @@
 #include <optional>
 #include <iterator>
 
+#include <stdio.h>
+
 namespace Wado::ECS {
     Entity::Entity(EntityID entityID, Database* database) : 
         _entityID(entityID), 
         _database(database) { };
 
-    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize) {
+    Database::Table::Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize), _maxOccupiedRow(0) {
         for (const ComponentID componentID : type) {
             void* columnData = malloc(sizes.at(componentID) * defaultColumnSize);
             
@@ -25,7 +29,7 @@ namespace Wado::ECS {
     };
 
     // Empty constructor
-    Database::Table::Table() : _type({}), _maxComponentID(0), _capacity(DEFAULT_COLUMN_SIZE) {
+    Database::Table::Table() : _type({}), _maxComponentID(0), _capacity(DEFAULT_COLUMN_SIZE), _maxOccupiedRow(0) {
 
     };
 
@@ -73,6 +77,8 @@ namespace Wado::ECS {
 
     void Database::addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept {
         // TODO: fix this and use proper emplace 
+        std::cout << "Entity ID is: " << entityID << std::endl;
+        std::cout << "Masked ID is: " << (entityID & ENTITY_ID_MASK) << std::endl;
         TableIndex newIndex{};
         newIndex.entityColumnIndex = position;
         newIndex.tableIndex = tableIndex;
@@ -119,7 +125,7 @@ namespace Wado::ECS {
         Table::TableEdges::const_iterator addGraphIt;
         Table::TableEdges::const_iterator addGraphEnd;;
 
-        for (it = addType.begin(); it != addType.end(); it++) {
+        for (it = addType.begin(); it != addType.end(); ++it) {
             addGraphIt = _tables[currentTableIndex]._addComponentGraph.find(*it);
             addGraphEnd = _tables[currentTableIndex]._addComponentGraph.end();
 
@@ -157,6 +163,7 @@ namespace Wado::ECS {
 
             // Add new table to component registry. 
             _componentRegistry[*it].insert(currentTableIndex);
+            ++it;
         };
 
         return currentTableIndex; // final table index 
@@ -174,7 +181,7 @@ namespace Wado::ECS {
         };
 
         // Now we can perform the graph search 
-        return createTableGraph(startingTableIndex, startingAddType);
+        return createTableGraph(startingTableIndex, addType);
     };
 
     size_t Database::findTablePredecessor(const size_t tableIndex, const TableType& removeTypes) {
@@ -225,7 +232,9 @@ namespace Wado::ECS {
         // the row for this entity is voided from the original table
         sourceTable.deleteList.insert(currentEntityRowIndex);
         // Last row
-        if (currentEntityRowIndex == sourceTable._maxOccupiedRow - 1) {
+        std::cout << "Current entity row index " << currentEntityRowIndex << std::endl;
+        if (currentEntityRowIndex == sourceTable._maxOccupiedRow && currentEntityRowIndex > 0) {
+            std::cout << "Is the max occupied row" << std::endl;
             sourceTable._maxOccupiedRow--;
         };
 
@@ -233,6 +242,9 @@ namespace Wado::ECS {
         size_t freeRowIndex;
         if (destTable.deleteList.empty()) {
             freeRowIndex = destTable._maxOccupiedRow++;
+            std::cout << "Free row index is: " << freeRowIndex << std::endl;
+            // TODO: fix this 
+            std::cout << "Max occupied row is: " << destTable._maxOccupiedRow << std::endl;
         } else {
             // Always pick the smallest ID avaialable to avoid
             // fragmentation 
@@ -249,6 +261,7 @@ namespace Wado::ECS {
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
         if (freeRowIndex >= destTable._capacity) {
+            std::cout << "Index greater than capacity " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
             destTable._capacity = destTable._capacity * 2;
@@ -282,12 +295,11 @@ namespace Wado::ECS {
     // This is immediate mode. 
     // For multiple components in quick succession,
     // use the deferred mode. 
-    template <class T>
+    template <typename T>
     void Database::addComponent(EntityID entityID) {
         size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
         // TODO: not sure if I should use the deferred version here 
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
-
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
@@ -305,8 +317,9 @@ namespace Wado::ECS {
     template <class T>
     bool Database::hasComponent(EntityID entityID) const noexcept {
         //size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        std::set<size_t> typeSet& = _componentRegistry.at(tableIndex);
+        size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
+        std::cout << "Table index is: " << tableIndex << std::endl;
+        const std::set<size_t>& typeSet = _componentRegistry.at(tableIndex);
         return typeSet.find(tableIndex) != typeSet.end();
     };
 
@@ -458,3 +471,5 @@ namespace Wado::ECS {
         };
     };
 };
+
+#endif

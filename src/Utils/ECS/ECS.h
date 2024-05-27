@@ -88,7 +88,7 @@ namespace Wado::ECS {
             // This is a deferred function by default. To actually clear
             // the memory used by this entity, cleanupMemory needs to
             // be called. 
-            inline void destroyEntity(EntityID entityID) noexcept;
+            void destroyEntity(EntityID entityID) noexcept;
 
             // adds a component to an entity based on its ID. The component is
             // "empty" by default, since the underlying type is erased 
@@ -97,7 +97,7 @@ namespace Wado::ECS {
             // the component all set to 0. 
             // Warning: only works with valid IDs produced by the database, 
             // undefined behaviour if the ID supplied is not valid. 
-            template <class T> 
+            template <typename T> 
             void addComponent(EntityID entityID);
 
             // sets an entity's component values. This uses the copy constructor of
@@ -148,9 +148,9 @@ namespace Wado::ECS {
             // on the database once flushDeferred or flushDeferredAll 
             // is called. 
 
-            inline void flushDeferred(EntityID entityID);
+            void flushDeferred(EntityID entityID);
 
-            inline void flushDeferredAll(EntityID entityID);
+            void flushDeferredAll(EntityID entityID);
 
             template <class T>
             void addComponentDeferred(EntityID entityID) noexcept;
@@ -173,13 +173,13 @@ namespace Wado::ECS {
             // are used for the actual ID. The higher 32 bits will be used 
             // for various flags and features such as entity relationships,
             // tags, and more.
-            uint64_t COMPONENT_ID = 0;
-            uint64_t ENTITY_ID = 1 << 31;
+            uint64_t COMPONENT_ID = 1;
+            uint64_t ENTITY_ID = (uint64_t)1 << 31;
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
             static const uint64_t MAX_ENTITY_ID = (uint64_t)1 << 32;
-            static const uint64_t MAX_COMPONENT_ID = 1 << 31;
-            static const uint64_t ENTITY_ID_MASK = 0xFFFFFFFF;
+            static const uint64_t MAX_COMPONENT_ID = (uint64_t)1 << 31;
+            static const uint64_t ENTITY_ID_MASK = ((uint64_t)1 << 32) - 1;
 
             const size_t _defaultColumnSize;
 
@@ -198,12 +198,12 @@ namespace Wado::ECS {
             // get a fresh ID. This function will throw an exception if 
             // the running entity ID accumulator has reched its 
             // maximum value (2^32). 
-            inline EntityID generateNewEntityID();
+            EntityID generateNewEntityID();
             // Similarly to the above, will throw an error if the component ID
             // becomes greater than 2^31.
-            inline ComponentID generateNewComponentID();
+            ComponentID generateNewComponentID();
 
-            inline EntityID generateNewIDAndAddToEmptyTableRegistry();
+            EntityID generateNewIDAndAddToEmptyTableRegistry();
 
             using TableType = std::set<ComponentID>; // The type of a table.
             // Just a vector of all its componets, in order. 
@@ -291,14 +291,12 @@ namespace Wado::ECS {
             using ComponentRegistry = std::map<ComponentID, std::set<size_t>>;
             ComponentRegistry _componentRegistry;
 
-            inline void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
-            inline void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex);
+            void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept;
+            void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex);
 
-            inline size_t findTableSuccessor(const size_t tableIndex, const TableType& addType);
-            inline size_t createTableGraph(size_t startingTableIndex, const TableType& addType);
-            inline size_t findTablePredecessor(const size_t tableIndex, const TableType& removeTypes);
-
-
+            size_t findTableSuccessor(const size_t tableIndex, const TableType& addType);
+            size_t createTableGraph(size_t startingTableIndex, const TableType& addType);
+            size_t findTablePredecessor(const size_t tableIndex, const TableType& removeTypes);
 
             // Deferred commands data types
             // Deferred commands use raw pointers only, since
@@ -331,7 +329,7 @@ namespace Wado::ECS {
 
             std::map<EntityID, DeferredPayload> _deferredPayloads;
 
-            inline void flushDeferredNoDelete(EntityID entityID);
+            void flushDeferredNoDelete(EntityID entityID);
     };
 };
 
