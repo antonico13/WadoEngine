@@ -422,3 +422,23 @@ TEST(DeferredTest, CanSetAndAddComponentsDeferred) {
 //         ASSERT_EQ(db.getComponent<int>(ids[i]), x) << "Entity int value set incorrectly";
 //     };
 // };
+
+TEST(MemoryTest, CanCleanup) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    int x = 5;
+    const int maxIDs = 1000;
+    std::vector<EntityID> ids(maxIDs);
+    for (int i = 0; i < maxIDs; i++) {
+        EntityID tempID = db.createEntityID();
+        db.addComponentDeferred<int>(tempID);
+        db.setComponentCopyDeferred<int>(tempID, &x);
+        ids[i] = tempID;
+    };
+    db.flushDeferredAll();
+    for (int i = maxIDs / 2; i < maxIDs; i++) {
+        db.destroyEntity(ids[i]);
+    };
+
+    db.cleanupMemory();
+};

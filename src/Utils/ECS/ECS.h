@@ -57,7 +57,7 @@ namespace Wado::ECS {
 
     class Database {
         public:
-            static const size_t DEFAULT_COLUMN_SIZE = 10;
+            static const size_t DEFAULT_COLUMN_SIZE = 8;
             Database(size_t defaultColumnSize = DEFAULT_COLUMN_SIZE);
             ~Database();
 

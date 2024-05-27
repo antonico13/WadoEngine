@@ -102,10 +102,30 @@ namespace Wado::ECS {
         return generateNewIDAndAddToEmptyTableRegistry();
     };
 
+    // TODO: entity destroys should also be deferred 
     void Database::destroyEntity(EntityID entityID) noexcept {
         size_t tableIndex = _tableRegistry[entityID].tableIndex;
+        //std::cout << "Delete table index: " << tableIndex << std::endl;
         size_t tableRowIndex = _tableRegistry[entityID].entityColumnIndex;
         _tables[tableIndex].deleteList.insert(tableRowIndex);
+
+        // TODO: this might be faster if I just store ranges instead, this is 
+        // also slow as shit every time.  
+        if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow - 1) {
+            //std::cout << "We are deleting the max occupied row" << std::endl;
+            //std::cout << "Delete row index: " << tableRowIndex << std::endl;
+            size_t prevFreeIndex = tableRowIndex;
+            Table::DeleteList::iterator it = ++_tables[tableIndex].deleteList.begin();
+            while (it != _tables[tableIndex].deleteList.end() && (prevFreeIndex == (*it) + 1)) {
+                prevFreeIndex = *it;
+                //std::cout << prevFreeIndex << std::endl;
+                ++it;
+            };
+            _tables[tableIndex]._maxOccupiedRow = prevFreeIndex;
+            //std::cout << "New max occupied row: " << _tables[tableIndex]._maxOccupiedRow << std::endl;
+            _tables[tableIndex].deleteList.erase(_tables[tableIndex].deleteList.begin(), it);
+        };
+
         _tableRegistry.erase(entityID);
         _reusableEntityIDs.emplace_back(entityID);
     };
@@ -267,9 +287,18 @@ namespace Wado::ECS {
 
         // the row for this entity is voided from the original table
         sourceTable.deleteList.insert(currentEntityRowIndex);
-        // Last row
-        if (currentEntityRowIndex == sourceTable._maxOccupiedRow && currentEntityRowIndex > 0) {
-            sourceTable._maxOccupiedRow--;
+        // Find the last occupied row and clean up source
+        // table delete list 
+        // TODO: this might be faster if I just store ranges instead 
+        if (currentEntityRowIndex == sourceTable._maxOccupiedRow - 1) {
+            size_t prevFreeIndex = currentEntityRowIndex;
+            Table::DeleteList::iterator it = ++sourceTable.deleteList.begin();
+            while (it != sourceTable.deleteList.end() && (prevFreeIndex == (*it) + 1)) {
+                prevFreeIndex = *it;
+                ++it;
+            };
+            sourceTable._maxOccupiedRow = prevFreeIndex;
+            sourceTable.deleteList.erase(sourceTable.deleteList.begin(), it);
         };
 
         // get next row index for the entity 
@@ -293,7 +322,7 @@ namespace Wado::ECS {
         // If we are adding a new row and its index is greater than
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
-        if (freeRowIndex >= destTable._capacity) {
+        if (freeRowIndex + 1 > destTable._capacity) {
             //std::cout << "Bigger than dest capacity during move " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
@@ -523,17 +552,19 @@ namespace Wado::ECS {
         // resize columns to size of maxOccupiedRow
         // remove every free index bigger than or equal to max occupied 
         // row from their delete sets 
+
         // do this for every table except empty begin table..? 
-        std::vector<Table>::iterator it = ++_tables.begin();
         // TODO: need to make a map only with tables where capacity >= 
         // maxRow, and only those are viable for cleanup
-        for (it; it != _tables.end(); it++) {
+        for (std::vector<Table>::iterator it = _tables.begin(); it != _tables.end(); ++it) {
             // TODO: maybe should also fix all fragmentation issues 
             // here. 
             // TODO: for fixing fragmentation, need to do
             // memcpy without overlapping memory ranges. 
-            for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++it) {
-                columnIt->second.data = static_cast<char*>(realloc(columnIt->second.data, it->_maxOccupiedRow * columnIt->second.elementStride));
+            //std::cout << "Old capacity: " << it->_capacity << std::endl;
+            //std::cout << "New capacity: " << it->_maxOccupiedRow << std::endl;
+            for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++columnIt) {
+                columnIt->second.data = static_cast<char*>(realloc(columnIt->second.data, (it->_maxOccupiedRow + 1) * columnIt->second.elementStride));
                 
                 if (columnIt->second.data == nullptr) {
                     throw std::runtime_error("Could not reallocatee column data");
