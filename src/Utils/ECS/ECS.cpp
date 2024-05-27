@@ -629,24 +629,28 @@ namespace Wado::ECS {
         //std::cout << "Finished adding component " << std::endl;
         // TODO: see if all fo these can be static initialized somehow 
         if (_relationshipRegistry.find(relationshipTypeID) == _relationshipRegistry.end()) {
-            _relationshipRegistry.emplace(relationshipTypeID, {targetID, {nextTableIndex}});
+            TargetRegistry registry = TargetRegistry();
+            registry.emplace(targetID, std::set<size_t>({nextTableIndex}));
+            _relationshipRegistry.emplace(relationshipTypeID, registry);
         } else {
             // Nasty 
             if (_relationshipRegistry.at(relationshipTypeID).find(targetID) != _relationshipRegistry.at(relationshipTypeID).end()) {
                 _relationshipRegistry.at(relationshipTypeID).at(targetID).insert(nextTableIndex);
             } else {
-                _relationshipRegistry.at(relationshipTypeID).emplace(targetID, {nextTableIndex});
+                _relationshipRegistry.at(relationshipTypeID).emplace(targetID, std::set<size_t>({nextTableIndex}) );
             };
         };
 
         // Now add the inverse one 
         if (_inverseTargetRegistry.find(targetID) == _inverseTargetRegistry.end()) {
-            _inverseTargetRegistry.emplace(targetID, {relationshipTypeID, {nextTableIndex}});
+            InverseRelationshipRegistry inverseRegistry = InverseRelationshipRegistry();
+            inverseRegistry.emplace(relationshipTypeID, std::set<size_t>({nextTableIndex}));
+            _inverseTargetRegistry.emplace(targetID, inverseRegistry);
         } else {
             if (_inverseTargetRegistry.at(targetID).find(relationshipTypeID) != _inverseTargetRegistry.at(targetID).end()) {
                 _inverseTargetRegistry.at(targetID).at(relationshipTypeID).insert(nextTableIndex);
             } else {
-                _inverseTargetRegistry.at(targetID).emplace(relationshipTypeID, {nextTableIndex});
+                _inverseTargetRegistry.at(targetID).emplace(relationshipTypeID, std::set<size_t>({nextTableIndex}));
             };
         };
         
@@ -654,7 +658,7 @@ namespace Wado::ECS {
         if (_relationshipCountRegistry.find(relationshipTypeID) != _relationshipCountRegistry.end()) {
             _relationshipCountRegistry.at(relationshipTypeID).insert(nextTableIndex);
         } else {
-            _relationshipCountRegistry.emplace(relationshipTypeID, {nextTableIndex});
+            _relationshipCountRegistry.emplace(relationshipTypeID, std::set<size_t>({nextTableIndex}));
         };
     };
 
@@ -690,14 +694,14 @@ namespace Wado::ECS {
         // component ID 
         ComponentID relationshipID = relationshipTypeID | (targetID << 32);
         if (_componentRegistry.find(relationshipID) != _componentRegistry.end()) {
-            return _componentRegistry.at(relationshipID).find(_tableRegistry[mainId].tableIndex) != _componentRegistry.at(relationshipID);
+            return _componentRegistry.at(relationshipID).find(_tableRegistry[mainId].tableIndex) != _componentRegistry.at(relationshipID).end();
         };
         return false;
     };
 
 
     template <typename T>
-    std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) noexcept {
+    std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) {
         const ComponentID relationshipTypeID = getComponentID<T>();
         const Table& table = _tables[_tableRegistry[entityID].tableIndex];
         std::set<EntityID> targets;

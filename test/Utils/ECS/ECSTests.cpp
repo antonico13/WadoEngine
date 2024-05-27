@@ -477,3 +477,77 @@ TEST(TagTest, SupportsEmptyStructTags) {
     db.addComponent<Player>(tempID);
     ASSERT_TRUE(db.hasComponent<Player>(tempID)) << "Expected entity to have player tag";
 };
+
+using Likes = struct Likes { };
+using ParentOf = struct ParentOf { };
+using ChildOf = struct ChildOf { };
+
+TEST(RelationshipTest, CanAddRelationships) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    db.addRelationship<Likes>(testID1, testID2);
+    ASSERT_TRUE(db.hasRelationship<Likes>(testID1, testID2)) << "Expected entity 1 to have a like relationship with entitiy 2";
+    ASSERT_FALSE(db.hasRelationship<Likes>(testID2, testID1)) << "Expetced entity 2 not to have a relationship with entity 1";
+};
+
+TEST(RelationshipTest, CanRemoveRelationships) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    db.addRelationship<Likes>(testID1, testID2);
+    db.addRelationship<ChildOf>(testID1, testID2);
+    ASSERT_TRUE(db.hasRelationship<Likes>(testID1, testID2)) << "Expected entity 1 to have a like relationship with entitiy 2";
+    db.removeRelationship<Likes>(testID1, testID2);
+    ASSERT_FALSE(db.hasRelationship<Likes>(testID1, testID2)) << "Expetced entity 1 not to have a relationship with entity 2";
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Remove relationship doesn't affect other relationships";
+};
+
+TEST(RelationshipTest, CanGetMultipleSubentitiesWithSameRelationship) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    EntityID testID3 = db.createEntityID();
+    db.addRelationship<ChildOf>(testID1, testID2);
+    db.addRelationship<ChildOf>(testID1, testID3);
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to have both parent relationships";
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID3)) << "Expect entity 1 to have both parent relationships";
+    std::set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
+};
+
+TEST(RelationshipTest, SubentitySetReducesWhenRemovingRelationship) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    EntityID testID3 = db.createEntityID();
+    db.addRelationship<ChildOf>(testID1, testID2);
+    db.addRelationship<ChildOf>(testID1, testID3);
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to have both parent relationships";
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID3)) << "Expect entity 1 to have both parent relationships";
+    std::set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
+    db.removeRelationship<ChildOf>(testID1, testID2);
+    std::set<EntityID> newParentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    ASSERT_EQ(newParentIDs.size(), 1);
+    ASSERT_EQ(*newParentIDs.begin(), testID3);
+};
+
+TEST(RelationShipTest, CanGetAllTargetIDs) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    EntityID testID3 = db.createEntityID();
+    EntityID testID4 = db.createEntityID();
+    db.addRelationship<ChildOf>(testID1, testID2);
+    db.addRelationship<ChildOf>(testID4, testID3);
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to be a child to 2";
+    ASSERT_TRUE(db.hasRelationship<ChildOf>(testID4, testID3)) << "Expect entity 4 to be a child to 3";
+    std::set<EntityID> parentIDs = db.getAllRelationshipTargets<ChildOf>();
+    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expected both test entity 2 and 3 to be in the global parent set";
+};

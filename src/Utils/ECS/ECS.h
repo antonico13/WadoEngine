@@ -113,27 +113,28 @@ namespace Wado::ECS {
             // Gets all the targets the specified entity has
             // for the given relationship 
             template <typename T>
-            std::set<EntityID> getRelationshipTargets(EntityID entityID) noexcept;
+            std::set<EntityID> getRelationshipTargets(EntityID entityID);
 
             // Gets all targets for the given relationship 
             template <typename T>
-            std::set<EntityID> getAllRelationshipTargets() noexcept;
+            std::set<EntityID> getAllRelationshipTargets();
             
             // Gets all the "main" entities given 
             // a relationship and a target 
             template <typename T>
-            std::set<EntityID> getRelationshipHolders(EntityID targetID) noexcept;
+            std::set<EntityID> getRelationshipHolders(EntityID targetID);
 
             // Gets all the "main" entities for
             // a given relationship 
             template <typename T>
-            std::set<EntityID> getAllRelationshipHolders() noexcept;
+            std::set<EntityID> getAllRelationshipHolders();
             // TODO: all sets should also add the component 
             template <typename T>
             void setRelationshipCopy(EntityID mainID, EntityID targetID, T& relationshipData);
 
             template <typename T>
             void setRelationshipMove(EntityID mainID, EntityID targetID, T& relationshipData);
+            // TODO: add deferred relationship commands 
 
             // sets an entity's component values. This uses the copy constructor of
             // the class.
@@ -411,7 +412,7 @@ namespace Wado::ECS {
             ComponentRegistry _componentRegistry;
 
             // Table indexing based on relationship
-            using RelationshipCount = std::set<const size_t>;
+            using RelationshipCount = std::set<size_t>;
             using RelationshipCountRegistry = std::map<ComponentID, RelationshipCount>;
             RelationshipCountRegistry _relationshipCountRegistry;
 
