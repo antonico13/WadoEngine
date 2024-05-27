@@ -746,6 +746,115 @@ namespace Wado::ECS {
         // TODO:
     };
 
+    Query& Database::buildQuery(const QueryBuilder& builder) {
+        // TODO: add caching 
+        // First, get set of all tables
+
+        std::set<ComponentID>::iterator it = builder._requiredComponents.begin();
+        std::set<size_t> currentTableIDs;
+        std::set<size_t> prevTableIDs = _componentRegistry[*it];
+
+        for (std::set<ComponentID>::iterator requiredComp = std::next(it, 1); requiredComp != builder._requiredComponents.end(); ++it) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_componentRegistry[*requiredComp].find(tableID) != _componentRegistry[*requiredComp].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // Now filter all required explict relationships
+        for (const ComponentID& componentID : builder._requiredRelationshipsTargets) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_componentRegistry[componentID].find(tableID) != _componentRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // Only keep tables where the entity is a relationship holder.
+        for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_relationshipCountRegistry[componentID].find(tableID) != _relationshipCountRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // Only keep tables where the entity is a target..???
+        /*for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_relationshipCountRegistry[componentID].find(tableID) != _relationshipCountRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        }; */
+
+
+        // filter all tables that have banned components 
+        for (const ComponentID& componentID : builder._bannedComponents) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_componentRegistry[componentID].find(tableID) == _componentRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // filter all tables that have banned relationships 
+        for (const ComponentID& componentID : builder._bannedRelationshipsTargets) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_componentRegistry[componentID].find(tableID) == _componentRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // Filter all tables with banned relationship holders 
+        for (const ComponentID& componentID : builder._bannedRelationshipsHolder) {
+            for (const size_t& tableID : prevTableIDs) {
+                if (_relationshipCountRegistry[componentID].find(tableID) == _relationshipCountRegistry[componentID].end()) {
+                    currentTableIDs.emplace(tableID);
+                };
+            };
+            prevTableIDs.swap(currentTableIDs);
+            currentTableIDs.clear();
+        };
+
+        // Now, need to get the column data pointers from all 
+        // tables according tot he get component sets 
+
+        std::vector<Query::QueryTable> queryTables;
+        
+        for (const size_t& tableIndex : prevTableIDs) {
+            Table& table = _tables[tableIndex];
+            std::map<ComponentID, Database::Column*> columnData;
+            
+            for (const ComponentID& componentID : builder._getComponents) {
+                columnData[componentID] = &table._columns.at(componentID);
+            };
+
+            for (const ComponentID& componentID : builder._getRelationships) {
+                columnData[componentID] = &table._columns.at(componentID);
+            };
+            // TODO: add entity IDs here and for fragmentation 
+            // TODO: memory should be flushed before doing this, no 
+            // fragmentation 
+            queryTables.emplace_back(columnData, std::vector<EntityID>(), table._maxOccupiedRow, tableIndex);
+        };
+
+    };
+
     // Query builder stuff 
 
     template <typename T>
@@ -760,6 +869,7 @@ namespace Wado::ECS {
 
     template <typename T>
     QueryBuilder& QueryBuilder::withComponent() {
+        _requiredComponents.insert(_db.getComponentID<T>());
         _getComponents.insert(_db.getComponentID<T>());
         return *this;
     };
@@ -787,6 +897,7 @@ namespace Wado::ECS {
     template <typename T>
     QueryBuilder& QueryBuilder::withRelationshipTarget(const EntityID targetEntity) {
         ComponentID relationshipID = _db.makeRelationshipPair<T>(targetEntity);
+        _requiredRelationshipsTargets.insert(relationshipID);
         _getRelationships.insert(relationshipID);
         return *this;
     };
@@ -803,6 +914,10 @@ namespace Wado::ECS {
     };
 
     QueryBuilder::QueryBuilder(const BuildMode buildMode, Database& database) : _buildMode(buildMode), _db(database) {};
+    
+    Query& QueryBuilder::build() {
+        return _db.buildQuery(*this);
+    };
 };
 
 #endif

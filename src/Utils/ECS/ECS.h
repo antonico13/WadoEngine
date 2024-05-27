@@ -473,10 +473,14 @@ namespace Wado::ECS {
             std::map<EntityID, DeferredPayload> _deferredPayloads;
 
             void flushDeferredNoDelete(EntityID entityID);
+
+            Query& buildQuery(const QueryBuilder& builder);
     };
 
     class QueryBuilder {
         public:
+            friend class Database;
+
             enum BuildMode {
                 Transient,
                 Cached,
@@ -520,7 +524,7 @@ namespace Wado::ECS {
             template <typename T>
             QueryBuilder& relationshipTargetCondition(const ConditionOperator op = ConditionOperator::None);
 
-            void build() noexcept;
+            Query& build();
 
         private: 
             QueryBuilder(const BuildMode buildMode, Database& database);
@@ -645,6 +649,11 @@ namespace Wado::ECS {
         private:
 
             using QueryTable = struct QueryTable {
+                QueryTable(const std::map<ComponentID, Database::Column*>& columnData, const std::vector<EntityID>& entityIDs, const size_t elementCount, const size_t databaseTableIndex) : 
+                    _columnData(columnData),
+                    _entityIDs(entityIDs),
+                    _elementCount(elementCount),
+                    _dbTableIndex(databaseTableIndex) { };
                 // TODO: should this maybe be a sparse set?
                 // we know at construction time how many component IDs
                 // we have, and the max value.
@@ -661,7 +670,7 @@ namespace Wado::ECS {
                 _db(database)  {
 
             };
-            
+
             ~Query();
 
             // db pointer for destruct and component IDs
