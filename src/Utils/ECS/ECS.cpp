@@ -299,7 +299,7 @@ namespace Wado::ECS {
             // By default, just double capacity.
             destTable._capacity = destTable._capacity * 2;
             for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
-                it->second.data = static_cast<char *>(realloc(it->second.data, destTable._capacity));
+                it->second.data = static_cast<char *>(realloc(it->second.data, destTable._capacity * it->second.elementStride));
                 
                 if (it->second.data == nullptr) {
                     throw std::runtime_error("Ran out of memory, cannot increase row count for table.");
@@ -407,6 +407,9 @@ namespace Wado::ECS {
         Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the copy constructor. 
         void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
+        //std::cout << "Entity index: " << entityColumnIndex << std::endl;
+        //std::cout << "Column capacity: " << _tables[tableIndex]._capacity << " and max occupied row: " << _tables[tableIndex]._maxOccupiedRow << ", and element size: " << column.elementStride << std::endl;
+        //std::cout << "Address: " << address << std::endl;
         new(address) T(componentData);
         //*static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = T(componentData); 
         /*std::vector<int>& obj_vec = reinterpret_cast<std::vector<int>&>(obj);

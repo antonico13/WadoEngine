@@ -395,3 +395,30 @@ TEST(DeferredTest, CanSetAndAddComponentsDeferred) {
     ASSERT_EQ(db.getComponent<float>(testID), 5.0) << "Expected deferred copy to copy local float pointer data to entity";
     ASSERT_EQ(db.getComponent<int>(testID), 3) << "Expected deferred copy to copy local int pointer data to entity";
 };
+
+// TEST(StressTest, OneMillionEntitiesStressTest) {
+//     using namespace Wado::ECS;
+//     Database db = Database();
+//     int x = 5;
+//     const int maxIDs = 1000000;
+//     std::vector<EntityID> ids(maxIDs);
+//     for (int i = 0; i < maxIDs; i++) {
+//         EntityID tempID = db.createEntityID();
+//         db.addComponentDeferred<Position>(tempID);
+//         db.addComponentDeferred<int>(tempID);
+//         //db.setComponentCopyDeferred<int>(tempID, &x);
+//         db.addComponentDeferred<float>(tempID);
+//         db.addComponentDeferred<Vec>(tempID);
+//         db.addComponentDeferred<Map>(tempID);
+//         db.setComponentCopyDeferred<int>(tempID, &x);
+//         ids[i] = tempID;
+//     };
+//     db.flushDeferredAll();
+//     // for (int i = 0; i < maxIDs - 1; i++) {
+//     //     db.setComponentCopyDeferred<int>(ids[i], &x);
+//     // };
+
+//     for (int i = 0; i < maxIDs - 1; i++) {
+//         ASSERT_EQ(db.getComponent<int>(ids[i]), x) << "Entity int value set incorrectly";
+//     };
+// };
