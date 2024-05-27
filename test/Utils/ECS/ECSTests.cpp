@@ -3,6 +3,13 @@
 #include "ECS.cpp"
 #include <iostream>
 
+using Position = struct Position {
+            float x;
+            float y;
+};
+
+using Map = std::map<int, int>;
+using Vec = std::vector<int>;
 
 TEST(EntityIDTest, CorrectFirstID) {
     using namespace Wado::ECS;
@@ -37,10 +44,6 @@ TEST(EntityIDTest, EntityIDsAreReused) {
 
 TEST(ComponentTest, ComponentsGetAdded) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -50,10 +53,6 @@ TEST(ComponentTest, ComponentsGetAdded) {
 
 TEST(ComponentTest, CanAddMultipleComponents) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -66,10 +65,6 @@ TEST(ComponentTest, CanAddMultipleComponents) {
 
 TEST(ComponentTest, CanSetComponentValue) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -84,10 +79,6 @@ TEST(ComponentTest, CanSetComponentValue) {
 
 TEST(ComponentTest, ComponentValueSurvivesTableMove) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -109,10 +100,6 @@ TEST(ComponentTest, ComponentValueSurvivesTableMove) {
 
 TEST(ComponentTest, CanSetMultipleComponentValues) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -154,14 +141,18 @@ TEST(ComponentTest, CanCreateNewTableCorrectly) {
     ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity to have int id";
     ASSERT_FALSE(db.hasComponent<float>(testID)) << "Exepected entity not to have float id";   
     ASSERT_TRUE(db.hasComponent<char>(testID)) << "Exepected entity not to have char id";   
+
+    // Tables should exist now.
+    EntityID testID2 = db.createEntityID();
+    db.addComponent<int>(testID2);
+    db.addComponent<float>(testID2);
+    db.addComponent<char>(testID2);
+
+    db.removeComponent<float>(testID2);
 };
 
 TEST(ComponentTest, CanSetComponentMove) {
     using namespace Wado::ECS;
-    using Position = struct Position {
-            float x;
-            float y;
-    };
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Position>(testID);
@@ -175,7 +166,6 @@ TEST(ComponentTest, CanSetComponentMove) {
 
 TEST(ComponentTest, CanSetComponentMoveVector) {
     using namespace Wado::ECS;
-    using Vec = std::vector<int>;
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Vec>(testID);
@@ -191,7 +181,6 @@ TEST(ComponentTest, CanSetComponentMoveVector) {
 
 TEST(ComponentTest, CanSetComponentCopyVector) {
     using namespace Wado::ECS;
-    using Vec = std::vector<int>;
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Vec>(testID);
@@ -207,7 +196,6 @@ TEST(ComponentTest, CanSetComponentCopyVector) {
 
 TEST(ComponentTest, ComponentCopiesDoNotOverlap) {
     using namespace Wado::ECS;
-    using Vec = std::vector<int>;
     Database db = Database();
     EntityID testID = db.createEntityID();
     EntityID testID2 = db.createEntityID();
@@ -233,7 +221,6 @@ TEST(ComponentTest, ComponentCopiesDoNotOverlap) {
 
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesntExist) {
     using namespace Wado::ECS;
-    using Vec = std::vector<int>;
     Database db = Database();
     EntityID testID = db.createEntityID();
     EXPECT_EQ(db.getComponentSafe<Vec>(testID), std::nullopt) << "Expected entity to return a null optional if component isn't present";
@@ -241,7 +228,6 @@ TEST(ComponentTest, CanGetComponentSafelyWhenItDoesntExist) {
 
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesExist) {
     using namespace Wado::ECS;
-    using Vec = std::vector<int>;
     Database db = Database();
     EntityID testID = db.createEntityID();
     db.addComponent<Vec>(testID);
@@ -253,4 +239,31 @@ TEST(ComponentTest, CanGetComponentSafelyWhenItDoesExist) {
     EXPECT_EQ(dbVec[1], vec[1]) << "Expected second component of position to be equal, but it isn't";
     EXPECT_EQ(dbVec[2], vec[2]) << "Expected third component of position to be equal, but it isn't";
     EXPECT_EQ(vec.size(), 3) << "Expected original vector to keep all components";
+};
+
+TEST(ComponentTest, DoesNotHaveUnusedComponent) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    ASSERT_FALSE(db.hasComponent<Map>(testID)) << "Expected entity to not have a component that's never been used";
+};
+
+TEST(DeferredTest, CanAddSingleComponentDeferred) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have component after single deferred flush";
+};
+
+TEST(DeferredTest, CanAddMultipleComponentsDeferred) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponentDeferred<Map>(testID);
+    db.addComponentDeferred<Vec>(testID);
+    db.flushDeferred(testID);
+    ASSERT_TRUE(db.hasComponent<Map>(testID)) << "Expected entity to have map component after single deferred flush";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have vec component after single deferred flush";
 };

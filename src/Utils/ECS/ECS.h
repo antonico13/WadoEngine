@@ -155,7 +155,7 @@ namespace Wado::ECS {
 
             void flushDeferredAll(EntityID entityID);
 
-            template <class T>
+            template <typename T>
             void addComponentDeferred(EntityID entityID) noexcept;
 
             template <class T> 
@@ -176,8 +176,8 @@ namespace Wado::ECS {
             // are used for the actual ID. The higher 32 bits will be used 
             // for various flags and features such as entity relationships,
             // tags, and more.
-            uint64_t COMPONENT_ID = 1;
-            uint64_t ENTITY_ID = (uint64_t)1 << 31;
+            static ComponentID COMPONENT_ID;
+            EntityID ENTITY_ID = (uint64_t)1 << 31;
             static const uint64_t ENTITY_INCREMENT = 1;
             static const uint64_t COMPONENT_INCREMENT = 1;
             static const uint64_t MAX_ENTITY_ID = (uint64_t)1 << 32;
@@ -190,7 +190,7 @@ namespace Wado::ECS {
             // this function will have a static variable with the component ID,
             // if calling for the first time a new ID is generated, otherwise the 
             // component ID for this function is returned. 
-            template <class T>
+            template <typename T>
             ComponentID getComponentID();
 
             std::vector<EntityID> _reusableEntityIDs;

@@ -33,7 +33,9 @@ namespace Wado::ECS {
 
     };
 
-    
+    // Static ID init 
+    ComponentID Database::COMPONENT_ID = 1;
+
     Database::Database(size_t defaultColumnSize) : _defaultColumnSize(defaultColumnSize) {
         // Create the empty table and place it in the 
         // table vector, and initalize the empty table 
@@ -112,10 +114,11 @@ namespace Wado::ECS {
         if (COMPONENT_ID == MAX_COMPONENT_ID) {
                 throw std::runtime_error("Reached the maximum number of components, cannot create any new ones.");
         }
+        std::cout << "Generated id: " << COMPONENT_ID << std::endl;
         return COMPONENT_ID++;
     };
 
-    template <class T>
+    template <typename T>
     ComponentID Database::getComponentID() {
         static ComponentID componentID = generateNewComponentID();
         // TODO: this is a bit ugly, need to find a way to statically
@@ -137,14 +140,16 @@ namespace Wado::ECS {
 
             // TODO: find a way to do this without many branches 
             if (addGraphIt == addGraphEnd) {
+                std::cout << "Did not find existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
                 break;
             };
-
+            std::cout << "Found existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
             currentTableIndex = addGraphIt->second;
         };
 
         if (it == addType.end()) {
             // All edges existed in the table graph, can return
+            std::cout << "All edges existed, did not create any new tables " << std::endl;
             return currentTableIndex;
         };
 
@@ -165,13 +170,17 @@ namespace Wado::ECS {
             _tables.back()._removeComponentGraph.emplace(*it, currentTableIndex);
 
             currentTableIndex = _tables.size() - 1; // TODO: This could potentially always be .back here after the first
+            std::cout << "Current max table index after creating from scratch: " << currentTableIndex << std::endl;
             // insert, maybe that would be faster.
 
             // Add new table to component registry of every component
             // it has 
+            std::cout << "New table has: " << std::endl;
             for (const ComponentID& componentID : newType) {
+                std::cout << "ComponentID: " << componentID << " ";
                 _componentRegistry[componentID].insert(currentTableIndex); 
             };
+            std::cout << std::endl;
 
             ++it;
         };
@@ -186,6 +195,7 @@ namespace Wado::ECS {
         // max component id of the table we need to perform the 
         // graph search from the beginning
         if (_tables[tableIndex]._maxComponentID > *addType.begin()) {
+            std::cout << "Performing graph search from the start: " << std::endl;
             startingTableIndex = 0;
             startingAddType.insert(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end());
         };
@@ -208,15 +218,21 @@ namespace Wado::ECS {
             // Edge not found, need to build graph from the beginning 
             // and continue 
             if (removeGraphIt == removeGraphEnd) {
+                std::cout << "Did not find remove edge" << std::endl;
                 break;
             };
-
+            std::cout << "Found remove edge" << std::endl;
             currentTableIndex = removeGraphIt->second;
         };
 
         if (it != removeTypes.rend()) {
             TableType fullType;
             std::set_difference(_tables[tableIndex]._type.begin(), _tables[tableIndex]._type.end(), std::next(it, 1).base(), removeTypes.end(), std::inserter(fullType, fullType.begin()));
+            std::cout << "Type that needs to be created for remove: " << std::endl;
+            for (const ComponentID& componentID : fullType) {
+                std::cout << "Component: " << componentID << " ";
+            };
+            std::cout << std::endl;
             size_t nextTableIndex = createTableGraph(0, fullType);
             _tables[currentTableIndex]._removeComponentGraph.emplace(*it, nextTableIndex);
             _tables[nextTableIndex]._addComponentGraph.emplace(*it, currentTableIndex);
@@ -308,14 +324,18 @@ namespace Wado::ECS {
     template <typename T>
     void Database::addComponent(EntityID entityID) {
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
-        //std::cout << "Current table index: " << currentTableIndex << std::endl;
+        std::cout << "Type for current table: " << std::endl;
+        for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
+            std::cout << "Component: " << componentID << " ";
+        }
+        std::cout << std::endl;
         // TODO: not sure if I should use the deferred version here 
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
-        //std::cout << "Next table index: " << nextTableIndex << std::endl;
+        std::cout << "Next table index and type: " << nextTableIndex << std::endl;
         for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
-            //std::cout << "Component: " << componentID << " ";
-        }
-        //std::cout << std::endl;
+            std::cout << "Component: " << componentID << " ";
+        };
+        std::cout << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
         //std::cout << "Finished adding component " << std::endl;
     };
@@ -326,9 +346,17 @@ namespace Wado::ECS {
         // already exist in immediate mode and point 
         // to the unique table due to adding components first.
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
-        //std::cout << "Current table index" << currentTableIndex << std::endl;
+        std::cout << "Current table index and type at remove: " << currentTableIndex << std::endl;
+        for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
+            std::cout << "Component: " << componentID << " ";
+        };
+        std::cout << std::endl;
         size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
-        //std::cout << "Next table index" << nextTableIndex << std::endl;
+        std::cout << "Next table index and type at remove: " << nextTableIndex << std::endl;
+        for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
+            std::cout << "Component: " << componentID << " ";
+        };
+        std::cout << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
@@ -395,25 +423,32 @@ namespace Wado::ECS {
 
     void Database::flushDeferredNoDelete(EntityID entityID) {
         const DeferredPayload& entityPayload = _deferredPayloads[entityID];
+        std::cout << "Got deferred payload " << std::endl;
         // First, add all components
         TableType addType;
         TableType removeType;
-        for (ComponentPayloadMap::const_iterator it = entityPayload._componentPayloadMap.begin(); it != entityPayload._componentPayloadMap.end(); it++) {
+        for (ComponentPayloadMap::const_iterator it = entityPayload._componentPayloadMap.begin(); it != entityPayload._componentPayloadMap.end(); ++it) {
             if (it->second == ComponentMode::Add) {
                 addType.insert(it->first);
+                std::cout << "Inserted add component " << std::endl;
             } else {
                 removeType.insert(it->first);
-            }
+                std::cout << "Inserted remove component " << std::endl;
+            };
         };
         
         // TODO: this might be faster by just moving through the sorted 
         // list one by one and changing table until the final one is found 
 
-        size_t currentTableIndex = _tableRegistry[entityID].tableIndex;
+        size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+        std::cout << "Current table index is: " << currentTableIndex << std::endl;
         
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, addType);
+        std::cout << "Next table index after adding types is: " << nextTableIndex << std::endl;
 
-        nextTableIndex = findTableSuccessor(nextTableIndex, removeType);
+        nextTableIndex = findTablePredecessor(nextTableIndex, removeType);
+        std::cout << "Next table index after removing types is: " << nextTableIndex << std::endl;
+        
         moveToTable(entityID, currentTableIndex, nextTableIndex);
 
         // Now, apply all the set deferred operations 
@@ -443,9 +478,10 @@ namespace Wado::ECS {
         _deferredPayloads.clear();
     };
 
-    template <class T>
+    template <typename T>
     void Database::addComponentDeferred(EntityID entityID) noexcept {
         _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Add);
+        std::cout << "Inserted component with ID: " << getComponentID<T>() << std::endl;
     };
 
     template <class T> 
