@@ -65,6 +65,9 @@ namespace Wado::ECS {
             Database(size_t defaultColumnSize = DEFAULT_COLUMN_SIZE);
             ~Database();
 
+            template <typename T>
+            ComponentID makeRelationshipPair(EntityID targetID);
+        
             // Multiple ways of creating entities
 
             // These functions will throw errors if and only if 
@@ -516,11 +519,11 @@ namespace Wado::ECS {
             template <typename T>
             QueryBuilder& relationshipTargetCondition(const ConditionOperator op = ConditionOperator::None);
 
-            void build();
+            void build() noexcept;
 
         private: 
             QueryBuilder(const BuildMode buildMode, Database& database);
-            ~QueryBuilder();
+            ~QueryBuilder() {};
 
             const BuildMode _buildMode;
             Database& _db;

@@ -600,6 +600,16 @@ namespace Wado::ECS {
         };
     };
 
+    template <typename T>
+    ComponentID Database::makeRelationshipPair(EntityID targetID) {
+        ComponentID relationshipTypeID = getComponentID<T>();
+        // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
+        // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
+        // component ID 
+        ComponentID relationshipID = relationshipTypeID | (targetID << 32);
+        return relationshipID;
+    };
+
 
     template <typename T>
     void Database::addRelationship(EntityID mainID, EntityID targetID) {
@@ -735,6 +745,64 @@ namespace Wado::ECS {
     std::set<EntityID> Database::getAllRelationshipHolders() {
         // TODO:
     };
+
+    // Query builder stuff 
+
+    template <typename T>
+    QueryBuilder& QueryBuilder::componentCondition(const ConditionOperator op) {
+        if (op == ConditionOperator::None) {
+            _requiredComponents.insert(_db.getComponentID<T>());
+        } else {
+            _bannedComponents.insert(_db.getComponentID<T>());
+        };
+        return *this;
+    };
+
+    template <typename T>
+    QueryBuilder& QueryBuilder::withComponent() {
+        _getComponents.insert(_db.getComponentID<T>());
+        return *this;
+    };
+    
+    template <typename T>
+    QueryBuilder& QueryBuilder::relationshipCondition(const EntityID targetEntity, const ConditionOperator) {
+        // TODO: magic number... 
+        if (targetEntity == 0) {
+            if (op == ConditionOperator::None) {
+                _requiredRelationshipsHolder.insert(_db.getComponentID<T>());
+            } else {
+                _bannedRelationshipsHolder.insert(_db.getComponentID<T>());
+            };
+        } else {
+            ComponentID relationshipID = _db.makeRelationshipPair<T>(targetEntity);
+            if (op == ConditionOperator::None) {
+                _requiredRelationshipsTargets.insert(relationshipID);
+            } else {
+                _bannedRelationshipsTargets.insert(relationshipID);
+            };
+        };
+        return *this;
+    };
+
+    template <typename T>
+    QueryBuilder& QueryBuilder::withRelationshipTarget(const EntityID targetEntity) {
+        ComponentID relationshipID = _db.makeRelationshipPair<T>(targetEntity);
+        _getRelationships.insert(relationshipID);
+        return *this;
+    };
+
+    template <typename T>
+    QueryBuilder& QueryBuilder::relationshipTargetCondition(const ConditionOperator op) {
+        ComponentID relationshipID = _db.getComponentID<T>();
+        if (op == ConditionOperator::None) {
+            _requiredRelationshipsAsTarget.insert(relationshipID);
+        } else {
+            _bannedRelationshipsAsTarget.insert(relationshipID);
+        };
+        return *this;
+    };
+
+    QueryBuilder::QueryBuilder(const BuildMode buildMode, Database& database) : _buildMode(buildMode), _db(database) {};
 };
 
 #endif
