@@ -681,25 +681,55 @@ namespace Wado::ECS {
         moveToTable(mainID, currentTableIndex, nextTableIndex);
     };
 
-
     template <typename T>
-    std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) {
-
+    bool Database::hasRelationship(EntityID mainId, EntityID targetID) noexcept {
+        // TODO: put this in a function, using it quite often 
+        ComponentID relationshipTypeID = getComponentID<T>();
+        // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
+        // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
+        // component ID 
+        ComponentID relationshipID = relationshipTypeID | (targetID << 32);
+        if (_componentRegistry.find(relationshipID) != _componentRegistry.end()) {
+            return _componentRegistry.at(relationshipID).find(_tableRegistry[mainId].tableIndex) != _componentRegistry.at(relationshipID);
+        };
+        return false;
     };
 
+
+    template <typename T>
+    std::set<EntityID> Database::getRelationshipTargets(EntityID entityID) noexcept {
+        const ComponentID relationshipTypeID = getComponentID<T>();
+        const Table& table = _tables[_tableRegistry[entityID].tableIndex];
+        std::set<EntityID> targets;
+        for (const ComponentID& componentID : table._type) {
+            // Has the full ID
+            if (componentID & relationshipTypeID == relationshipTypeID) {
+                // TODO: replace all these magic numbers 
+                targets.insert((componentID >> 32));
+            };
+        };
+        return targets;
+    };
+
+    // PRE: this relationship has been created before 
     template <typename T>
     std::set<EntityID> Database::getAllRelationshipTargets() {
-
+        const ComponentID relationshipTypeID = getComponentID<T>();
+        std::set<EntityID> targetIDs;
+        for (TargetRegistry::const_iterator it = _relationshipRegistry.at(relationshipTypeID).begin(); it != _relationshipRegistry.at(relationshipTypeID).end(); ++it) {
+            targetIDs.insert(it->first);
+        }
+        return targetIDs;
     };
 
     template <typename T>
     std::set<EntityID> Database::getRelationshipHolders(EntityID targetID) {
-
+        // TODO:
     };
 
     template <typename T>
     std::set<EntityID> Database::getAllRelationshipHolders() {
-
+        // TODO:
     };
 };
 

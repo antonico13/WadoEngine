@@ -108,19 +108,32 @@ namespace Wado::ECS {
             void removeRelationship(EntityID mainID, EntityID targetID) noexcept;
 
             template <typename T>
-            bool hasRelationShip(EntityID mainId, EntityID targetID) noexcept;
+            bool hasRelationship(EntityID mainId, EntityID targetID) noexcept;
+            
+            // Gets all the targets the specified entity has
+            // for the given relationship 
+            template <typename T>
+            std::set<EntityID> getRelationshipTargets(EntityID entityID) noexcept;
+
+            // Gets all targets for the given relationship 
+            template <typename T>
+            std::set<EntityID> getAllRelationshipTargets() noexcept;
+            
+            // Gets all the "main" entities given 
+            // a relationship and a target 
+            template <typename T>
+            std::set<EntityID> getRelationshipHolders(EntityID targetID) noexcept;
+
+            // Gets all the "main" entities for
+            // a given relationship 
+            template <typename T>
+            std::set<EntityID> getAllRelationshipHolders() noexcept;
+            // TODO: all sets should also add the component 
+            template <typename T>
+            void setRelationshipCopy(EntityID mainID, EntityID targetID, T& relationshipData);
 
             template <typename T>
-            std::set<EntityID> getRelationshipTargets(EntityID entityID);
-
-            template <typename T>
-            std::set<EntityID> getAllRelationshipTargets();
-
-            template <typename T>
-            std::set<EntityID> getRelationshipHolders(EntityID targetID);
-
-            template <typename T>
-            std::set<EntityID> getAllRelationshipHolders();
+            void setRelationshipMove(EntityID mainID, EntityID targetID, T& relationshipData);
 
             // sets an entity's component values. This uses the copy constructor of
             // the class.
