@@ -164,8 +164,12 @@ namespace Wado::ECS {
             currentTableIndex = _tables.size() - 1; // TODO: This could potentially always be .back here after the first
             // insert, maybe that would be faster.
 
-            // Add new table to component registry. 
-            _componentRegistry[*it].insert(currentTableIndex);
+            // Add new table to component registry of every component
+            // it has 
+            for (const ComponentID& componentID : newType) {
+                _componentRegistry[componentID].insert(currentTableIndex); 
+            };
+
             ++it;
         };
 
@@ -318,14 +322,11 @@ namespace Wado::ECS {
         // By construction, every remove edge will 
         // already exist in immediate mode and point 
         // to the unique table due to adding components first.
-        TableRegistry::const_iterator it = _tableRegistry.find(entityID);
-        std::cout << (it != _tableRegistry.end()) << std::endl;
-        //std::cout << _tableRegistry.at(entityID).entityColumnIndex << std::endl;
-        //size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
-        //std::cout << "Current table index" << currentTableIndex << std::endl;
-        //size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
-        //std::cout << "Next table index" << nextTableIndex << std::endl;
-        //moveToTable(entityID, currentTableIndex, nextTableIndex);
+        size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+        std::cout << "Current table index" << currentTableIndex << std::endl;
+        size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
+        std::cout << "Next table index" << nextTableIndex << std::endl;
+        moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
     template <class T>
