@@ -118,7 +118,10 @@ namespace Wado::ECS {
     template <class T>
     ComponentID Database::getComponentID() {
         static ComponentID componentID = generateNewComponentID();
+        // TODO: this is a bit ugly, need to find a way to statically
+        // initialize all of this 
         _componentSizes.try_emplace(componentID, sizeof(T));
+        _componentRegistry.try_emplace(componentID, std::set<size_t>());
         return componentID;
     };
 
@@ -349,14 +352,15 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    std::optional<const T&> Database::getComponentSafe(EntityID entityID) noexcept {
+    std::optional<T> Database::getComponentSafe(EntityID entityID) noexcept {
         if (!hasComponent<T>(entityID)) {
             return std::nullopt;
         } else {
             return std::optional<T>(getComponent<T>(entityID));
         };
     };
-
+    // TODO: is it the most optimal to use New here?
+    // Does this get freed properly? 
     template <typename T> 
     void Database::setComponentCopy(EntityID entityID, T& componentData) noexcept {
         ComponentID componentID = getComponentID<T>();
@@ -383,7 +387,7 @@ namespace Wado::ECS {
         const Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the move constructor
         void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
-        new(address) T(std::move(componentData));        
+        new(address) T(std::move(componentData));  
         /*std::cout << "Made it to here " << std::endl;
         std::cout << "Size of T: " << sizeof(T) << std::endl;
         *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = std::move(componentData); */

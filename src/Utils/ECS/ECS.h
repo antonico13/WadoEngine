@@ -41,7 +41,7 @@ namespace Wado::ECS {
             const T& getComponent() noexcept;
 
             template <class T>
-            std::optional<const T&> getComponent() noexcept;
+            std::optional<T> getComponentSafe() noexcept;
             
             template <class T>
             bool hasComponent() noexcept;
@@ -141,7 +141,7 @@ namespace Wado::ECS {
             // it will first check whether the entity has the requested component,
             // and if not return an empty optional. 
             template <class T>
-            std::optional<const T&> getComponentSafe(EntityID entityID) noexcept;
+            std::optional<T> getComponentSafe(EntityID entityID) noexcept;
             
             template <class T>
             bool hasComponent(EntityID entityID) noexcept;
@@ -214,6 +214,8 @@ namespace Wado::ECS {
             using Column = struct Column {
                 Column() : data(nullptr), elementStride(0) {};
                 Column(char* _data, size_t _elementStride) : data(_data), elementStride(_elementStride) {};
+                // TODO: might actually have to call destructor 
+                // for every type here when freeing 
                 char* data; // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
                 const size_t elementStride; // element stride in bytes  

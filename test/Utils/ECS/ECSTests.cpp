@@ -204,3 +204,53 @@ TEST(ComponentTest, CanSetComponentCopyVector) {
     EXPECT_EQ(dbVec[2], vec[2]) << "Expected third component of position to be equal, but it isn't";
     EXPECT_EQ(vec.size(), 3) << "Expected original vector to keep all components";
 };
+
+TEST(ComponentTest, ComponentCopiesDoNotOverlap) {
+    using namespace Wado::ECS;
+    using Vec = std::vector<int>;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    db.addComponent<Vec>(testID);
+    db.addComponent<Vec>(testID2);
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have component, but it doesn't";
+    ASSERT_TRUE(db.hasComponent<Vec>(testID2)) << "Expected entity to have component, but it doesn't";
+    Vec vec({1, 2, 3});
+    db.setComponentCopy<Vec>(testID, vec);
+    Vec vec2({5, 6, 7});
+    db.setComponentCopy<Vec>(testID2, vec2);
+    const Vec& dbVec = db.getComponent<Vec>(testID);
+    EXPECT_EQ(dbVec[0], vec[0]) << "Expected first component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[1], vec[1]) << "Expected second component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[2], vec[2]) << "Expected third component of position to be equal, but it isn't";
+    EXPECT_EQ(vec.size(), 3) << "Expected original vector to keep all components";
+    const Vec& dbVec2 = db.getComponent<Vec>(testID2);
+    EXPECT_EQ(dbVec2[0], vec2[0]) << "Expected first component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec2[1], vec2[1]) << "Expected second component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec2[2], vec2[2]) << "Expected third component of position to be equal, but it isn't";
+    EXPECT_EQ(vec2.size(), 3) << "Expected original vector to keep all components";
+};
+
+TEST(ComponentTest, CanGetComponentSafelyWhenItDoesntExist) {
+    using namespace Wado::ECS;
+    using Vec = std::vector<int>;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    EXPECT_EQ(db.getComponentSafe<Vec>(testID), std::nullopt) << "Expected entity to return a null optional if component isn't present";
+};
+
+TEST(ComponentTest, CanGetComponentSafelyWhenItDoesExist) {
+    using namespace Wado::ECS;
+    using Vec = std::vector<int>;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponent<Vec>(testID);
+    ASSERT_TRUE(db.hasComponent<Vec>(testID)) << "Expected entity to have component, but it doesn't";
+    Vec vec({1, 2, 3});
+    db.setComponentCopy<Vec>(testID, vec);
+    Vec dbVec = db.getComponentSafe<Vec>(testID).value();
+    EXPECT_EQ(dbVec[0], vec[0]) << "Expected first component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[1], vec[1]) << "Expected second component of position to be equal, but it isn't";
+    EXPECT_EQ(dbVec[2], vec[2]) << "Expected third component of position to be equal, but it isn't";
+    EXPECT_EQ(vec.size(), 3) << "Expected original vector to keep all components";
+};
