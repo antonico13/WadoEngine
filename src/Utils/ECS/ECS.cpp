@@ -82,9 +82,9 @@ namespace Wado::ECS {
         newIndex.tableIndex = tableIndex;
         auto res = _tableRegistry.insert_or_assign((entityID & ENTITY_ID_MASK), newIndex);
         if (res.second == true) {
-            std::cout << "Inserted to registry " << std::endl;
+            //std::cout << "Inserted to registry " << std::endl;
         } else {
-            std::cout << "Updated registry " << std::endl;
+            //std::cout << "Updated registry " << std::endl;
         }
     };
 
@@ -247,7 +247,7 @@ namespace Wado::ECS {
         size_t freeRowIndex;
         if (destTable.deleteList.empty()) {
             freeRowIndex = destTable._maxOccupiedRow++;
-            std::cout << "Free row index: " << freeRowIndex << std::endl;
+            //std::cout << "Free row index: " << freeRowIndex << std::endl;
             // TODO: fix this 
         } else {
             // Always pick the smallest ID avaialable to avoid
@@ -265,7 +265,7 @@ namespace Wado::ECS {
         // the column capacity, we need to realloc all columns. 
         // TODO: this can also be vectorized with SIMD I think. 
         if (freeRowIndex >= destTable._capacity) {
-            std::cout << "Bigger than dest capacity during move " << std::endl;
+            //std::cout << "Bigger than dest capacity during move " << std::endl;
             // everything needs to be resized in this case. 
             // By default, just double capacity.
             destTable._capacity = destTable._capacity * 2;
@@ -287,7 +287,7 @@ namespace Wado::ECS {
         
         // Copy column content
         for (const ComponentID& componentID : overlappingColumns) {
-            std::cout << "Overlapping component ID: " << componentID << std::endl;
+            //std::cout << "Overlapping component ID: " << componentID << std::endl;
             size_t copySize = sourceTable._columns[componentID].elementStride;
             // Always deal with byte increments 
             void* copyFrom = static_cast<char*>(sourceTable._columns[componentID].data) + copySize * currentEntityRowIndex;
@@ -295,7 +295,7 @@ namespace Wado::ECS {
             std::memcpy(copyTo, copyFrom, copySize);
         };  
 
-        std::cout << "Finished moving entity to new table " << std::endl;
+        //std::cout << "Finished moving entity to new table " << std::endl;
     };
 
 
@@ -305,16 +305,16 @@ namespace Wado::ECS {
     template <typename T>
     void Database::addComponent(EntityID entityID) {
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
-        std::cout << "Current table index: " << currentTableIndex << std::endl;
+        //std::cout << "Current table index: " << currentTableIndex << std::endl;
         // TODO: not sure if I should use the deferred version here 
         size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
-        std::cout << "Next table index: " << nextTableIndex << std::endl;
+        //std::cout << "Next table index: " << nextTableIndex << std::endl;
         for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
-            std::cout << "Component: " << componentID << " ";
+            //std::cout << "Component: " << componentID << " ";
         }
-        std::cout << std::endl;
+        //std::cout << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
-        std::cout << "Finished adding component " << std::endl;
+        //std::cout << "Finished adding component " << std::endl;
     };
 
     template <class T> 
@@ -323,9 +323,9 @@ namespace Wado::ECS {
         // already exist in immediate mode and point 
         // to the unique table due to adding components first.
         size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
-        std::cout << "Current table index" << currentTableIndex << std::endl;
+        //std::cout << "Current table index" << currentTableIndex << std::endl;
         size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
-        std::cout << "Next table index" << nextTableIndex << std::endl;
+        //std::cout << "Next table index" << nextTableIndex << std::endl;
         moveToTable(entityID, currentTableIndex, nextTableIndex);
     };
 
@@ -333,9 +333,9 @@ namespace Wado::ECS {
     bool Database::hasComponent(EntityID entityID) noexcept {
         //size_t tableIndex = _tableRegistry[entityID].tableIndex;
         size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-        std::cout << "Entity's table index is: " << tableIndex << std::endl;
+        //std::cout << "Entity's table index is: " << tableIndex << std::endl;
         const std::set<size_t>& typeSet = _componentRegistry.at(getComponentID<T>());
-        std::cout << "How many tables have component T " << typeSet.size() << std::endl;
+        //std::cout << "How many tables have component T " << typeSet.size() << std::endl;
         return typeSet.find(tableIndex) != typeSet.end();
     };
 
@@ -368,14 +368,14 @@ namespace Wado::ECS {
     };
 
     template <class T>
-    void setComponentMove(EntityID entityID, T& componentData) {
+    void Database::setComponentMove(EntityID entityID, T& componentData) noexcept {
         ComponentID componentID = getComponentID<T>();
-        size_t tableIndex = _tableRegistry[entityID].tableIndex;
-        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
-        const Column& column = _tables[tableIndex]._columns[componentID];
+        size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
+        size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+        const Column& column = _tables[tableIndex]._columns.at(componentID);
         // This version uses the move constructor
-        *static_cast<T*>(column.data + column.elementStride * entityColumnIndex) = std::move(componentData);
-    };
+        *static_cast<T*>(static_cast<void *>(column.data + column.elementStride * entityColumnIndex)) = std::move(componentData);
+    }
 
     void Database::flushDeferredNoDelete(EntityID entityID) {
         const DeferredPayload& entityPayload = _deferredPayloads[entityID];

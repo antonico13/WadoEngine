@@ -140,3 +140,36 @@ TEST(ComponentTest, CanRemoveComponents) {
     ASSERT_FALSE(db.hasComponent<int>(testID)) << "Exepected entity not to have the int component after removing";   
 };
 
+TEST(ComponentTest, CanCreateNewTableCorrectly) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponent<int>(testID);
+    db.addComponent<float>(testID);
+    db.addComponent<char>(testID);
+    ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity to have int id";
+    ASSERT_TRUE(db.hasComponent<float>(testID)) << "Exepected entity to have float id";   
+    ASSERT_TRUE(db.hasComponent<char>(testID)) << "Exepected entity not to have char id";   
+    db.removeComponent<float>(testID);
+    ASSERT_TRUE(db.hasComponent<int>(testID)) << "Expected entity to have int id";
+    ASSERT_FALSE(db.hasComponent<float>(testID)) << "Exepected entity not to have float id";   
+    ASSERT_TRUE(db.hasComponent<char>(testID)) << "Exepected entity not to have char id";   
+};
+
+TEST(ComponentTest, CanSetComponentMove) {
+    using namespace Wado::ECS;
+    using Position = struct Position {
+            float x;
+            float y;
+    };
+    Database db = Database();
+    EntityID testID = db.createEntityID();
+    db.addComponent<Position>(testID);
+    ASSERT_TRUE(db.hasComponent<Position>(testID)) << "Expected entity to have component, but it doesn't";
+    Position pos = {1.0, 2.0};
+    db.setComponentMove<Position>(testID, pos);
+    const Position& dbPos = db.getComponent<Position>(testID);
+    EXPECT_EQ(dbPos.x, 1.0) << "Expected x component of position to be equal, but it isn't";
+    EXPECT_EQ(dbPos.y, 2.0) << "Expected y component of position to be equal, but it isn't";
+};
+
