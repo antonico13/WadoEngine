@@ -124,6 +124,12 @@ namespace Wado::ECS {
             _tables[tableIndex]._maxOccupiedRow = prevFreeIndex;
             //std::cout << "New max occupied row: " << _tables[tableIndex]._maxOccupiedRow << std::endl;
             _tables[tableIndex].deleteList.erase(_tables[tableIndex].deleteList.begin(), it);
+
+            std::cout << "New delete list: " << std::endl;
+            for (const size_t& deleteListItem: _tables[tableIndex].deleteList) {
+                std::cout << deleteListItem << " ";
+            };
+            std::cout << std::endl;
         };
 
         _tableRegistry.erase(entityID);

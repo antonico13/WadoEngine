@@ -257,6 +257,63 @@ namespace Wado::ECS {
                 using DeleteList = std::set<size_t, DeleteListComp>;
 
                 DeleteList deleteList;
+
+                using ColumnBlock = struct ColumnBlock {
+                    ColumnBlock(size_t _startRow, size_t _endRow, size_t _size) : startRow(_startRow), endRow(_endRow), size(_size) {};
+                    const size_t startRow;
+                    const size_t endRow;
+                    const size_t size;
+                };
+
+                struct FreeBlockListComp {
+                    bool operator() (const ColumnBlock& b1, const ColumnBlock& b2) const {
+                        return b1.startRow > b2.endRow; // Inverse insertion order 
+                    };
+                };
+
+                using FreeBlockList = std::set<ColumnBlock, FreeBlockListComp>;
+                using FreeBlockSizeMap = std::map<size_t, FreeBlockList>;
+
+                FreeBlockList _freeBlockList;
+                FreeBlockSizeMap _blockSizeMap;
+
+                inline void addToFreeBlockList(const ColumnBlock& block) noexcept {
+                    FreeBlockList::iterator lowerBound = _freeBlockList.lower_bound(block);
+                    FreeBlockList::iterator nextBound = std::next(lowerBound, 1);
+
+                    size_t newStartRow = block.startRow;
+                    size_t newEndRow = block.endRow;
+
+                    bool mergedUp = false;
+                    bool mergedDown = false;
+                    FreeBlockList::iterator toInsert; 
+                    if ( (nextBound != _freeBlockList.end()) && nextBound->endRow + 1 == newStartRow) {
+                        newStartRow = nextBound->startRow;
+                        _blockSizeMap.at(nextBound->size).erase(*(nextBound));
+                        mergedUp = true;
+                        toInsert = nextBound;
+                    };
+                    if (lowerBound->startRow - 1 == newEndRow) {
+                        newEndRow = lowerBound->endRow;
+                        _blockSizeMap.at(lowerBound->size).erase(*(lowerBound));
+                        mergedDown = true;
+                        toInsert = lowerBound;
+                    };
+                    ColumnBlock newBlock(newStartRow, newEndRow, newEndRow - newStartRow + 1);
+                    //TODO: Not sure if this invalidates anything here
+                    _freeBlockList.insert(toInsert, newBlock);
+                    if (mergedDown && mergedUp) {
+                        _freeBlockList.erase(nextBound);
+                    };
+                    
+                    if (_blockSizeMap.find(newBlock.size) == _blockSizeMap.end()) {
+                        // TODO: fix this emplace too 
+                        _blockSizeMap.emplace(newBlock.size, FreeBlockList({newBlock}));
+                    } else {
+                        _blockSizeMap.at(newBlock.size).insert(newBlock);
+                    };
+                };
+
                 size_t _maxOccupiedRow;
                 size_t _capacity;
                 // Traversing the add/remove component graphs gives a
