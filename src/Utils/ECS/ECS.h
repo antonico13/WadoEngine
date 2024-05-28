@@ -62,9 +62,9 @@ namespace Wado::ECS {
         private:
 
             using ComponentInfo = struct ComponentInfo {
-                ComponentInfo(ComponentID _componentID, size_t _elementSize) : componentID(_componentID), elementSize(_elementSize) {};
-                ComponentID componentID;
-                size_t elementSize;
+                ComponentInfo(const ComponentID _componentID, const size_t _elementSize) noexcept : componentID(_componentID), elementSize(_elementSize) {};
+                const ComponentID componentID;
+                const size_t elementSize;
             };
 
             using ComponentInfoMap = std::unordered_map<std::type_index, ComponentInfo>;
@@ -90,80 +90,54 @@ namespace Wado::ECS {
             // TODO: this is heap managed by default,
             // but reusable IDs could live on the stack maybe?
             std::vector<EntityID> _reusableEntityIDs;
-
-            using TableType = std::set<ComponentID>; // The type of a table.
-            // Just a set of all its componets, in order. 
+            
+            // Table type needs to be an ordered set to facilitate adding components 
+            using TableType = std::set<ComponentID>; 
 
             using Column = struct Column {
-                Column() : data(nullptr), elementStride(0) {};
-                Column(char* _data, size_t _elementStride) : data(_data), elementStride(_elementStride) {};
-                // TODO: might actually have to call destructor 
-                // for every type here when freeing 
-                char* data; // Raw data pointer, let these be managed by the ECS instead of using 
+                Column() noexcept : _data(nullptr), _elementSize(0) {};
+                Column(char* data, size_t elementSize) noexcept : _data(data), _elementSize(elementSize) {};
+                // TODO: when freeing this, the object destructor should somehow be called/stored 
+                // Raw data pointer, let these be managed by the ECS instead of using 
                 // memory/clone pointers
-                const size_t elementStride; // element stride in bytes  
+                char* _data; 
+                const size_t _elementSize; // element stride in bytes  
             };
 
             using Columns = std::unordered_map<ComponentID, Column>;
 
             using Table = struct Table {
-                // TODO: fix passing pointer here 
                 Table(const TableType& type, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize), _maxOccupiedRow(0) {
-                   //std::cout << "Building table" << std::endl;
                     for (const ComponentID& componentID : type) {
-                        char* columnData = static_cast<char*>(malloc(Database::getComponentSize(componentID) * defaultColumnSize));
+                        size_t elementSize = Database::getComponentSize(componentID);
+                        // TODO: instead of malloc, use block allocator here 
+                        char* columnData = static_cast<char*>(malloc(elementSize * defaultColumnSize));
                         
                         if (columnData == nullptr) {
                             throw std::runtime_error("Ran out of memory for storing column data");
                         };
-                       //std::cout << "Alocated column " << std::endl;
-                        // TODO: won't let me emplace with arguments directly...?
-                        _columns.emplace(componentID, Column(columnData, Database::getComponentSize(componentID)));
+                        _columns.emplace(std::piecewise_construct, std::forward_as_tuple(componentID), std::forward_as_tuple(columnData, elementSize));
                     };
                 };
 
                 // Empty table constructor, should only be used 
                 // for the first table 
-                Table() : _type({}), _maxComponentID(0), _capacity(DEFAULT_COLUMN_SIZE), _maxOccupiedRow(0) {
-                
-                };
+                Table() noexcept : _type({}), _maxComponentID(0), _capacity(DEFAULT_COLUMN_SIZE), _maxOccupiedRow(0) { };
+
                 const TableType _type;
-                // TODO: add this to constructor 
                 const ComponentID _maxComponentID;
-                // TODO: should this be const? Also, map might be slow here. 
                 Columns _columns;
-                // delete list keeps track of the 
-                // free "slots" within this table's rows.
-                // This allows us to reuse data from the vector without resize or
-                // remove operations that would invalidate the vector. 
-                // if the remove list is empty, a new element is pushed back
-                // at the end of each column.
-                // TODO: need to change delete list to be a sorted set,
-                // so we can always fill in gaps that are lower in index
-                // to avoid fragmentation, and so that we can resize 
-                // the column buffers to only accomodate up to the largest 
-                // free index
-                struct DeleteListComp {
-                    bool operator() (const size_t a, const size_t b) const {
-                        return a > b; // Inverse insertion 
-                        // order 
-                    };
-                };
-
-                using DeleteList = std::set<size_t, DeleteListComp>;
-
-                DeleteList deleteList;
 
                 using ColumnBlock = struct ColumnBlock {
-                    ColumnBlock(size_t _startRow, size_t _endRow, size_t _size) : startRow(_startRow), endRow(_endRow), size(_size) {};
-                    const size_t startRow;
-                    const size_t endRow;
-                    const size_t size;
+                    ColumnBlock(size_t startRow, size_t endRow, size_t size) noexcept : _startRow(startRow), _endRow(endRow), _size(size) {};
+                    const size_t _startRow;
+                    const size_t _endRow;
+                    const size_t _size;
                 };
 
                 struct FreeBlockListComp {
                     bool operator() (const ColumnBlock& b1, const ColumnBlock& b2) const {
-                        return b1.startRow < b2.startRow;
+                        return b1._startRow < b2._startRow;
                     };
                 };
 
@@ -175,61 +149,45 @@ namespace Wado::ECS {
                 // TODO: change so these can be batched as well 
                 inline void addToFreeBlockList(const ColumnBlock& block) noexcept {
                     if (_freeBlockList.empty()) {
-                        //std::cout << "First block inserted: [" << block.startRow << ", " << block.endRow << "]" << std::endl;
-                        _blockSizeMap.emplace(block.size, FreeBlockList{block});
+                        _blockSizeMap.emplace(block._size, FreeBlockList{block});
                         _freeBlockList.insert(block);
                         return;
                     };
 
-                    FreeBlockList::iterator upperBound = _freeBlockList.upper_bound(block);
+                    // TODO: Should this be a read iterator only?
+                    FreeBlockList::const_iterator upperBound = _freeBlockList.upper_bound(block);
 
-                    size_t startRow = block.startRow;
-                    size_t endRow = block.endRow;
+                    size_t startRow = block._startRow;
+                    size_t endRow = block._endRow;
                     
-                    //std::cout << "Block: [" << block.startRow << ", " << block.endRow << "]" << std::endl;
-                    
-                    //bool mergedUp = false;
-                    //bool mergedDown = false;
-
                     if (upperBound != _freeBlockList.begin()) {
-                        //std::cout << "Trying to merge with block below" << std::endl;
-                        FreeBlockList::iterator prevBound = std::prev(upperBound, 1);
-                        if (prevBound->endRow + 1 == block.startRow) {
-                            //std::cout << "Merging with block before" << std::endl;
-                            startRow = prevBound->startRow;
-                            _blockSizeMap.at(prevBound->size).erase((*prevBound));
-                            //mergedDown = true;
+                        FreeBlockList::const_iterator prevBound = std::prev(upperBound, 1);
+                        if (prevBound->_endRow + 1 == block._startRow) {
+                            startRow = prevBound->_startRow;
+                            _blockSizeMap.at(prevBound->_size).erase((*prevBound));
                             _freeBlockList.erase(prevBound);
                         };
                     };
 
                     if (upperBound != _freeBlockList.end()) {
-                        //std::cout << "Trying to merge with block above" << std::endl;
-                        if (upperBound->startRow == block.endRow + 1) {
-                            //std::cout << "Merging with block above" << std::endl;
-                            endRow = upperBound->endRow;
-                            _blockSizeMap.at(upperBound->size).erase((*upperBound));
-                            //mergedUp = true;
+                        if (upperBound->_startRow == block._endRow + 1) {
+                            endRow = upperBound->_endRow;
+                            _blockSizeMap.at(upperBound->_size).erase((*upperBound));
                             _freeBlockList.erase(upperBound);
                         };
                     };
 
                     ColumnBlock newBlock(startRow, endRow, endRow - startRow + 1);
                     
-                    // if (mergedUp && mergedDown) {
-                    //     _freeBlockList.erase(std::prev(upperBound, 1), std::next(upperBound, 1));
-                    // } else if (mergedUp) {
-                    //     _freeBlockList.erase(upperBound);
-                    // } else if (mergedDown) {
-                    //     _freeBlockList.erase(std::prev(upperBound, 1));
-                    // };
+                    _freeBlockList.emplace(startRow, endRow, endRow - startRow + 1);
 
-                    _freeBlockList.insert(newBlock);
-
-                    if (_blockSizeMap.find(newBlock.size) == _blockSizeMap.end()) {
-                        _blockSizeMap.emplace(newBlock.size, FreeBlockList({newBlock}));
+                    if (_blockSizeMap.count(newBlock._size) == 0) {
+                        // TODO: does this work?
+                        _blockSizeMap.emplace(std::piecewise_construct, std::forward_as_tuple(newBlock._size), std::forward_as_tuple());
+                        _blockSizeMap.at(newBlock._size).emplace(startRow, endRow, endRow - startRow + 1);
+                        //_blockSizeMap.emplace(std::piecewise_construct, std::forward_as_tuple(newBlock._size), std::forward_as_tuple(newBlock));
                     } else {
-                        _blockSizeMap.at(newBlock.size).insert(newBlock);
+                        _blockSizeMap.at(newBlock._size).emplace(startRow, endRow, endRow - startRow + 1);
                     };
                 };
 
@@ -245,15 +203,12 @@ namespace Wado::ECS {
             };  
 
             using TableIndex = struct TableIndex {
-                // TODO: this adds another vector
-                // dereference basically, need to see if it's slower
-                // than storing pointer here directly. 
-                // Alternatively, malloc all tables and have a 
-                // vector of table pointers for cleanup,
-                // and this can be done the "ref" way 
-                // with no contention on the table vector.
-                size_t tableIndex;
-                size_t entityColumnIndex;
+                TableIndex(Table& table, const size_t tableIndex, const size_t entityRowIndex) noexcept : _table(table), _tableIndex(tableIndex), _entityRowIndex(entityRowIndex) { };
+                
+                // TODO: 128 bits repeated for every row of this table...
+                Table& _table; 
+                const size_t _tableIndex;
+                const size_t _entityRowIndex;
             };
 
             std::vector<Table> _tables; // Keep a record of tables so they can be
@@ -267,23 +222,29 @@ namespace Wado::ECS {
             using TableRegistry = std::unordered_map<EntityID, TableIndex>;
             TableRegistry _tableRegistry;
 
+            using TableSet = std::unordered_set<size_t>;
+
             // Used for fast inverse look-ups, for example: getting all tables
             // that have a specific component
-            using ComponentRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
+            using ComponentRegistry = std::unordered_map<ComponentID, TableSet>;
             ComponentRegistry _componentRegistry;
 
-            // Table indexing based on relationship
-            using RelationshipCount = std::unordered_set<size_t>;
-            using RelationshipCountRegistry = std::unordered_map<ComponentID, RelationshipCount>;
-            RelationshipCountRegistry _relationshipCountRegistry;
+            // Keep a record of every table thart has a specific relation ship type.
+            // (i.e: Likes, childOf)
+            using RelationshipTypeRegistry = std::unordered_map<ComponentID, TableSet>;
+            RelationshipTypeRegistry _relationshipCountRegistry;
 
-            // Relationship indexing 
-            using TargetRegistry = std::unordered_map<EntityID, std::unordered_set<size_t>>;
+            // Relationship indexing
+            // With this registry, it can be verified whether an entity is the target
+            // of a relationship type, and which tables have the component (relationship type, Target entity).
+            using TargetRegistry = std::unordered_map<EntityID, TableSet>;
             using RelationshipRegistry = std::unordered_map<ComponentID, TargetRegistry>;
             RelationshipRegistry _relationshipRegistry;
 
             // Support inverse lookup too.
-            using InverseRelationshipRegistry = std::unordered_map<ComponentID, std::unordered_set<size_t>>;
+            // For an entity, query which relationship types it is a target of, and then 
+            // which tables for each relationship type
+            using InverseRelationshipRegistry = std::unordered_map<ComponentID, TableSet>;
             using InverseTargetRegistry = std::unordered_map<EntityID, InverseRelationshipRegistry>;
             InverseTargetRegistry _inverseTargetRegistry;
 
@@ -291,6 +252,8 @@ namespace Wado::ECS {
             // Deferred commands use raw pointers only, since
             // it's impossible as far as I know to use 
             // generic references to hold data like this
+            // TODO: could solve this implicitly with function pointers 
+            // to the specialized versions 
             
             enum SetMode {
                 Copy,
@@ -305,7 +268,7 @@ namespace Wado::ECS {
             using SetComponentPayload = struct SetComponentPayload {
                 void* data;
                 SetMode mode;
-            }; // std::unordered_map<ComponentID, void *>;
+            };
             using SetComponentMap = std::unordered_map<ComponentID, SetComponentPayload>;
             using ComponentPayloadMap = std::unordered_map<ComponentID, ComponentMode>;
 
@@ -341,7 +304,7 @@ namespace Wado::ECS {
                                 // TODO: make all of these static, dereference is too slow
                                 ComponentID columnID = Database::getComponentIDUnsafe<T>();
                                 Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(columnID);
-                                return *static_cast<T*>(static_cast<void *>(columnData->data + columnData->elementStride * _rowIndex));
+                                return *static_cast<T*>(static_cast<void *>(columnData->_data + columnData->_elementSize * _rowIndex));
                             };
 
                             template <typename T>
@@ -594,7 +557,7 @@ namespace Wado::ECS {
                 // Go over every table and free the data in every column of the table. 
                 for (Table& table : _tables) {
                     for (Columns::iterator it = table._columns.begin(); it != table._columns.end(); ++it) {
-                        free(it->second.data);
+                        free(it->second._data);
                     };
                 };
             };
@@ -636,33 +599,30 @@ namespace Wado::ECS {
 
             // TODO: all entity destroys should be deferred 
             void destroyEntity(EntityID entityID) noexcept {
-                // TODO: repalce vector lookups with table refs 
-                size_t tableIndex = _tableRegistry[entityID].tableIndex;
-                //std::cout << "Delete table index: " << tableIndex << std::endl;
-                size_t tableRowIndex = _tableRegistry[entityID].entityColumnIndex;
                 // Add a block of size 1 to the list 
-                _tables[tableIndex].addToFreeBlockList(Table::ColumnBlock(tableRowIndex, tableRowIndex, 1));
+                TableIndex& tableIndex = _tableRegistry.at(entityID);
+                tableIndex._table.addToFreeBlockList(Table::ColumnBlock(tableIndex._entityRowIndex, tableIndex._entityRowIndex, 1));
 
                 //std::cout << "Free block list looks like: " << std::endl;
-                for (const Table::ColumnBlock& freeBlock : _tables[tableIndex]._freeBlockList) {
+                //for (const Table::ColumnBlock& freeBlock : tableIndex._table._freeBlockList) {
                     //std::cout << "[" << freeBlock.startRow << ", " << freeBlock.endRow << "]" << ", ";
-                };
+               // };
                 //std::cout << std::endl;
 
-                if (tableRowIndex == _tables[tableIndex]._maxOccupiedRow -  1) {
+                if (tableIndex._entityRowIndex == tableIndex._table._maxOccupiedRow -  1) {
                     //std::cout << "Deleting the largest unused block at the endl;. " << std::e ndl;
-                    Table::FreeBlockList::iterator endBlock = --(_tables[tableIndex]._freeBlockList.end());
+                    Table::FreeBlockList::iterator endBlock = --(tableIndex._table._freeBlockList.end());
                     //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
-                    _tables[tableIndex]._maxOccupiedRow = endBlock->startRow;
-                    _tables[tableIndex]._blockSizeMap.at(endBlock->size).erase(*endBlock);
-                    _tables[tableIndex]._freeBlockList.erase(endBlock);
+                    tableIndex._table._maxOccupiedRow = endBlock->_startRow;
+                    tableIndex._table._blockSizeMap.at(endBlock->_size).erase(*endBlock);
+                    tableIndex._table._freeBlockList.erase(endBlock);
                     //std::cout << "Finished deleting" << std::endl;
                 };
 
                 //std::cout << "Free block list looks like: " << std::endl;
-                for (const Table::ColumnBlock& freeBlock : _tables[tableIndex]._freeBlockList) {
+                //for (const Table::ColumnBlock& freeBlock : tableIndex._table._freeBlockList) {
                     //std::cout << "[" << freeBlock.startRow << ", " << freeBlock.endRow << "]" << ", ";
-                };
+                //};
                 //std::cout << std::endl;
 
                 _tableRegistry.erase(entityID);
@@ -678,7 +638,7 @@ namespace Wado::ECS {
             // undefined behaviour if the ID supplied is not valid. 
             template <typename T> 
             void addComponent(EntityID entityID) {
-                size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+                size_t currentTableIndex = _tableRegistry.at(entityID)._tableIndex;
                 //std::cout << "Type for current table: " << std::endl;
                 //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -717,7 +677,7 @@ namespace Wado::ECS {
                 _componentSizes.insert_or_assign(relationshipID, 0);
 
                 // Mostly the same as normal immediate component add 
-                size_t currentTableIndex = _tableRegistry.at(mainID).tableIndex;
+                size_t currentTableIndex = _tableRegistry.at(mainID)._tableIndex;
                 //std::cout << "Type for current table: " << std::endl;
                 //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -775,7 +735,7 @@ namespace Wado::ECS {
                 // component ID 
                 ComponentID relationshipID = relationshipTypeID | (targetID << 32);
 
-                size_t currentTableIndex = _tableRegistry.at(mainID).tableIndex;
+                size_t currentTableIndex = _tableRegistry.at(mainID)._tableIndex;
                 //std::cout << "Current table index and type at remove: " << currentTableIndex << std::endl;
                 //for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -799,7 +759,7 @@ namespace Wado::ECS {
                 // component ID 
                 ComponentID relationshipID = relationshipTypeID | (targetID <<  32);
                 if (_componentRegistry.find(relationshipID) != _componentRegistry.end( )) {
-                    return _componentRegistry.at(relationshipID).find(_tableRegistry[mainId].tableIndex) != _componentRegistry.at(relationshipID).end();
+                    return _componentRegistry.at(relationshipID).find(_tableRegistry.at(mainId)._tableIndex) != _componentRegistry.at(relationshipID).end();
                 };
                 return false;
             };
@@ -809,7 +769,7 @@ namespace Wado::ECS {
             template <typename T>
             std::unordered_set<EntityID> getRelationshipTargets(EntityID entityID) {
                 const ComponentID relationshipTypeID = getComponentIDUnsafe<T>();
-                const Table& table = _tables[_tableRegistry[entityID].tableIndex];
+                const Table& table = _tables[_tableRegistry.at(entityID)._tableIndex];
                 std::unordered_set<EntityID> targets;
                 for (const ComponentID& componentID : table._type) {
                     // Has the full ID
@@ -865,11 +825,11 @@ namespace Wado::ECS {
             void setComponentCopy(EntityID entityID, T& componentData) noexcept {
                 ComponentID componentID = getComponentIDUnsafe<T>();
                 //std::cout << "Setting component for copy " << std::endl;
-                size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-                size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+                size_t tableIndex = _tableRegistry.at(entityID)._tableIndex;
+                size_t entityColumnIndex = _tableRegistry.at(entityID)._entityRowIndex;
                 Column& column = _tables[tableIndex]._columns.at(componentID);
                 // This version uses the copy constructor. 
-                void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
+                void *address = static_cast<void *>(column._data + column._elementSize * entityColumnIndex);
                 //std::cout << "Entity index: " << entityColumnIndex << std::endl;
                 //std::cout << "Column capacity: " << _tables[tableIndex]._capacity << " and max occupied row: " << _tables[tableIndex]._maxOccupiedRow << ", and element size: " << column.elementStride << std::endl;
                 //std::cout << "Address: " << address << std::endl;
@@ -889,11 +849,11 @@ namespace Wado::ECS {
             template <typename T>
             void setComponentMove(EntityID entityID, T& componentData) noexcept {
                 ComponentID componentID = getComponentIDUnsafe<T>();
-                size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-                size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+                size_t tableIndex = _tableRegistry.at(entityID)._tableIndex;
+                size_t entityColumnIndex = _tableRegistry.at(entityID)._entityRowIndex;
                 const Column& column = _tables[tableIndex]._columns.at(componentID);
                 // This version uses the move constructor
-                void *address = static_cast<void *>(column.data + column.elementStride * entityColumnIndex);
+                void *address = static_cast<void *>(column._data + column._elementSize * entityColumnIndex);
                 new(address) T(std::move(componentData));  
                 /*//std::cout << "Made it to here " << std::endl;
                 //std::cout << "Size of T: " << sizeof(T) << std::endl;
@@ -905,7 +865,7 @@ namespace Wado::ECS {
             // the component. 
             template <class T> 
             void removeComponent(EntityID entityID) noexcept {
-                size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+                size_t currentTableIndex = _tableRegistry.at(entityID)._tableIndex;
                 //std::cout << "Current table index and type at remove: " << currentTableIndex << std::endl;
                 for (const ComponentID& componentID : _tables[currentTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -937,10 +897,10 @@ namespace Wado::ECS {
             const T& getComponent(EntityID entityID) noexcept {
                 ComponentID componentID = getComponentIDUnsafe<T>();
                 //std::cout << "Getting component data" << std::endl;
-                size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-                size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
+                size_t tableIndex = _tableRegistry.at(entityID)._tableIndex;
+                size_t entityColumnIndex = _tableRegistry.at(entityID)._entityRowIndex;
                 const Column& column = _tables[tableIndex]._columns.at(componentID);
-                return *static_cast<T*>(static_cast<void*>(column.data + column.elementStride * entityColumnIndex));
+                return *static_cast<T*>(static_cast<void*>(column._data + column._elementSize * entityColumnIndex));
             };
 
             // This getter also does not throw an exception, however 
@@ -969,8 +929,8 @@ namespace Wado::ECS {
             
             template <class T>
             bool hasComponent(EntityID entityID) noexcept {
-                //size_t tableIndex = _tableRegistry[entityID].tableIndex;
-                size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
+                //size_t tableIndex = _tableRegistry.at(entityID)_.tableIndex;
+                size_t tableIndex = _tableRegistry.at(entityID)._tableIndex;
                 // want to add to component registry if it doesn't exist so can use [] here
                 return _componentRegistry[getComponentIDOrInsert<T>()].count(tableIndex) != 0;
             };
@@ -1038,27 +998,11 @@ namespace Wado::ECS {
                     //std::cout << "Old capacity: " << it->_capacity << std::endl;
                     //std::cout << "New capacity: " << it->_maxOccupiedRow << std::e ndl;
                     for (Columns::iterator columnIt = it->_columns.begin(); columnIt != it->_columns.end(); ++columnIt) {
-                        columnIt->second.data = static_cast<char*>(realloc(columnIt->second.data, (it->_maxOccupiedRow + 1) * columnIt->second.elementStride));
+                        columnIt->second._data = static_cast<char*>(realloc(columnIt->second._data, (it->_maxOccupiedRow + 1) * columnIt->second._elementSize));
                         
-                        if (columnIt->second.data == nullptr) {
+                        if (columnIt->second._data == nullptr) {
                             throw std::runtime_error("Could not reallocatee column data");
                         };
-                    };
-
-                    // Now, remove from the delete list all rows >= maximum row.
-                    Table::DeleteList::iterator delListIt = it->deleteList.begin();
-                    while (delListIt != it->deleteList.end() && *(delListIt) >= it->_maxOccupiedRow) {
-                        ++delListIt;
-                    };
-
-                    if (delListIt == it->deleteList.end()) {
-                        // can clear the entire list
-                        it->deleteList.clear();
-                    } else {
-                        // delListIt points to the first element that's less than
-                        // max occupied row, need to delete everything from it 
-                        // to the beginning 
-                        it->deleteList.erase(it->deleteList.begin(), delListIt);
                     };
                 };
             };
@@ -1134,20 +1078,14 @@ namespace Wado::ECS {
             };
 
             void addEntityToTableRegistry(EntityID entityID, size_t tableIndex, size_t position) noexcept {
-                // TODO: fix this and use proper emplace 
-                TableIndex newIndex{};
-                newIndex.entityColumnIndex = position;
-                newIndex.tableIndex = tableIndex;
-                auto res = _tableRegistry.insert_or_assign((entityID & ENTITY_ID_MASK), newIndex);
-                if (res.second == true) {
-                    //std::cout << "Inserted to registry " << std::endl;
-                } else {
-                    //std::cout << "Updated registry " << std::endl;
-                }
+                // TODO: figure out how to make the TableIndex assignable 
+                _tableRegistry.erase(entityID);
+                _tableRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(entityID & ENTITY_ID_MASK), std::forward_as_tuple(_tables[tableIndex], tableIndex, position));
+                //_tableRegistry.insert_or_assign((entityID & ENTITY_ID_MASK), newIndex);
             };
 
             void moveToTable(EntityID entityID, size_t sourceTableIndex, size_t destTableIndex) {
-                size_t currentEntityRowIndex = _tableRegistry.at(entityID).entityColumnIndex;
+                size_t currentEntityRowIndex = _tableRegistry.at(entityID)._entityRowIndex;
                 Table& sourceTable = _tables[sourceTableIndex];
                 Table& destTable = _tables[destTableIndex];
                 
@@ -1161,8 +1099,8 @@ namespace Wado::ECS {
                     // TODO: should I use rbegin h ere?
                     Table::FreeBlockList::iterator endBlock = --(sourceTable._freeBlockList.end());
                     //std::cout << "Deleting from " << endBlock->startRow << " to " << endBlock->endRow << std::endl;
-                    sourceTable._maxOccupiedRow = endBlock->startRow;
-                    sourceTable._blockSizeMap.at(endBlock->size).erase(*endBlock);
+                    sourceTable._maxOccupiedRow = endBlock->_startRow;
+                    sourceTable._blockSizeMap.at(endBlock->_size).erase(*endBlock);
                     sourceTable._freeBlockList.erase(endBlock);
                     //std::cout << "Finished deleting" << std::endl;
                 };
@@ -1178,8 +1116,8 @@ namespace Wado::ECS {
                     // to combat fragmentation. Pick the lowest index block
                     // from the smallest size table 
                     Table::FreeBlockList::iterator blockIt = destTable._blockSizeMap.begin()->second.begin();
-                    Table::ColumnBlock newBlock(blockIt->startRow + 1, blockIt->endRow, blockIt->size - 1);
-                    freeRowIndex = blockIt->startRow;
+                    Table::ColumnBlock newBlock(blockIt->_startRow + 1, blockIt->_endRow, blockIt->_size - 1);
+                    freeRowIndex = blockIt->_startRow;
                     // Cleanup 
                     destTable._freeBlockList.erase(*(blockIt));
                     destTable._blockSizeMap.begin()->second.erase(blockIt);
@@ -1201,9 +1139,9 @@ namespace Wado::ECS {
                     // By default, just double capacity.
                     destTable._capacity = destTable._capacity  * 2;
                     for (Columns::iterator it = destTable._columns.begin(); it != destTable._columns.end(); it++) {
-                        it->second.data = static_cast<char *>(realloc(it->second.data, destTable._capacity * it->second.elementStride));
+                        it->second._data = static_cast<char *>(realloc(it->second._data, destTable._capacity * it->second._elementSize));
                         
-                        if (it->second.data == nullptr) {
+                        if (it->second._data == nullptr) {
                             throw std::runtime_error("Ran out of memory, cannot increase row count for table.");
                         };
                     };
@@ -1219,10 +1157,10 @@ namespace Wado::ECS {
                 // Copy column content
                 for (const ComponentID& componentID : overlappingColumns) {
                     //std::cout << "Overlapping component ID: " << componentID << std::endl;
-                    size_t copySize = sourceTable._columns[componentID].elementStride;
+                    size_t copySize = sourceTable._columns[componentID]._elementSize;
                     // Always deal with byte increments 
-                    void* copyFrom = static_cast<char*>(sourceTable._columns[componentID].data) + copySize * currentEntityRowIndex;
-                    void* copyTo = static_cast<char*>(destTable._columns[componentID].data) + copySize * freeRowIndex;
+                    void* copyFrom = static_cast<char*>(sourceTable._columns[componentID]._data) + copySize * currentEntityRowIndex;
+                    void* copyTo = static_cast<char*>(destTable._columns[componentID]._data) + copySize * freeRowIndex;
                     std::memcpy(copyTo, copyFrom, copySize);
                 };  
 
@@ -1386,7 +1324,7 @@ namespace Wado::ECS {
                 // TODO: this might be faster by just moving through the sorted 
                 // list one by one and changing table until the final one is found 
 
-                size_t currentTableIndex = _tableRegistry.at(entityID).tableIndex;
+                size_t currentTableIndex = _tableRegistry.at(entityID)._tableIndex;
                 //std::cout << "Current table index is: " << currentTableIndex << std::endl;
                 
                 size_t nextTableIndex = findTableSuccessor(currentTableIndex, addType);
@@ -1400,12 +1338,12 @@ namespace Wado::ECS {
                 // Now, apply all the set deferred operati ons 
                 for (SetComponentMap::const_iterator it = entityPayload._setMap.begin(); it != entityPayload._setMap.end(); ++it) {
                     if (it->second.mode == SetMode::Copy) {
-                        size_t tableIndex = _tableRegistry[entityID].tableIndex;
-                        size_t entityColumnIndex = _tableRegistry[entityID].entityColumnIndex;
+                        size_t tableIndex = _tableRegistry.at(entityID)._tableIndex;
+                        size_t entityColumnIndex = _tableRegistry.at(entityID)._entityRowIndex;
                         const Column& column = _tables[tableIndex]._columns[it->first];
                         // This version uses the copy constructor. 
                         //std::cout << "Performing memcopy for component: " << it->first << std::endl;
-                        memcpy(static_cast<char*>(column.data) + column.elementStride * entityColumnIndex, it->second.data, column.elementStride);
+                        memcpy(column._data + column._elementSize * entityColumnIndex, it->second.data, column._elementSize);
                     } else {
                         // TODO;
                     };
