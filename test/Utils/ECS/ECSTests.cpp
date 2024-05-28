@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "ECS.h"
-#include "ECS.cpp"
 #include <iostream>
 
 using Position = struct Position {
@@ -515,8 +514,8 @@ TEST(RelationshipTest, CanGetMultipleSubentitiesWithSameRelationship) {
     db.addRelationship<ChildOf>(testID1, testID3);
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to have both parent relationships";
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID3)) << "Expect entity 1 to have both parent relationships";
-    std::set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
-    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
+    std::unordered_set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    ASSERT_EQ(parentIDs, std::unordered_set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
 };
 
 TEST(RelationshipTest, SubentitySetReducesWhenRemovingRelationship) {
@@ -529,10 +528,10 @@ TEST(RelationshipTest, SubentitySetReducesWhenRemovingRelationship) {
     db.addRelationship<ChildOf>(testID1, testID3);
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to have both parent relationships";
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID3)) << "Expect entity 1 to have both parent relationships";
-    std::set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
-    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
+    std::unordered_set<EntityID> parentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    ASSERT_EQ(parentIDs, std::unordered_set<EntityID>({testID2, testID3})) << "Expect both parents to be retrieved";
     db.removeRelationship<ChildOf>(testID1, testID2);
-    std::set<EntityID> newParentIDs = db.getRelationshipTargets<ChildOf>(testID1);
+    std::unordered_set<EntityID> newParentIDs = db.getRelationshipTargets<ChildOf>(testID1);
     ASSERT_EQ(newParentIDs.size(), 1);
     ASSERT_EQ(*newParentIDs.begin(), testID3);
 };
@@ -548,8 +547,8 @@ TEST(RelationShipTest, CanGetAllTargetIDs) {
     db.addRelationship<ChildOf>(testID4, testID3);
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID1, testID2)) << "Expect entity 1 to be a child to 2";
     ASSERT_TRUE(db.hasRelationship<ChildOf>(testID4, testID3)) << "Expect entity 4 to be a child to 3";
-    std::set<EntityID> parentIDs = db.getAllRelationshipTargets<ChildOf>();
-    ASSERT_EQ(parentIDs, std::set<EntityID>({testID2, testID3})) << "Expected both test entity 2 and 3 to be in the global parent set";
+    std::unordered_set<EntityID> parentIDs = db.getAllRelationshipTargets<ChildOf>();
+    ASSERT_EQ(parentIDs, std::unordered_set<EntityID>({testID2, testID3})) << "Expected both test entity 2 and 3 to be in the global parent set";
 };
 
 TEST(QueryTest, CanCreateAndIterateSimpleQueries) {
@@ -572,9 +571,9 @@ TEST(QueryTest, CanCreateAndIterateSimpleQueries) {
     Position pos3{4.0, 2.0};
     db.setComponentMove<Position>(testID4, pos3);
 
-    QueryBuilder& builder = db.makeQueryBuilder(); //.withComponent<Position>().build();
+    Database::QueryBuilder& builder = db.makeQueryBuilder(); //.withComponent<Position>().build();
     
-    QueryBuilder& builder2 = builder.withComponent<Position>();
+    Database::QueryBuilder& builder2 = builder.withComponent<Position>();
 
     std::vector<Position> positions;
 
