@@ -360,6 +360,8 @@ namespace Wado::ECS {
                                     _rowIndex = 0;
                                     _tableIndex++;
                                 };
+                                //std::cout << "Row index: " << _rowIndex << std::endl;
+                                //std::cout << "Table index: " << _tableIndex << std::endl;
                                 return *this;
                             };
 
@@ -384,13 +386,15 @@ namespace Wado::ECS {
 
                             friend bool operator!= (const FullIterator& obj, const FullIterator& other) {
                                 if (obj._query != other._query) {
+                                    //std::cout << "Not equal to end" << std::endl;
                                     return true;
                                 };
 
                                 if (obj._tableIndex != other._tableIndex) {
+                                    //std::cout << "Not equal to end" << std::endl;
                                     return true;
                                 };
-
+                                //std::cout << "Checking if row is equal" << std::endl;
                                 return obj._rowIndex != other._rowIndex;
                             }; 
 
@@ -414,7 +418,7 @@ namespace Wado::ECS {
                     };
 
                     FullIterator end() { 
-                        return FullIterator(_tables.size(), _tables.rbegin()->_elementCount, *this); 
+                        return FullIterator(_tables.size(), 0, *this); 
                     };
 
                 private:
@@ -484,13 +488,10 @@ namespace Wado::ECS {
                     // defines a component condition 
                     template <typename T>
                     QueryBuilder& withComponent() {
-                       //std::cout << "Inserting in required components " << std::endl;
-                       //std::cout << Database::getComponentIDUnsafe<T>() << std::endl;
-                        //_requiredComponents.emplace(std::move(_db.getComponentID<T>()));
-                        //std::cout << "Inserted in required components" << std::endl;
-                        ///_getComponents.emplace(std::move(_db.getComponentID<T>()));
-                        //std::cout << "Inserted in get components" << std::endl;
-                        return std::move(*this);
+                        ComponentID id = Database::getComponentIDUnsafe<T>();
+                        _requiredComponents.insert(id);
+                        _getComponents.insert(id);
+                        return *this;
                     };
 
                     // Equivalent to checking if a relationship 
@@ -540,8 +541,8 @@ namespace Wado::ECS {
                         return *this;
                     };
 
-                    Query& build() {
-                        return std::move(_db->buildQuery(*this));
+                    Query build() {
+                        return _db->buildQuery(*this);
                     };
 
                     ~QueryBuilder() {};
@@ -863,7 +864,7 @@ namespace Wado::ECS {
             template <typename T> 
             void setComponentCopy(EntityID entityID, T& componentData) noexcept {
                 ComponentID componentID = getComponentIDUnsafe<T>();
-                std::cout << "Setting component for copy " << std::endl;
+                //std::cout << "Setting component for copy " << std::endl;
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
                 size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
                 Column& column = _tables[tableIndex]._columns.at(componentID);
@@ -935,7 +936,7 @@ namespace Wado::ECS {
             template <class T>
             const T& getComponent(EntityID entityID) noexcept {
                 ComponentID componentID = getComponentIDUnsafe<T>();
-                std::cout << "Getting component data" << std::endl;
+                //std::cout << "Getting component data" << std::endl;
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
                 size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
                 const Column& column = _tables[tableIndex]._columns.at(componentID);
@@ -973,7 +974,6 @@ namespace Wado::ECS {
                 // want to add to component registry if it doesn't exist so can use [] here
                 return _componentRegistry[getComponentIDOrInsert<T>()].count(tableIndex) != 0;
             };
-
 
             // Deferred versions of all operations. 
             // The effects of these operations will only be visible
@@ -1063,8 +1063,9 @@ namespace Wado::ECS {
                 };
             };
 
-            QueryBuilder& makeQueryBuilder() {
-                return std::move(QueryBuilder(QueryBuildMode::Transient, this));
+            QueryBuilder makeQueryBuilder() {
+                // TODO: use move constructor here 
+                return QueryBuilder(QueryBuildMode::Transient, this);
             };
 
             // Gets the ID for a component or inserts it and its size
@@ -1411,7 +1412,7 @@ namespace Wado::ECS {
                 };
             };
 
-            Query& buildQuery(const QueryBuilder& builder) {
+            Query buildQuery(const QueryBuilder& builder) {
                 // TODO: add caching 
                 // First, get set of all tables
 
@@ -1530,7 +1531,7 @@ namespace Wado::ECS {
                     queryTables.emplace_back(columnData, std::vector<EntityID>(), table._maxOccupiedRow, tableIndex);
                 };
 
-                return std::move(Query(queryTables, 0, this));
+                return Query(queryTables, 0, this);
             };
     };
 

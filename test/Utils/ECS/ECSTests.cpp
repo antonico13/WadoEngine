@@ -218,13 +218,13 @@ TEST(ComponentTest, ComponentCopiesDoNotOverlap) {
     EXPECT_EQ(vec2.size(), 3) << "Expected original vector to keep all components";
 };
 
-/*
+
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesntExist) {
     using namespace Wado::ECS;
     Database db = Database();
     EntityID testID = db.createEntityID();
     EXPECT_EQ(db.getComponentSafe<Vec>(testID), std::nullopt) << "Expected entity to return a null optional if component isn't present";
-};*/
+};
 
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesExist) {
     using namespace Wado::ECS;
@@ -572,21 +572,61 @@ TEST(QueryTest, CanCreateAndIterateSimpleQueries) {
     Position pos3{4.0, 2.0};
     db.setComponentMove<Position>(testID4, pos3);
 
-    Database::QueryBuilder& builder = db.makeQueryBuilder(); //.withComponent<Position>().build();
+    Database::Query query = db.makeQueryBuilder().withComponent<Position>().build();
     
-    Database::QueryBuilder& builder2 = builder.withComponent<Position>();
-
     std::vector<Position> positions;
 
-    /*for (Query::FullIterator it = query.begin(); it != query.end(); ++it) {
-        //Position& p = it.operator*<Position>();
-        positions.push_back({1.0, 2.0});
-        //p.x += 1.0;
-        //p.y += 1.0;
-    };*/
-/*
+    for (Database::Query::FullIterator it = query.begin(); it != query.end(); ++it) {
+        Position& p = it.operator*<Position>();
+        p.x += 1.0;
+        p.y += 1.0;
+    };
+
     const Position& newPos1 = db.getComponent<Position>(testID1);
+    const Position& newPos2 = db.getComponent<Position>(testID3);
+    const Position& newPos3 = db.getComponent<Position>(testID4);
 
     ASSERT_EQ(newPos1.x, 2.0) << "Expected query to increase values";
-    ASSERT_EQ(newPos1.x, 3.0) << "Expected query to increase values"; */
+    ASSERT_EQ(newPos1.y, 3.0) << "Expected query to increase values"; 
+
+    ASSERT_EQ(newPos2.x, 4.0) << "Expected query to increase values";
+    ASSERT_EQ(newPos2.y, 3.0) << "Expected query to increase values"; 
+
+    ASSERT_EQ(newPos3.x, 5.0) << "Expected query to increase values";
+    ASSERT_EQ(newPos3.y, 3.0) << "Expected query to increase values"; 
+};
+
+TEST(QueryTest, OnlyMatchesRelevantObject) {
+    using namespace Wado::ECS;
+    Database db = Database();
+    EntityID testID1 = db.createEntityID();
+    EntityID testID2 = db.createEntityID();
+    EntityID testID3 = db.createEntityID();
+    EntityID testID4 = db.createEntityID();
+    db.addComponent<Position>(testID1);
+    Position pos1{1.0, 2.0};
+    db.setComponentMove<Position>(testID1, pos1);
+    db.addComponent<float>(testID1);
+    db.addComponent<float>(testID2);
+    float x = 5.0;
+    db.setComponentCopy<float>(testID2, x);
+    db.addComponent<Position>(testID3);
+    Position pos2{3.0, 2.0};
+    db.setComponentMove<Position>(testID3, pos2);
+    db.addComponent<float>(testID4);
+    db.addComponent<Position>(testID4);
+    Position pos3{4.0, 2.0};
+    db.setComponentMove<Position>(testID4, pos3);
+
+    Database::Query query = db.makeQueryBuilder().withComponent<float>().componentCondition<Position>(Database::QueryBuilder::ConditionOperator::Not).build();
+    
+    std::vector<float> floats;
+
+    for (Database::Query::FullIterator it = query.begin(); it != query.end(); ++it) {
+        float& p = it.operator*<float>();
+        floats.push_back(p);
+    };
+
+    ASSERT_EQ(floats.size(), 1) << "Expected query to only get one component";
+    ASSERT_EQ(floats.front(), 5.0) << "Expected query to get correct component value"; 
 };
