@@ -1,2 +1,3 @@
-*/build/
+build/
 *.exe
+Shaders/SPIR-V/*

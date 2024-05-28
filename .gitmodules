@@ -1,0 +1,6 @@
+[submodule "lib/SPIRV-Cross"]
+	path = lib/SPIRV-Cross
+	url = git@github.com:KhronosGroup/SPIRV-Cross.git
+[submodule "lib/googletest"]
+	path = lib/googletest
+	url = git@github.com:google/googletest.git
