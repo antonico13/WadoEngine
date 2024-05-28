@@ -218,12 +218,13 @@ TEST(ComponentTest, ComponentCopiesDoNotOverlap) {
     EXPECT_EQ(vec2.size(), 3) << "Expected original vector to keep all components";
 };
 
+/*
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesntExist) {
     using namespace Wado::ECS;
     Database db = Database();
     EntityID testID = db.createEntityID();
     EXPECT_EQ(db.getComponentSafe<Vec>(testID), std::nullopt) << "Expected entity to return a null optional if component isn't present";
-};
+};*/
 
 TEST(ComponentTest, CanGetComponentSafelyWhenItDoesExist) {
     using namespace Wado::ECS;

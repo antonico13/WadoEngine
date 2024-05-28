@@ -3,7 +3,7 @@
 
 //#include "MainClonePtr.h"
 
-#include <stdio.h>
+#include <iostream>
 
 #include <vector>
 #include <unordered_map>
@@ -11,6 +11,7 @@
 #include <set>
 #include <optional>
 #include <algorithm>
+#include <typeindex>
 
 namespace Wado::ECS {
 
@@ -59,6 +60,19 @@ namespace Wado::ECS {
 
     class Database {
         private:
+
+            using ComponentInfo = struct ComponentInfo {
+                ComponentInfo(ComponentID _componentID, size_t _elementSize) : componentID(_componentID), elementSize(_elementSize) {};
+                ComponentID componentID;
+                size_t elementSize;
+            };
+
+            using ComponentInfoMap = std::unordered_map<std::type_index, ComponentInfo>;
+            static ComponentInfoMap _componentInfoMap;
+
+            using ComponentSizes = std::unordered_map<ComponentID, size_t>;
+            static ComponentSizes _componentSizes;
+
             // The lower 32 bits of an entity ID 
             // are used for the actual ID. The higher 32 bits will be used 
             // for various flags and features such as entity relationships,
@@ -92,20 +106,19 @@ namespace Wado::ECS {
 
             using Columns = std::unordered_map<ComponentID, Column>;
 
-            using ComponentSizes = std::unordered_map<ComponentID, size_t>;
-            ComponentSizes _componentSizes;
-
             using Table = struct Table {
                 // TODO: fix passing pointer here 
-                Table(TableType type, const ComponentSizes& sizes, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize), _maxOccupiedRow(0) {
-                    for (const ComponentID componentID : type) {
-                        char* columnData = static_cast<char*>(malloc(sizes.at(componentID) * defaultColumnSize));
+                Table(const TableType& type, const size_t defaultColumnSize) : _type(type), _maxComponentID(*(type.rbegin())), _capacity(defaultColumnSize), _maxOccupiedRow(0) {
+                   //std::cout << "Building table" << std::endl;
+                    for (const ComponentID& componentID : type) {
+                        char* columnData = static_cast<char*>(malloc(Database::getComponentSize(componentID) * defaultColumnSize));
                         
                         if (columnData == nullptr) {
                             throw std::runtime_error("Ran out of memory for storing column data");
                         };
+                       //std::cout << "Alocated column " << std::endl;
                         // TODO: won't let me emplace with arguments directly...?
-                        _columns.emplace(componentID, Column(columnData, sizes.at(componentID)));
+                        _columns.emplace(componentID, Column(columnData, Database::getComponentSize(componentID)));
                     };
                 };
 
@@ -326,7 +339,7 @@ namespace Wado::ECS {
                             template <typename T>
                             T& operator*() {
                                 // TODO: make all of these static, dereference is too slow
-                                ComponentID columnID = _query._db->getComponentID<T>();
+                                ComponentID columnID = Database::getComponentIDUnsafe<T>();
                                 Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(columnID);
                                 return *static_cast<T*>(static_cast<void *>(columnData->data + columnData->elementStride * _rowIndex));
                             };
@@ -334,14 +347,14 @@ namespace Wado::ECS {
                             template <typename T>
                             T* operator->() { 
                                 // TODO: make all of these static, dereference is too slow
-                                ComponentID columnID = _query._db->getComponentID<T>();
+                                ComponentID columnID = Database::getComponentIDUnsafe<T>();
                                 Database::Column* columnData = _query._tables[_tableIndex]._columnData.at(columnID);
                                 return static_cast<T*>(static_cast<void *>(columnData->data + columnData->elementStride * _rowIndex));
                             };
 
                             // Prefix increment
                             FullIterator& operator++() {
-                                std::cout << "increment" << std::endl;
+                               //std::cout << "increment" << std::endl;
                                 _rowIndex++;
                                 if (_rowIndex == _query._tables[_tableIndex]._elementCount) {
                                     _rowIndex = 0;
@@ -459,9 +472,9 @@ namespace Wado::ECS {
                     template <typename T>
                     QueryBuilder& componentCondition(const ConditionOperator op = ConditionOperator::None) {
                         if (op == ConditionOperator::None) {
-                            _requiredComponents.insert(_db.getComponentID<T>());
+                            _requiredComponents.insert(Database::getComponentIDUnsafe<T>());
                         } else {
-                            _bannedComponents.insert(_db.getComponentID<T>());
+                            _bannedComponents.insert(Database::getComponentIDUnsafe<T>());
                         };
                         return *this;
                     };
@@ -471,8 +484,8 @@ namespace Wado::ECS {
                     // defines a component condition 
                     template <typename T>
                     QueryBuilder& withComponent() {
-                        std::cout << "Inserting in required components " << std::endl;
-                        std::cout << _db->getComponentID<T>() << std::endl;
+                       //std::cout << "Inserting in required components " << std::endl;
+                       //std::cout << Database::getComponentIDUnsafe<T>() << std::endl;
                         //_requiredComponents.emplace(std::move(_db.getComponentID<T>()));
                         //std::cout << "Inserted in required components" << std::endl;
                         ///_getComponents.emplace(std::move(_db.getComponentID<T>()));
@@ -487,9 +500,9 @@ namespace Wado::ECS {
                         // TODO: magic number... 
                         if (targetEntity == 0) {
                             if (op == ConditionOperator::None) {
-                                _requiredRelationshipsHolder.insert(_db.getComponentID<T>());
+                                _requiredRelationshipsHolder.insert(Database::getComponentIDUnsafe<T>());
                             } else {
-                                _bannedRelationshipsHolder.insert(_db.getComponentID<T>());
+                                _bannedRelationshipsHolder.insert(Database::getComponentIDUnsafe<T>());
                             };
                         } else {
                             ComponentID relationshipID = _db.makeRelationshipPair<T>(targetEntity);
@@ -518,7 +531,7 @@ namespace Wado::ECS {
                     // querying is or is not a target of the relationship
                     template <typename T>
                     QueryBuilder& relationshipTargetCondition(const ConditionOperator op = ConditionOperator::None) {
-                        ComponentID relationshipID = _db.getComponentID<T>();
+                        ComponentID relationshipID = Database::getComponentIDUnsafe<T>();
                         if (op == ConditionOperator::None) {
                             _requiredRelationshipsAsTarget.insert(relationshipID);
                         } else {
@@ -671,7 +684,8 @@ namespace Wado::ECS {
                 //}
                 //std::cout << std::endl;
                 // TODO: not sure if I should use the deferred version here 
-                size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentID<T>()});
+               //std::cout << "Requested ID: " << getComponentIDOrInsert<T>() << std::endl;
+                size_t nextTableIndex = findTableSuccessor(currentTableIndex, {getComponentIDOrInsert<T>()});
                 //std::cout << "Next table index and type: " << nextTableIndex << std::endl;
                 //for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -683,7 +697,7 @@ namespace Wado::ECS {
 
             template <typename T>
             ComponentID makeRelationshipPair(EntityID targetID) {
-                ComponentID relationshipTypeID = getComponentID<T>();
+                ComponentID relationshipTypeID = getComponentIDOrInsert<T>();
                 // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
                 // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
                 // component ID 
@@ -693,7 +707,7 @@ namespace Wado::ECS {
 
             template <typename T>
             void addRelationship(EntityID mainID, EntityID targetID) {
-                ComponentID relationshipTypeID = getComponentID<T>();
+                ComponentID relationshipTypeID = getComponentIDOrInsert<T>();
                 // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
                 // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
                 // component ID 
@@ -754,7 +768,7 @@ namespace Wado::ECS {
 
             template <typename T>
             void removeRelationship(EntityID mainID, EntityID targetID) noexcept {
-                ComponentID relationshipTypeID = getComponentID<T>();
+                ComponentID relationshipTypeID = getComponentIDUnsafe<T>();
                 // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
                 // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
                 // component ID 
@@ -778,7 +792,7 @@ namespace Wado::ECS {
             template <typename T>
             bool hasRelationship(EntityID mainId, EntityID targetID) noexcept {
                 // TODO: put this in a function, using it quite often 
-                ComponentID relationshipTypeID = getComponentID<T>();
+                ComponentID relationshipTypeID = getComponentIDUnsafe<T>();
                 // generated component IDs go from 1..2^31 - 1, entity IDs go from 2^31 to 2^32 - 1
                 // to get the relationship ID the entity ID is shifted left by 32 and ored with the 
                 // component ID 
@@ -793,7 +807,7 @@ namespace Wado::ECS {
             // for the given relationship 
             template <typename T>
             std::unordered_set<EntityID> getRelationshipTargets(EntityID entityID) {
-                const ComponentID relationshipTypeID = getComponentID<T>();
+                const ComponentID relationshipTypeID = getComponentIDUnsafe<T>();
                 const Table& table = _tables[_tableRegistry[entityID].tableIndex];
                 std::unordered_set<EntityID> targets;
                 for (const ComponentID& componentID : table._type) {
@@ -809,7 +823,7 @@ namespace Wado::ECS {
             // Gets all targets for the given relationship 
             template <typename T>
             std::unordered_set<EntityID> getAllRelationshipTargets() {
-                const ComponentID relationshipTypeID = getComponentID<T>();
+                const ComponentID relationshipTypeID = getComponentIDUnsafe<T>();
                 std::unordered_set<EntityID> targetIDs;
                 for (TargetRegistry::const_iterator it = _relationshipRegistry.at(relationshipTypeID).begin(); it != _relationshipRegistry.at(relationshipTypeID).end(); ++it) {
                     targetIDs.insert(it->first);
@@ -848,7 +862,8 @@ namespace Wado::ECS {
             // Does this get freed properly? 
             template <typename T> 
             void setComponentCopy(EntityID entityID, T& componentData) noexcept {
-                ComponentID componentID = getComponentID<T>();
+                ComponentID componentID = getComponentIDUnsafe<T>();
+                std::cout << "Setting component for copy " << std::endl;
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
                 size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
                 Column& column = _tables[tableIndex]._columns.at(componentID);
@@ -872,7 +887,7 @@ namespace Wado::ECS {
             // in the caller's scope.
             template <typename T>
             void setComponentMove(EntityID entityID, T& componentData) noexcept {
-                ComponentID componentID = getComponentID<T>();
+                ComponentID componentID = getComponentIDUnsafe<T>();
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
                 size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
                 const Column& column = _tables[tableIndex]._columns.at(componentID);
@@ -895,7 +910,7 @@ namespace Wado::ECS {
                     //std::cout << "Component: " << componentID << " ";
                 };
                 //std::cout << std::endl;
-                size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentID<T>()});
+                size_t nextTableIndex = findTablePredecessor(currentTableIndex, {getComponentIDUnsafe<T>()});
                 //std::cout << "Next table index and type at remove: " << nextTableIndex << std::endl;
                 for (const ComponentID& componentID : _tables[nextTableIndex]._type) {
                     //std::cout << "Component: " << componentID << " ";
@@ -919,7 +934,8 @@ namespace Wado::ECS {
             // when called. 
             template <class T>
             const T& getComponent(EntityID entityID) noexcept {
-                ComponentID componentID = getComponentID<T>();
+                ComponentID componentID = getComponentIDUnsafe<T>();
+                std::cout << "Getting component data" << std::endl;
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
                 size_t entityColumnIndex = _tableRegistry.at(entityID).entityColumnIndex;
                 const Column& column = _tables[tableIndex]._columns.at(componentID);
@@ -932,20 +948,30 @@ namespace Wado::ECS {
             template <class T>
             std::optional<T> getComponentSafe(EntityID entityID) noexcept {
                 if (!hasComponent<T>(entityID)) {
+                    std::cout << "Did not have component " << std::endl;
                     return std::nullopt;
                 } else {
+                    std::cout << "Had component " << std::endl;
                     return std::optional<T>(getComponent<T>(entityID));
                 };
+            };
+
+            // Pre: component must have been created before 
+            static size_t getComponentSize(ComponentID componentID) {
+                return _componentSizes.at(componentID);
+            };
+
+            template <typename T>
+            static size_t getComponentSize() {
+                return _componentInfoMap.at(std::type_index(typeid(T)));
             };
             
             template <class T>
             bool hasComponent(EntityID entityID) noexcept {
                 //size_t tableIndex = _tableRegistry[entityID].tableIndex;
                 size_t tableIndex = _tableRegistry.at(entityID).tableIndex;
-                //std::cout << "Entity's table index is: " << tableIndex << std::endl;
-                const std::unordered_set<size_t>& typeSet = _componentRegistry.at(getComponentID<T>());
-                //std::cout << "How many tables have component T " << typeSet.size() << std::endl;
-                return typeSet.find(tableIndex) != typeSet.end();
+                // want to add to component registry if it doesn't exist so can use [] here
+                return _componentRegistry[getComponentIDOrInsert<T>()].count(tableIndex) != 0;
             };
 
 
@@ -969,13 +995,13 @@ namespace Wado::ECS {
 
             template <typename T>
             void addComponentDeferred(EntityID entityID) noexcept {
-                _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Add);
+                _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentIDOrInsert<T>(), ComponentMode::Add);
                 //std::cout << "Inserted add component with ID: " << getComponentID<T>() << std::endl;
             };
 
             template <class T> 
             void removeComponentDeferred(EntityID entityID) noexcept {
-                _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentID<T>(), ComponentMode::Remove);
+                _deferredPayloads[entityID]._componentPayloadMap.insert_or_assign(getComponentIDOrInsert<T>(), ComponentMode::Remove);
                 //std::cout << "Inserted remove component with ID: " << getComponentID<T>() << std::endl;
             };
 
@@ -985,12 +1011,12 @@ namespace Wado::ECS {
                 SetComponentPayload setPayload{};
                 setPayload.data = static_cast<void *>(componentData);
                 setPayload.mode = SetMode::Copy;
-                _deferredPayloads[entityID]._setMap.insert_or_assign(getComponentID<T>(), setPayload);
+                _deferredPayloads[entityID]._setMap.insert_or_assign(getComponentIDUnsafe<T>(), setPayload);
             };
 
             template <class T>
             void setComponentMoveDeferred(EntityID entityID, T* componentData) noexcept {
-                _deferredPayloads[entityID]._setMap.insert_or_assign(getComponentID<T>(), static_cast<void *>(componentData), SetMode::Move);
+                _deferredPayloads[entityID]._setMap.insert_or_assign(getComponentIDUnsafe<T>(), static_cast<void *>(componentData), SetMode::Move);
             };
 
             // Deletes all erased entities, resizes 
@@ -1041,18 +1067,28 @@ namespace Wado::ECS {
                 return std::move(QueryBuilder(QueryBuildMode::Transient, this));
             };
 
-            // Gets the ID for a component. Each specialization of 
-            // this function will have a static variable with the component ID,
-            // if calling for the first time a new ID is generated, otherwise the 
-            // component ID for this function is returned. 
+            // Gets the ID for a component or inserts it and its size
+            // in the static component info map if it doesn't exist
             template <typename T>
-            ComponentID getComponentID() {
-                static ComponentID componentID = generateNewComponentID();
-                // TODO: this is a bit ugly, need to find a way to statically
-                // initialize all of this 
-                _componentSizes.try_emplace(componentID, sizeof(T));
-                _componentRegistry.try_emplace(componentID, std::unordered_set<size_t>());
+            static ComponentID getComponentIDOrInsert() {
+                ComponentID componentID;
+                std::type_index typeIndex = std::type_index(typeid(T));
+                if (_componentInfoMap.count(typeIndex) == 0) {
+                   //std::cout << "Couldn't find component ID" << std::endl;
+                    componentID = generateNewComponentID();
+                    _componentInfoMap.emplace(std::piecewise_construct, std::forward_as_tuple(typeIndex), std::forward_as_tuple(componentID, sizeof(T)));
+                    _componentSizes.emplace(std::piecewise_construct, std::forward_as_tuple(componentID), std::forward_as_tuple(sizeof(T)));
+                } else {
+                    componentID = _componentInfoMap.at(typeIndex).componentID;
+                };
                 return componentID;
+            };  
+            // Gets the ID of a component unsafely. Only use if
+            // you know the component already exists. (e.g: in functions that 
+            // come after having called addComponent<T>)
+            template <typename T>
+            static ComponentID getComponentIDUnsafe() {
+                return _componentInfoMap.at(std::type_index(typeid(T))).componentID;
             };
 
         private:
@@ -1078,7 +1114,7 @@ namespace Wado::ECS {
 
             // Similarly to the above, will throw an error if the component ID
             // becomes greater than 2^31.
-            ComponentID generateNewComponentID() {
+            static ComponentID generateNewComponentID() {
                 if (COMPONENT_ID == MAX_COMPONENT_ID) {
                         throw std::runtime_error("Reached the maximum number of components, cannot create any new ones.");
                 }
@@ -1204,16 +1240,16 @@ namespace Wado::ECS {
 
                     // TODO: find a way to do this without many branches 
                     if (addGraphIt == addGraphEnd) {
-                        //std::cout << "Did not find existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
+                       //std::cout << "Did not find existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
                         break;
                     };
-                    //std::cout << "Found existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
+                   //std::cout << "Found existing branch from table index " << currentTableIndex << " to add component: " << (*it) << std::endl;
                     currentTableIndex = addGraphIt->second;
                 };
 
                 if (it == addType.end()) {
                     // All edges existed in the table graph, can return
-                    //std::cout << "All edges existed, did not create any new tables " << std::endl;
+                   //std::cout << "All edges existed, did not create any new tables " << std::endl;
                     return currentTableIndex;
                 };
 
@@ -1224,31 +1260,38 @@ namespace Wado::ECS {
                 while (it != addType.end()) {
                     // Type of this is the type of the entry table
                     // + every type until the it component  
+                   //std::cout << "Making new table type" << std::endl;
                     TableType newType(_tables[currentTableIndex]._type);
                     newType.insert(addType.begin(), std::next(it, 1));
+                   //std::cout << "Added missing types to new type" << std::endl;
                     // TODO: maybe shouldnt do default common size here, since 
                     // the intermediary table might not immediately need
                     // as many components 
-                    _tables.emplace_back(newType, _componentSizes, _defaultColumnSize);
+                    for (const ComponentID& componentID : newType) {
+                       //std::cout << "Component " << componentID << " ";
+                    };
+                   //std::cout << std::endl;
+                    _tables.emplace_back(newType, _defaultColumnSize);
+                   //std::cout << "Added new table" << std::endl;
                     _tables[currentTableIndex]._addComponentGraph.emplace(*it, _tables.size() - 1);
                     _tables.back()._removeComponentGraph.emplace(*it, currentTableIndex);
 
                     currentTableIndex = _tables.size() - 1; // TODO: This could potentially always be .back here after the first
-                    //std::cout << "Current max table index after creating from scratch: " << currentTableIndex << std::endl;
+                   //std::cout << "Current max table index after creating from scratch: " << currentTableIndex << std::endl;
                     // insert, maybe that would be faster.
 
                     // Add new table to component registry of every component
                     // it has 
-                    //std::cout << "New table has: " << std::endl;
+                   //std::cout << "New table has: " << std::endl;
                     for (const ComponentID& componentID : newType) {
-                        //std::cout << "ComponentID: " << componentID << " ";
+                       //std::cout << "ComponentID: " << componentID << " ";
                         _componentRegistry[componentID].insert(currentTableIndex); 
                     };
-                    //std::cout << std::endl;
+                   //std::cout << std::endl;
 
                     ++it;
                 };
-                //std::cout << "Finished creating table " << std::endl;
+               //std::cout << "Finished creating table " << std::endl;
                 return currentTableIndex; // final table index 
             };
 
@@ -1386,7 +1429,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered required components " << std::endl;
+               //std::cout << "Filtered required components " << std::endl;
 
                 // Now filter all required explict relationships
                 for (const ComponentID& componentID : builder._requiredRelationshipsTargets) {
@@ -1399,7 +1442,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered required relationships " << std::endl;
+               //std::cout << "Filtered required relationships " << std::endl;
 
                 // Only keep tables where the entity is a relationship holder.
                 for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
@@ -1412,7 +1455,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered required relationship holdings " << std::endl;
+               //std::cout << "Filtered required relationship holdings " << std::endl;
 
                 // Only keep tables where the entity is a target..???
                 /*for (const ComponentID& componentID : builder._requiredRelationshipsHolder) {
@@ -1437,7 +1480,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered banned components " << std::endl;
+               //std::cout << "Filtered banned components " << std::endl;
 
                 // filter all tables that have banned relationships 
                 for (const ComponentID& componentID : builder._bannedRelationshipsTargets) {
@@ -1450,7 +1493,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered banned relationships " << std::endl;
+               //std::cout << "Filtered banned relationships " << std::endl;
 
                 // Filter all tables with banned relationship holders 
                 for (const ComponentID& componentID : builder._bannedRelationshipsHolder) {
@@ -1463,7 +1506,7 @@ namespace Wado::ECS {
                     currentTableIDs.clear();
                 };
 
-                std::cout << "Filtered banned relationship holdings " << std::endl;
+               //std::cout << "Filtered banned relationship holdings " << std::endl;
 
                 // Now, need to get the column data pointers from all 
                 // tables according tot he get component sets 
@@ -1493,6 +1536,9 @@ namespace Wado::ECS {
 
     // Static ID init 
     ComponentID Database::COMPONENT_ID = 1;
+    Database::ComponentInfoMap Database::_componentInfoMap = Database::ComponentInfoMap();
+    Database::ComponentSizes Database::_componentSizes = Database::ComponentSizes();
+
 };
 
 #endif
