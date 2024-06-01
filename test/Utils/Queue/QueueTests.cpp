@@ -54,3 +54,25 @@ TEST(ArrayQueueTest, CanDequeueElement) {
     newQueue.enqueue(&newStruct);
     ASSERT_EQ(&newStruct, newQueue.dequeue()) << "Expected the added pointer to be returned";
 };
+
+TEST(ArrayQueueTest, EmptyAfterDequeue) {
+    using namespace Wado::Queue;
+    ArrayQueue<TestStruct> newQueue = ArrayQueue<TestStruct>(QUEUE_SIZE);
+    ASSERT_TRUE(newQueue.isEmpty()) << "Expected new queue to be empty by default before adding anything";
+    TestStruct newStruct;
+    newQueue.enqueue(&newStruct);
+    newQueue.dequeue();
+    ASSERT_TRUE(newQueue.isEmpty()) << "Expected queue to be empty after dequeue";
+};
+
+TEST(ArrayQueueTest, DequeueIsPerformedInLIFOOrder) {
+    using namespace Wado::Queue;
+    ArrayQueue<TestStruct> newQueue = ArrayQueue<TestStruct>(QUEUE_SIZE);
+    ASSERT_TRUE(newQueue.isEmpty()) << "Expected new queue to be empty by default before adding anything";
+    TestStruct newStruct;
+    TestStruct newStruct2;
+    newQueue.enqueue(&newStruct);
+    newQueue.enqueue(&newStruct2);
+    ASSERT_EQ(&newStruct2, newQueue.dequeue()) << "Expected the second pointer to be dequeued first";
+    ASSERT_EQ(&newStruct, newQueue.dequeue()) << "Expected the first pointer to be dequeued second";
+};
