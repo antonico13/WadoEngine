@@ -14,10 +14,10 @@ typedef struct ThreadAffinityData {
 typedef PTHREADAFFINITYDATA *PPTHREADAFFINITYDATA;
 
 DWORD queueTlsIndex;
+DWORD previousFiberTlsIndex;
 
 typedef struct FiberData {
-    int x;
-    int y;
+    LPVOID fiberPtr;
 } FiberData;
 
 DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
@@ -41,6 +41,40 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     return 0;
 };
 
+
+#define WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)\
+    void TaskName(LPVOID fiberParam) {\
+        LPVOID previousFiberPtr = TlsGetValue(previousFiberTlsIndex);\
+        if ((previousFiberPtr == 0) && (GetLastError() != ERROR_SUCCESS)) {\
+            throw std::runtime_error("Could not get previous task pointer");\
+        };\
+        DeleteFiber(previousFiberPtr);\
+        ArgumentType *ArgumentName = static_cast<ArgumentType *>(fiberParam);\
+        Code\
+        Wado::Queue::Queue<FiberData> *localReadyQueue = static_cast<Wado::Queue::Queue<FiberData> *>(TlsGetValue(queueTlsIndex));\
+        if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {\
+            throw std::runtime_error("Could not get local ready queue");\
+        };\
+        while (localReadyQueue->isEmpty()) { };\
+        FiberData* nextFiber = localReadyQueue->dequeue();\
+        if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {\
+            throw std::runtime_error("Could not set previous task pointer when switching tasks");\
+        };\
+        SwitchToFiber(nextFiber->fiberPtr);\
+    };
+
+#define TASK(TaskName, ArgumentType, ArgumentName, Code) WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)
+
+typedef struct DummyData {
+    int x; 
+    int y;
+} DummyData;
+
+TASK(DummyTask, DummyData, data, {
+    std::cout << "X: " << data->x << std::endl;
+    std::cout << "Y: " << data->y << std::endl;
+})
+
 int main() {
     HANDLE currentProcess = GetCurrentProcess();
     std::cout << "Current process pseudo handle: " << currentProcess << std::endl;
@@ -61,6 +95,10 @@ int main() {
     if ((queueTlsIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
         throw std::runtime_error("Out of indices for thread local storage");
     };
+
+    if ((previousFiberTlsIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
+        throw std::runtime_error("Out of indices for fiber pointer index thread local storage");
+    };  
 
     DWORD threadCount = 0;
 
