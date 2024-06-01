@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "ArrayQueue.h"
+#include "LinkedListQueue.h"
 
 typedef struct ThreadAffinityData {
     DWORD_PTR threadAffinity;
@@ -25,7 +26,7 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     std::cout << "Running thread on core:" << affinityData->threadAffinity << std::endl;
     
     LPVOID lpvQueue; 
-    lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<FiberData>));
+    lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<void>));
 
     if (lpvQueue == NULL) {
         throw std::runtime_error("Could not allocate memory for local queues");
@@ -45,6 +46,75 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     return 0;
 };
 
+class HybridLock {
+    public:
+        HybridLock() noexcept {
+            lock = _unlocked;
+            ownerFiber = nullptr;
+        };
+
+        ~HybridLock() noexcept {
+            // TODO: good?
+            waiters.~LinkedListQueue();
+        };
+
+        static const size_t DEFAULT_TIME_LIMIT = 500;
+
+        void tryAcquire(size_t timeLimit = DEFAULT_TIME_LIMIT) {
+            while ((timeLimit--) && InterlockedCompareExchange(&lock, _locked, _unlocked)) { };
+            if (timeLimit == 0) { // TODO what happens when both go false at the same time?
+                waiters.enqueue(GetCurrentFiber());
+                FiberYield();
+            };
+            ownerFiber = GetCurrentFiber();
+        };
+
+        void acquire() {
+            if (InterlockedCompareExchange(&lock, _locked, _unlocked)) {
+                waiters.enqueue(GetCurrentFiber());
+                FiberYield();
+            };
+            ownerFiber = GetCurrentFiber();
+        };
+
+        void release() {
+            if (ownerFiber != GetCurrentFiber()) {
+                throw std::runtime_error("Tried to release a lock the fiber didn't onw");
+            };
+            if (!waiters.isEmpty()) { // Maybe this should be atomic? I can have race conditions here 
+                // need to add a fiber to some ready list here
+                Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+                localReadyQueue->enqueue(waiters.dequeue());
+            } else {
+                InterlockedCompareExchange(&lock, _unlocked, _locked);
+            };
+        };
+    private:
+        // TODO: these dont have to be longs, can do 16 too 
+        const LONG _unlocked = 0;
+        const LONG _locked = 1;
+
+        LONG volatile lock;
+        LPVOID ownerFiber;
+        // This is kinda wild 
+        Wado::Queue::LinkedListQueue<void> waiters;
+};
+
+void FiberYield() {
+    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+    if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
+        throw std::runtime_error("Could not get local ready queue");
+    };
+    
+    while (localReadyQueue->isEmpty()) { };
+    
+    LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());
+    if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {
+            throw std::runtime_error("Could not set previous task pointer when switching tasks");
+    };
+    SwitchToFiber(nextFiber);
+};
+
 
 #define WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)\
     void TaskName(LPVOID fiberParam) {\
@@ -55,16 +125,16 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
         DeleteFiber(previousFiberPtr);\
         ArgumentType *ArgumentName = static_cast<ArgumentType *>(fiberParam);\
         Code\
-        Wado::Queue::Queue<FiberData> *localReadyQueue = static_cast<Wado::Queue::Queue<FiberData> *>(TlsGetValue(queueTlsIndex));\
+        Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));\
         if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {\
             throw std::runtime_error("Could not get local ready queue");\
         };\
         while (localReadyQueue->isEmpty()) { };\
-        FiberData* nextFiber = localReadyQueue->dequeue();\
+        LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());\
         if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {\
             throw std::runtime_error("Could not set previous task pointer when switching tasks");\
         };\
-        SwitchToFiber(nextFiber->fiberPtr);\
+        SwitchToFiber(nextFiber);\
     };
 
 #define TASK(TaskName, ArgumentType, ArgumentName, Code) WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)
