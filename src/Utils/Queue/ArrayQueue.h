@@ -4,7 +4,6 @@
 #include "Queue.h"
 
 #include <stdexcept>
-#include <iostream>
 
 namespace Wado::Queue {
 
