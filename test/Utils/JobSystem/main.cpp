@@ -16,6 +16,7 @@ typedef PTHREADAFFINITYDATA *PPTHREADAFFINITYDATA;
 
 DWORD queueTlsIndex;
 DWORD previousFiberTlsIndex;
+DWORD coreNumberTlsIndex;
 
 typedef struct FiberData {
     LPVOID fiberPtr;
@@ -23,8 +24,20 @@ typedef struct FiberData {
 
 DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     PTHREADAFFINITYDATA affinityData = (PTHREADAFFINITYDATA) lpParam;
-    std::cout << "Running thread on core:" << affinityData->threadAffinity << std::endl;
-    
+    DWORD_PTR threadAffinity = affinityData->threadAffinity;
+    DWORD64 coreNumber = 0;
+
+    while (threadAffinity > 0) {
+        coreNumber++;
+        threadAffinity = threadAffinity >> 1;
+    };
+
+    std::cout << "Running thread on core:" << threadAffinity << std::endl;
+
+    if (!TlsSetValue(coreNumberTlsIndex, (LPVOID) coreNumber)) {
+        throw std::runtime_error("Could not set tls core numebr value");
+    };
+
     LPVOID lpvQueue; 
     lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<void>));
 
@@ -44,6 +57,21 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     HeapFree(GetProcessHeap(), 0, TlsGetValue(queueTlsIndex));
 
     return 0;
+};
+
+void FiberYield() {
+    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+    if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
+        throw std::runtime_error("Could not get local ready queue");
+    };
+    
+    while (localReadyQueue->isEmpty()) { };
+    
+    LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());
+    if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {
+            throw std::runtime_error("Could not set previous task pointer when switching tasks");
+    };
+    SwitchToFiber(nextFiber);
 };
 
 class HybridLock {
@@ -159,22 +187,8 @@ class Fence {
         FenceData* currentFenceData;
 };
 
-
-void FiberYield() {
-    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-    if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
-        throw std::runtime_error("Could not get local ready queue");
-    };
-    
-    while (localReadyQueue->isEmpty()) { };
-    
-    LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());
-    if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {
-            throw std::runtime_error("Could not set previous task pointer when switching tasks");
-    };
-    SwitchToFiber(nextFiber);
-};
-
+// two pointer derefs with this, 
+// will hit really bad performance 
 typedef struct fiberArgs {
     LPVOID mainArgs; 
     LPVOID fenceToSignal; 
@@ -219,7 +233,7 @@ TASK(DummyTask, DummyData, data, {
     std::cout << "Y: " << data->y << std::endl;
 });
 
-
+// Arguments and fence memory is managed by the caller of this
 void makeTask(LPFIBER_START_ROUTINE function, void *arguments, Fence* fenceToSignal = nullptr) {
     fiberArgs* args = static_cast<fiberArgs *>(malloc(sizeof(fiberArgs)));
     if (args == nullptr) {
@@ -256,12 +270,17 @@ int main() {
     // allocate one tls index for the thread ready queue 
      
     if ((queueTlsIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
-        throw std::runtime_error("Out of indices for thread local storage");
+        throw std::runtime_error("Out of indices for queue thread local storage index");
     };
 
     if ((previousFiberTlsIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
-        throw std::runtime_error("Out of indices for fiber pointer index thread local storage");
+        throw std::runtime_error("Out of indices for fiber pointer thread local storage index");
     };  
+
+    if ((coreNumberTlsIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
+        throw std::runtime_error("Out of indices core number thread local storage index");
+    };  
+
 
     DWORD threadCount = 0;
 
