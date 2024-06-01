@@ -102,42 +102,61 @@ class HybridLock {
 
 class Fence {
     public:
-        Fence() noexcept {
-            fence = _unsignaled;
+        Fence() {
+            makeFenceData();
         };
 
         ~Fence() noexcept {
-            // TODO: good?
-            waiters.~LinkedListQueue();
+            // assuming its only destroyed when no waiters
+            free(currentFenceData);
         };
 
         void reset() noexcept {
-            InterlockedExchange(&fence, _unsignaled);
+            free(currentFenceData);
+            makeFenceData();
         };
 
+        // I don't think this actually does anything 
         void signal() noexcept {
-            InterlockedExchange(&fence, _signaled);
-            // TODO should there be an atomic check in a loop
-            // now for every one we free?
+            PVOID volatile previousFenceData; 
+            InterlockedExchangePointer(&previousFenceData, currentFenceData);
+            FenceData* fenceData = static_cast<FenceData *>(previousFenceData);
+            InterlockedExchange(&fenceData->fence, _signaled);
             Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-            while (!waiters.isEmpty()) {
-                localReadyQueue->enqueue(waiters.dequeue());
+            while (!fenceData->waiters.isEmpty()) {
+                localReadyQueue->enqueue(fenceData->waiters.dequeue());
             };
         }
 
         void waitForSignal() {
-            if (!InterlockedAnd(&fence, _signaled)) {
-                waiters.enqueue(GetCurrentFiber());
+            if (!InterlockedAnd(&currentFenceData->fence, _signaled)) {
+                currentFenceData->waiters.enqueue(GetCurrentFiber());
                 FiberYield();
             };
         };
     private:
+
+        void makeFenceData() {
+            currentFenceData = static_cast<FenceData *>(malloc(sizeof(FenceData)));
+
+            if (currentFenceData == nullptr) {
+                throw std::runtime_error("Could not create new fence data");
+            };
+
+            currentFenceData->fence = _unsignaled;
+            currentFenceData->waiters = Wado::Queue::LinkedListQueue<void>();
+        };
+
         const LONG _unsignaled = 0;
         const LONG _signaled = 1;
 
-        LONG volatile fence;
-        // This is kinda wild 
-        Wado::Queue::LinkedListQueue<void> waiters;
+        using FenceData = struct FenceData {
+            LONG volatile fence;
+            // This is kinda wild 
+            Wado::Queue::LinkedListQueue<void> waiters;
+        };
+
+        FenceData* currentFenceData;
 };
 
 
@@ -156,6 +175,10 @@ void FiberYield() {
     SwitchToFiber(nextFiber);
 };
 
+typedef struct fiberArgs {
+    LPVOID mainArgs; 
+    LPVOID fenceToSignal; 
+} fiberArgs;
 
 #define WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)\
     void TaskName(LPVOID fiberParam) {\
@@ -164,12 +187,18 @@ void FiberYield() {
             throw std::runtime_error("Could not get previous task pointer");\
         };\
         DeleteFiber(previousFiberPtr);\
-        ArgumentType *ArgumentName = static_cast<ArgumentType *>(fiberParam);\
-        Code\
+        fiberArgs *args = static_cast<fiberArgs *>(fiberParam);\
+        ArgumentType *ArgumentName = static_cast<ArgumentType *>(args->mainArgs);\
+        Code;\
         Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));\
         if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {\
             throw std::runtime_error("Could not get local ready queue");\
         };\
+        if (args->fenceToSignal != 0) {\
+            Fence *fence = static_cast<Fence *>(args->fenceToSignal);\
+            fence->signal();\
+        };\
+        free(args);\
         while (localReadyQueue->isEmpty()) { };\
         LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());\
         if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {\
@@ -188,7 +217,26 @@ typedef struct DummyData {
 TASK(DummyTask, DummyData, data, {
     std::cout << "X: " << data->x << std::endl;
     std::cout << "Y: " << data->y << std::endl;
-})
+});
+
+
+void makeTask(LPFIBER_START_ROUTINE function, void *arguments, Fence* fenceToSignal = nullptr) {
+    fiberArgs* args = static_cast<fiberArgs *>(malloc(sizeof(fiberArgs)));
+    if (args == nullptr) {
+        throw std::runtime_error("Could not allocate space for function arguments");
+    };
+
+    args->mainArgs = arguments;
+    args->fenceToSignal = fenceToSignal;
+
+    LPVOID fiberPtr = CreateFiber(0, function, args);
+
+    // push to global queue here if you cant to normal one
+
+    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+    localReadyQueue->enqueue(fiberPtr);
+};
+
 
 int main() {
     HANDLE currentProcess = GetCurrentProcess();
