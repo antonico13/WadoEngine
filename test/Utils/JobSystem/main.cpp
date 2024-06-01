@@ -100,6 +100,47 @@ class HybridLock {
         Wado::Queue::LinkedListQueue<void> waiters;
 };
 
+class Fence {
+    public:
+        Fence() noexcept {
+            fence = _unsignaled;
+        };
+
+        ~Fence() noexcept {
+            // TODO: good?
+            waiters.~LinkedListQueue();
+        };
+
+        void reset() noexcept {
+            InterlockedExchange(&fence, _unsignaled);
+        };
+
+        void signal() noexcept {
+            InterlockedExchange(&fence, _signaled);
+            // TODO should there be an atomic check in a loop
+            // now for every one we free?
+            Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+            while (!waiters.isEmpty()) {
+                localReadyQueue->enqueue(waiters.dequeue());
+            };
+        }
+
+        void waitForSignal() {
+            if (!InterlockedAnd(&fence, _signaled)) {
+                waiters.enqueue(GetCurrentFiber());
+                FiberYield();
+            };
+        };
+    private:
+        const LONG _unsignaled = 0;
+        const LONG _signaled = 1;
+
+        LONG volatile fence;
+        // This is kinda wild 
+        Wado::Queue::LinkedListQueue<void> waiters;
+};
+
+
 void FiberYield() {
     Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
     if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
