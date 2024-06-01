@@ -22,8 +22,7 @@ typedef struct FiberData {
 
 DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     PTHREADAFFINITYDATA affinityData = (PTHREADAFFINITYDATA) lpParam;
-    std::cout << "Running thread on core:" << std::bitset<sizeof(DWORD_PTR)>(affinityData->threadAffinity) << std::endl;
-    Sleep(50); 
+    std::cout << "Running thread on core:" << affinityData->threadAffinity << std::endl;
     
     LPVOID lpvQueue; 
     lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<FiberData>));
@@ -35,6 +34,11 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     if (!TlsSetValue(queueTlsIndex, lpvQueue)) {
         throw std::runtime_error("Could not set tls value");
     };
+
+    LPVOID fiberID = ConvertThreadToFiber(NULL);
+
+    // Now, we are a fiber, do main fiber loop 
+    std::cout << "Became fiber" << std::endl;
 
     HeapFree(GetProcessHeap(), 0, TlsGetValue(queueTlsIndex));
 
@@ -136,6 +140,7 @@ int main() {
         throw std::runtime_error("Could not allocate memory to hold thread ID array");
     };
 
+    threadIDArray[0] = GetCurrentThreadId();
 
     threadHandleArray = (PHANDLE) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, threadCount * sizeof(HANDLE));
 
@@ -143,8 +148,27 @@ int main() {
         throw std::runtime_error("Could not allocate memory to hold thread handle array");
     };
 
+    threadHandleArray[0] = GetCurrentThread();
 
-    for (int i = 0; i < threadCount; i++) {
+    
+    threadAffinityData[0] = (PTHREADAFFINITYDATA) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(THREADAFFINITYDATA));
+
+    if(threadAffinityData[0] == NULL) {
+        throw std::runtime_error("Could not allocate thread affinity data struct for the first thread");
+    };
+
+    threadAffinityData[0]->threadAffinity = (DWORD)1 << availableCores[0];
+
+    DWORD_PTR oldThreadAffinity = SetThreadAffinityMask(threadHandleArray[0], threadAffinityData[0]->threadAffinity);
+        
+    std::cout << "Old thread affinity for thread " << 0 << " was " << std::bitset<sizeof(DWORD_PTR)>(oldThreadAffinity) << std::endl;
+
+    if (oldThreadAffinity == 0) {
+        throw std::runtime_error("Could not set thread affinity for the first thread");
+    };
+
+    // The current thread takes the first slot 
+    for (int i = 1; i < threadCount; i++) {
         // Allocate memory for all thread related data 
 
 
@@ -173,93 +197,105 @@ int main() {
         };
     };
 
-    for (int i = 0; i < threadCount; i++) {
+    for (int i = 1; i < threadCount; i++) {
         ResumeThread(threadHandleArray[i]);
     };
 
-    WaitForMultipleObjects(threadCount, threadHandleArray, TRUE, INFINITE);
+    std::cout << "Running main thread on core: " << threadAffinityData[0]->threadAffinity << std::endl;
 
-    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX systemLogicalInformationBuffer = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 100 * sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
+    // Now, convert this thread to a fiber 
 
-    if (systemLogicalInformationBuffer == NULL) {
-        throw std::runtime_error("Could not allocate memory to hold the system logical processor info");
-    };
+    LPVOID fiberID = ConvertThreadToFiber(NULL);
 
-    DWORD bufferSize = 100 * sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+    // Now, we are a fiber, do main fiber loop 
+    std::cout << "Main thread became fiber" << std::endl;
 
-    std::cout << "Buffersize: " << bufferSize << std::endl;
-
-    if (!GetLogicalProcessorInformationEx(RelationAll, systemLogicalInformationBuffer, &bufferSize)) {
-        throw std::runtime_error("Could not get processor info");
-    };
-
-    std::cout << "Buffersize: " << bufferSize << std::endl;
-
-    char* bufferPtr = (char*) systemLogicalInformationBuffer;
+    Sleep(5000);
     
-    size_t i = 0;
-    while (i < bufferSize) {
-        PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX processInfo = ((PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(bufferPtr + i));
-        std::cout << "Relationship type: " << processInfo->Relationship << std::endl;
-        switch (processInfo->Relationship) {
-            case RelationProcessorCore: case 7:
-                // TODO: figure out how to get the modules together 
-                PROCESSOR_RELATIONSHIP processorRelationship = processInfo->Processor;
-                if (processorRelationship.Flags == LTP_PC_SMT) {
-                    std::cout << "PC Supports SMT" << std::endl;
-                } else {
-                    std:: cout << "No SMT support" << std::endl;
-                };
+    //WaitForMultipleObjects(threadCount, threadHandleArray, TRUE, INFINITE);
 
-                std::cout << "Efficiency class " << (DWORD) processorRelationship.EfficiencyClass << std::endl;
-                std::cout << "Group count " << processorRelationship.GroupCount << std::endl;
-                break;
-            case RelationNumaNode:
-                NUMA_NODE_RELATIONSHIP numaNode = processInfo->NumaNode;
-                std::cout << "NUMA node number: " << numaNode.NodeNumber << std::endl;
-                GROUP_AFFINITY affinity = numaNode.GroupMask;
-                std::cout << "Affinity: " << std::bitset<8>(affinity.Mask) << std::endl;
-                std::cout << "Group: " << affinity.Group << std::endl;
-                break;
-            case RelationCache:
-                CACHE_RELATIONSHIP cacheInfo = processInfo->Cache;
-                std::cout << "Cache level: " << (DWORD)cacheInfo.Level << std::endl;
-                std::cout << "Cache size:" << cacheInfo.CacheSize << std::endl;
-                std::cout << "Line size: " << cacheInfo.LineSize << std::endl;
-                std::cout << "Associativity: " << (DWORD)cacheInfo.Associativity << std::endl;
-                //PROCESSOR_CACHE_TYPE cacheType = cacheInfo.Type;
+    std::cout << "Waited for all objects" << std::endl;
 
-                switch (cacheInfo.Type) {
-                    case CacheUnified:
-                        std::cout << "Unified cache" << std::endl;
-                        break;
-                    case CacheInstruction:
-                        std::cout << "Instruction cache" << std::endl;
-                        break;
-                    case CacheData:
-                        std::cout << "Data cache" << std::endl;
-                        break;
-                    case CacheTrace:
-                        std::cout << "Trace cache" << std::endl;
-                        break;
-                    // default:
-                    //     std::cout << "Unknown" << std::endl;
-                    //     break;
-                };
-                break;
-            case RelationGroup:
-                GROUP_RELATIONSHIP groupRelation = processInfo->Group;
-                std::cout << "Maximum group count: " << groupRelation.MaximumGroupCount << std::endl;
-                std::cout << "Active group count: " << groupRelation.ActiveGroupCount << std::endl;
-                break;
-            default: 
-                std::cout << "Not yet" << std::endl;
-        };
-        i += processInfo->Size;
-        //std:: cout << "Current i size " << i << std::endl;
-    };
+    // PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX systemLogicalInformationBuffer = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 100 * sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
 
- 
+    // if (systemLogicalInformationBuffer == NULL) {
+    //     throw std::runtime_error("Could not allocate memory to hold the system logical processor info");
+    // };
+
+    // DWORD bufferSize = 100 * sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+
+    // std::cout << "Buffersize: " << bufferSize << std::endl;
+
+    // if (!GetLogicalProcessorInformationEx(RelationAll, systemLogicalInformationBuffer, &bufferSize)) {
+    //     throw std::runtime_error("Could not get processor info");
+    // };
+
+    // std::cout << "Buffersize: " << bufferSize << std::endl;
+
+    // char* bufferPtr = (char*) systemLogicalInformationBuffer;
+    
+    // size_t i = 0;
+    // while (i < bufferSize) {
+    //     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX processInfo = ((PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(bufferPtr + i));
+    //     std::cout << "Relationship type: " << processInfo->Relationship << std::endl;
+    //     switch (processInfo->Relationship) {
+    //         case RelationProcessorCore: case 7:
+    //             // TODO: figure out how to get the modules together 
+    //             PROCESSOR_RELATIONSHIP processorRelationship = processInfo->Processor;
+    //             if (processorRelationship.Flags == LTP_PC_SMT) {
+    //                 std::cout << "PC Supports SMT" << std::endl;
+    //             } else {
+    //                 std:: cout << "No SMT support" << std::endl;
+    //             };
+
+    //             std::cout << "Efficiency class " << (DWORD) processorRelationship.EfficiencyClass << std::endl;
+    //             std::cout << "Group count " << processorRelationship.GroupCount << std::endl;
+    //             break;
+    //         case RelationNumaNode:
+    //             NUMA_NODE_RELATIONSHIP numaNode = processInfo->NumaNode;
+    //             std::cout << "NUMA node number: " << numaNode.NodeNumber << std::endl;
+    //             GROUP_AFFINITY affinity = numaNode.GroupMask;
+    //             std::cout << "Affinity: " << std::bitset<8>(affinity.Mask) << std::endl;
+    //             std::cout << "Group: " << affinity.Group << std::endl;
+    //             break;
+    //         case RelationCache:
+    //             CACHE_RELATIONSHIP cacheInfo = processInfo->Cache;
+    //             std::cout << "Cache level: " << (DWORD)cacheInfo.Level << std::endl;
+    //             std::cout << "Cache size:" << cacheInfo.CacheSize << std::endl;
+    //             std::cout << "Line size: " << cacheInfo.LineSize << std::endl;
+    //             std::cout << "Associativity: " << (DWORD)cacheInfo.Associativity << std::endl;
+    //             //PROCESSOR_CACHE_TYPE cacheType = cacheInfo.Type;
+
+    //             switch (cacheInfo.Type) {
+    //                 case CacheUnified:
+    //                     std::cout << "Unified cache" << std::endl;
+    //                     break;
+    //                 case CacheInstruction:
+    //                     std::cout << "Instruction cache" << std::endl;
+    //                     break;
+    //                 case CacheData:
+    //                     std::cout << "Data cache" << std::endl;
+    //                     break;
+    //                 case CacheTrace:
+    //                     std::cout << "Trace cache" << std::endl;
+    //                     break;
+    //                 // default:
+    //                 //     std::cout << "Unknown" << std::endl;
+    //                 //     break;
+    //             };
+    //             break;
+    //         case RelationGroup:
+    //             GROUP_RELATIONSHIP groupRelation = processInfo->Group;
+    //             std::cout << "Maximum group count: " << groupRelation.MaximumGroupCount << std::endl;
+    //             std::cout << "Active group count: " << groupRelation.ActiveGroupCount << std::endl;
+    //             break;
+    //         default: 
+    //             std::cout << "Not yet" << std::endl;
+    //     };
+    //     i += processInfo->Size;
+    //     //std:: cout << "Current i size " << i << std::endl;
+    // };
+
     for (int i = 0; i < threadCount; i++) {
         CloseHandle(threadHandleArray[i]);
         if (threadAffinityData[i] != NULL) {
@@ -271,9 +307,10 @@ int main() {
     HeapFree(GetProcessHeap(), 0, threadIDArray);
     HeapFree(GetProcessHeap(), 0, threadHandleArray);
 
-    HeapFree(GetProcessHeap(), 0, systemLogicalInformationBuffer);
+    //HeapFree(GetProcessHeap(), 0, systemLogicalInformationBuffer);
 
     TlsFree(queueTlsIndex);
+    TlsFree(previousFiberTlsIndex);
 
     return 0;
 };
