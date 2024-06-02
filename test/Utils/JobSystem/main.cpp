@@ -5,8 +5,13 @@
 
 #include <stdexcept>
 
+DWORD queueTlsIndex;
+DWORD previousFiberTlsIndex;
+DWORD coreNumberTlsIndex;
+
 #include "ArrayQueue.h"
 #include "LinkedListQueue.h"
+#include "LockFreeFIFO.h"
 
 typedef struct ThreadAffinityData {
     DWORD_PTR threadAffinity;
@@ -14,9 +19,30 @@ typedef struct ThreadAffinityData {
 
 typedef PTHREADAFFINITYDATA *PPTHREADAFFINITYDATA;
 
-DWORD queueTlsIndex;
-DWORD previousFiberTlsIndex;
-DWORD coreNumberTlsIndex;
+// global queue 
+Wado::Queue::LockFreeQueue<void> *globalQueue;
+
+static const size_t DEFAULT_LOCAL_FIBER_QUEUE = 20;
+
+LPVOID PickNewFiber() {
+    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
+    
+    if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
+        throw std::runtime_error("Could not get local ready queue");
+    };
+    
+    if (!localReadyQueue->isEmpty()) {
+        return static_cast<LPVOID>(localReadyQueue->dequeue());
+    };
+    Wado::Queue::LockFreeQueue<void>::Item nextFiber;
+    nextFiber.data = nullptr;
+    nextFiber.node = nullptr;
+    while ( (nextFiber = globalQueue->dequeue()).data == nullptr ) { 
+        // busy wait
+    };
+    // Need to do something the the node here, like free 
+    return nextFiber.data;
+};
 
 typedef struct FiberData {
     LPVOID fiberPtr;
@@ -24,7 +50,7 @@ typedef struct FiberData {
 
 DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     PTHREADAFFINITYDATA affinityData = (PTHREADAFFINITYDATA) lpParam;
-    DWORD_PTR threadAffinity = affinityData->threadAffinity;
+    DWORD_PTR threadAffinity = affinityData->threadAffinity >> 1;
     DWORD64 coreNumber = 0;
 
     while (threadAffinity > 0) {
@@ -32,7 +58,7 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
         threadAffinity = threadAffinity >> 1;
     };
 
-    std::cout << "Running thread on core:" << threadAffinity << std::endl;
+    std::cout << "Running thread on core:" << coreNumber << std::endl;
 
     if (!TlsSetValue(coreNumberTlsIndex, (LPVOID) coreNumber)) {
         throw std::runtime_error("Could not set tls core numebr value");
@@ -45,6 +71,8 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
         throw std::runtime_error("Could not allocate memory for local queues");
     };
 
+    new (lpvQueue) Wado::Queue::ArrayQueue<void>(DEFAULT_LOCAL_FIBER_QUEUE);
+
     if (!TlsSetValue(queueTlsIndex, lpvQueue)) {
         throw std::runtime_error("Could not set tls value");
     };
@@ -54,21 +82,23 @@ DWORD WINAPI ThreadAffinityTestFunction(LPVOID lpParam) {
     // Now, we are a fiber, do main fiber loop 
     std::cout << "Became fiber" << std::endl;
 
+    LPVOID fiberPtr = PickNewFiber();
+
+    SwitchToFiber(fiberPtr);
+
+    LPVOID localQueuePtr = TlsGetValue(queueTlsIndex); 
+
+    // Have to call destructor manually 
+    static_cast<Wado::Queue::ArrayQueue<void> *>(localQueuePtr)->~ArrayQueue();
+
     HeapFree(GetProcessHeap(), 0, TlsGetValue(queueTlsIndex));
 
     return 0;
 };
 
 void FiberYield() {
-    Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-    if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {
-        throw std::runtime_error("Could not get local ready queue");
-    };
-    
-    while (localReadyQueue->isEmpty()) { };
-    
-    LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());
-    if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {
+    LPVOID nextFiber = PickNewFiber();
+    if (!TlsSetValue(previousFiberTlsIndex, 0)) {
             throw std::runtime_error("Could not set previous task pointer when switching tasks");
     };
     SwitchToFiber(nextFiber);
@@ -112,7 +142,11 @@ class HybridLock {
             if (!waiters.isEmpty()) { // Maybe this should be atomic? I can have race conditions here 
                 // need to add a fiber to some ready list here
                 Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-                localReadyQueue->enqueue(waiters.dequeue());
+                if (localReadyQueue->isFull()) {
+                    globalQueue->enqueue({nullptr, waiters.dequeue()});
+                } else {
+                    localReadyQueue->enqueue(waiters.dequeue()); 
+                };
             } else {
                 InterlockedCompareExchange(&lock, _unlocked, _locked);
             };
@@ -128,63 +162,55 @@ class HybridLock {
         Wado::Queue::LinkedListQueue<void> waiters;
 };
 
+static HybridLock globalLock = HybridLock();
+static int count = 0;
+
+static int fiberCount[8];
+
 class Fence {
     public:
         Fence() {
-            makeFenceData();
+            fence = _unsignaled;
         };
 
         ~Fence() noexcept {
-            // assuming its only destroyed when no waiters
-            free(currentFenceData);
+
         };
 
         void reset() noexcept {
-            free(currentFenceData);
-            makeFenceData();
+            InterlockedExchange(&fence, _unsignaled);
         };
 
-        // I don't think this actually does anything 
         void signal() noexcept {
-            PVOID volatile previousFenceData; 
-            InterlockedExchangePointer(&previousFenceData, currentFenceData);
-            FenceData* fenceData = static_cast<FenceData *>(previousFenceData);
-            InterlockedExchange(&fenceData->fence, _signaled);
+            InterlockedExchange(&fence, _signaled);
+            //std::cout << "Called signal fence" << std::endl;
             Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-            while (!fenceData->waiters.isEmpty()) {
-                localReadyQueue->enqueue(fenceData->waiters.dequeue());
+            while (!waiters.isEmpty()) {
+                //std::cout << "At least one waiter" << std::endl;
+                if (localReadyQueue->isFull()) {
+                    //std::cout << "Local queue is full" << std::endl;
+                    globalQueue->enqueue({nullptr, waiters.dequeue()});
+                } else {
+                    //std::cout << "Local queue is not full" << std::endl;
+                    localReadyQueue->enqueue(waiters.dequeue()); 
+                };
             };
         }
 
         void waitForSignal() {
-            if (!InterlockedAnd(&currentFenceData->fence, _signaled)) {
-                currentFenceData->waiters.enqueue(GetCurrentFiber());
+            if (!InterlockedAnd(&fence, _signaled)) {
+                waiters.enqueue(GetCurrentFiber());
                 FiberYield();
             };
         };
     private:
 
-        void makeFenceData() {
-            currentFenceData = static_cast<FenceData *>(malloc(sizeof(FenceData)));
-
-            if (currentFenceData == nullptr) {
-                throw std::runtime_error("Could not create new fence data");
-            };
-
-            currentFenceData->fence = _unsignaled;
-            currentFenceData->waiters = Wado::Queue::LinkedListQueue<void>();
-        };
-
         const LONG _unsignaled = 0;
         const LONG _signaled = 1;
-
-        using FenceData = struct FenceData {
-            LONG volatile fence;
-            // This is kinda wild 
-            Wado::Queue::LinkedListQueue<void> waiters;
-        };
-
-        FenceData* currentFenceData;
+        
+        LONG volatile fence;
+        // This is kinda wild 
+        Wado::Queue::LinkedListQueue<void> waiters;
 };
 
 // two pointer derefs with this, 
@@ -197,24 +223,18 @@ typedef struct fiberArgs {
 #define WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)\
     void TaskName(LPVOID fiberParam) {\
         LPVOID previousFiberPtr = TlsGetValue(previousFiberTlsIndex);\
-        if ((previousFiberPtr == 0) && (GetLastError() != ERROR_SUCCESS)) {\
-            throw std::runtime_error("Could not get previous task pointer");\
+        if ((previousFiberPtr != 0) && (GetLastError() == ERROR_SUCCESS)) {\
+            DeleteFiber(previousFiberPtr);\
         };\
-        DeleteFiber(previousFiberPtr);\
         fiberArgs *args = static_cast<fiberArgs *>(fiberParam);\
         ArgumentType *ArgumentName = static_cast<ArgumentType *>(args->mainArgs);\
         Code;\
-        Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));\
-        if ((localReadyQueue == nullptr) && (GetLastError() != ERROR_SUCCESS)) {\
-            throw std::runtime_error("Could not get local ready queue");\
-        };\
         if (args->fenceToSignal != 0) {\
             Fence *fence = static_cast<Fence *>(args->fenceToSignal);\
             fence->signal();\
         };\
         free(args);\
-        while (localReadyQueue->isEmpty()) { };\
-        LPVOID nextFiber = static_cast<LPVOID>(localReadyQueue->dequeue());\
+        LPVOID nextFiber = PickNewFiber();\
         if (!TlsSetValue(previousFiberTlsIndex, GetCurrentFiber())) {\
             throw std::runtime_error("Could not set previous task pointer when switching tasks");\
         };\
@@ -228,9 +248,13 @@ typedef struct DummyData {
     int y;
 } DummyData;
 
-TASK(DummyTask, DummyData, data, {
-    std::cout << "X: " << data->x << std::endl;
-    std::cout << "Y: " << data->y << std::endl;
+TASK(SillyTask, DummyData, data, {
+    //globalLock.acquire();
+    //count++;
+    int coreNumber = reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex));
+    fiberCount[coreNumber % 8]++;
+    std::cout << "Silly!" << std::endl;
+    //globalLock.release();
 });
 
 // Arguments and fence memory is managed by the caller of this
@@ -243,14 +267,33 @@ void makeTask(LPFIBER_START_ROUTINE function, void *arguments, Fence* fenceToSig
     args->mainArgs = arguments;
     args->fenceToSignal = fenceToSignal;
 
-    LPVOID fiberPtr = CreateFiber(0, function, args);
+    // 64 kb stack 
+    LPVOID fiberPtr = CreateFiber(65536, function, args);
+
+    //std::cout << "Made new task: " << fiberPtr << std::endl;
 
     // push to global queue here if you cant to normal one
 
     Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
-    localReadyQueue->enqueue(fiberPtr);
+    if (localReadyQueue->isFull()) {
+        //std::cout << "local queue is full" << std::endl;
+        globalQueue->enqueue({nullptr, fiberPtr});
+    } else {
+        //std::cout << "Local queue is not full" << std::endl;
+        localReadyQueue->enqueue(fiberPtr); 
+    };
 };
 
+TASK(DummyTask, DummyData, data, {
+    //globalLock.acquire();
+    //count++;
+    int coreNumber = reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex));
+    fiberCount[coreNumber % 8]++;
+    std::cout << "Fiber number: " << fiberCount[coreNumber % 8] << " :) " << std::endl;
+    std::cout << "Running on core: " << coreNumber << std::endl;
+    makeTask(SillyTask, data);
+    //globalLock.release();
+});
 
 int main() {
     HANDLE currentProcess = GetCurrentProcess();
@@ -281,7 +324,6 @@ int main() {
         throw std::runtime_error("Out of indices core number thread local storage index");
     };  
 
-
     DWORD threadCount = 0;
 
     PPTHREADAFFINITYDATA threadAffinityData;
@@ -293,6 +335,14 @@ int main() {
     };
 
     std::cout << "Total core count: " << threadCount << std::endl;
+
+    globalQueue = static_cast<Wado::Queue::LockFreeQueue<void> *>(HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::LockFreeQueue<void>)));
+
+    if (globalQueue == nullptr) {
+        throw std::runtime_error("Could not allocate global scheduler queue");
+    };
+
+    new (globalQueue) Wado::Queue::LockFreeQueue<void>(threadCount);
 
     size_t availableCores[processSet.size()];
     size_t coreIndex = 0;
@@ -349,7 +399,6 @@ int main() {
     for (int i = 1; i < threadCount; i++) {
         // Allocate memory for all thread related data 
 
-
         threadAffinityData[i] = (PTHREADAFFINITYDATA) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(THREADAFFINITYDATA));
 
         if(threadAffinityData[i] == NULL) {
@@ -375,11 +424,45 @@ int main() {
         };
     };
 
-    for (int i = 1; i < threadCount; i++) {
-        ResumeThread(threadHandleArray[i]);
+    // allocate own now 
+    DWORD_PTR threadAffinity = threadAffinityData[0]->threadAffinity >> 1;
+    DWORD64 coreNumber = 0;
+
+    while (threadAffinity > 0) {
+        coreNumber++;
+        threadAffinity = threadAffinity >> 1;
+    };
+
+    if (!TlsSetValue(coreNumberTlsIndex, (LPVOID) coreNumber)) {
+        throw std::runtime_error("Could not set tls core numebr value for thread 0");
+    };
+
+    LPVOID lpvQueue; 
+    lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<void>));
+
+    if (lpvQueue == NULL) {
+        throw std::runtime_error("Could not allocate memory for local queues for main thread");
+    };
+
+    new (lpvQueue) Wado::Queue::ArrayQueue<void>(DEFAULT_LOCAL_FIBER_QUEUE);
+
+    if (!TlsSetValue(queueTlsIndex, lpvQueue)) {
+        throw std::runtime_error("Could not set tls value for local queue on main thread");
     };
 
     std::cout << "Running main thread on core: " << threadAffinityData[0]->threadAffinity << std::endl;
+
+    std::cout << "Making 500 main fences" << std::endl;
+
+    Fence *fenceData = static_cast<Fence *>(HeapAlloc(GetProcessHeap(), 0, 400 * sizeof(Fence)));
+
+    if (fenceData == nullptr) {
+        std::cout << "Could not allocate fences" << std::endl;
+    };
+
+    for (int i = 1; i < threadCount; i++) {
+        ResumeThread(threadHandleArray[i]);
+    };
 
     // Now, convert this thread to a fiber 
 
@@ -388,11 +471,26 @@ int main() {
     // Now, we are a fiber, do main fiber loop 
     std::cout << "Main thread became fiber" << std::endl;
 
-    Sleep(5000);
+    DummyData data;
+
+    for (size_t i = 0; i < 400; i++) {
+        new (fenceData + i) Fence();
+        ///std::cout << "Fence address: " << fenceData + i << std::endl;
+        //(fenceData + i)->signal();
+        makeTask(DummyTask, &data, fenceData + i);
+    };
+
+    for (size_t i = 0; i < 400; i++) {
+        (fenceData + i)->waitForSignal();
+    };
     
     //WaitForMultipleObjects(threadCount, threadHandleArray, TRUE, INFINITE);
 
     std::cout << "Waited for all objects" << std::endl;
+
+    for (int i = 0; i < 8; i++) {
+        std::cout << "Core: " << i << " ran " << fiberCount[i] << " fibers " << std::endl;
+    }
 
     // PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX systemLogicalInformationBuffer = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 100 * sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX));
 
@@ -474,21 +572,31 @@ int main() {
     //     //std:: cout << "Current i size " << i << std::endl;
     // };
 
+    LPVOID localQueuePtr = TlsGetValue(queueTlsIndex); 
+
+    // Have to call destructor manually 
+    static_cast<Wado::Queue::ArrayQueue<void> *>(localQueuePtr)->~ArrayQueue();
+
+    HeapFree(GetProcessHeap(), 0, TlsGetValue(queueTlsIndex));
+
     for (int i = 0; i < threadCount; i++) {
         CloseHandle(threadHandleArray[i]);
         if (threadAffinityData[i] != NULL) {
             HeapFree(GetProcessHeap(), 0, threadAffinityData[i]);
-            threadAffinityData[i] = NULL;    // Ensure address is not reused.
+            threadAffinityData[i] = NULL; // Ensure address is not reused.
         };
     };
 
     HeapFree(GetProcessHeap(), 0, threadIDArray);
     HeapFree(GetProcessHeap(), 0, threadHandleArray);
 
+    HeapFree(GetProcessHeap(), 0, globalQueue);
+
     //HeapFree(GetProcessHeap(), 0, systemLogicalInformationBuffer);
 
     TlsFree(queueTlsIndex);
     TlsFree(previousFiberTlsIndex);
+    TlsFree(coreNumberTlsIndex);
 
     return 0;
 };
