@@ -43,8 +43,9 @@ namespace Wado::Queue {
                 Queue<T>::Node* node = acquire(item); // if we are re-inserting item, this will reuse a previousl allocated block
                 if (node == nullptr) {
                     // if not, allocate it
-                    //std::cout << "Had to allocate node" << std::endl;
                     node = static_cast<Queue<T>::Node *>(malloc(sizeof(Queue<T>::Node)));
+                } else {
+                    std::cout << "Reusing node pointer " << node << std::endl;
                 };
                 size_t coreNumber = (size_t) TlsGetValue(coreNumberTlsIndex);
                 //std::cout << "Running on core: " << coreNumber << std::endl;
@@ -117,7 +118,7 @@ namespace Wado::Queue {
             };
 
             bool isEmpty() const override {
-                return _linkedList.tail == nullptr;
+                return _linkedList.head->next == nullptr;
             };
 
             bool isFull() const override {
