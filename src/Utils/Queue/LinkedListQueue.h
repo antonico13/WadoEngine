@@ -24,7 +24,7 @@ namespace Wado::Queue {
                     };
                 };
 
-                void enqueue(T* data) override {
+                void enqueue(Queue<T>::Item* data) override {
                     Node* newNode = static_cast<Node*>(malloc(sizeof(Node)));
                     if (newNode == nullptr) {
                         throw std::runtime_error("Could not allocate new node for linked list queue");
@@ -42,10 +42,14 @@ namespace Wado::Queue {
                     ++size;
                 };
 
-                // Assuming non empy 
-                T* dequeue() noexcept override {
-                    T* data = head->elementData;
+                Queue<T>::Item* dequeue() noexcept override {
+                    if (head == nullptr) {
+                        return nullptr;
+                    };
+                    Queue<T>::Item* data = head->elementData;
+                    Node* temp = head;
                     head = head->nextNode;
+                    free(temp); // TODO: reclaim nodes here 
                     --size;
                     return data;
                 };
@@ -60,7 +64,7 @@ namespace Wado::Queue {
             private:
                 class Node {
                     public:
-                        T* elementData;
+                        Queue<T>::Item* elementData;
                         Node* nextNode;
                 };
 

@@ -2,12 +2,23 @@
 #define WD_QUEUE_H
 
 namespace Wado::Queue {
-
     template <typename T>
     class Queue {
         public:
-            virtual void enqueue(T* data) = 0;
-            virtual T* dequeue() = 0;
+            class Node;
+            
+            using Item = struct Item {
+                Node volatile* node;
+                T* data;
+            };
+
+            using Node = struct Node {
+                Node volatile* next;
+                Item* item;
+            };
+
+            virtual void enqueue(Item* data) = 0;
+            virtual Item* dequeue() = 0;
             virtual bool isEmpty() const = 0;
             virtual bool isFull() const = 0;
     }; 
