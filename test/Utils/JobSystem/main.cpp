@@ -262,10 +262,10 @@ class Fence {
                 //busy spin 
             };
 
-            std::cout << "Signaled fence " << std::endl;
+            // std::cout << "Signaled fence " << std::endl;
 
             if (fence == 0) {
-                std::cout << "Reached count down" << std::endl;
+                // std::cout << "Reached count down" << std::endl;
                 Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(TlsGetValue(queueTlsIndex));
                 while (!waiters.isEmpty()) {
                     Wado::Queue::Queue<void>::Item *toWakeFiber = waiters.dequeue();
@@ -342,15 +342,6 @@ typedef struct fiberArgs {
 
 #define TASK(TaskName, ArgumentType, ArgumentName, Code) WIN32_TASK(TaskName, ArgumentType, ArgumentName, Code)
 
-typedef struct DummyData {
-    int x; 
-    int y;
-} DummyData;
-
-TASK(SillyTask, DummyData, data, {
-    std::cout << "Silly!" << std::endl;
-});
-
 // Arguments and fence memory is managed by the caller of this
 void makeTask(LPFIBER_START_ROUTINE function, void *arguments, Fence* fenceToSignal = nullptr) {
     fiberArgs* args = static_cast<fiberArgs *>(malloc(sizeof(fiberArgs)));
@@ -384,6 +375,27 @@ void makeTask(LPFIBER_START_ROUTINE function, void *arguments, Fence* fenceToSig
     };
 };
 
+typedef struct DummyData {
+    int x; 
+    int y;
+    Fence* sillyFence;
+} DummyData;
+
+typedef struct SillyData {
+
+} SillyData;
+
+TASK(SillyTask, SillyData, data, {
+    int coreNumber = reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex));
+    fiberCount[coreNumber]++;
+    std::cout << "Silly!" << std::endl;
+    globalLock.acquire();
+    count++;
+    coreNumber = reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex));
+    unlockCount[coreNumber]++;
+    globalLock.release();
+});
+
 TASK(DummyTask, DummyData, data, {
     int coreNumber = reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex));
     fiberCount[coreNumber]++;
@@ -395,7 +407,12 @@ TASK(DummyTask, DummyData, data, {
     unlockCount[reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex))]++;
     std::cout << "Got unlocked on: " << reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex)) << ", so far this many fibers also unlocked here: " << unlockCount[reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex))] << std::endl;
     globalLock.release();
-    //makeTask(SillyTask, data);
+    float x = 3.0;
+    for (int i = 0; i < 200; i++) {
+        x *=x;
+    };
+    std::cout << "Did x calculation on: " << reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex)) << std::endl;
+    makeTask(SillyTask, nullptr, data->sillyFence);
 });
 
 int main() {
@@ -563,13 +580,22 @@ int main() {
 
     std::cout << "Running main thread on core: " << coreNumber << std::endl;
 
-    std::cout << "Making 500 main fences" << std::endl;
+    std::cout << "Making 800 main fences" << std::endl;
 
     Fence *fence = static_cast<Fence *>(HeapAlloc(GetProcessHeap(), 0, sizeof(Fence)));
 
     if (fence == nullptr) {
         std::cout << "Could not allocate fence" << std::endl;
     };
+
+    std::cout << "Making 800 silly fences" << std::endl;
+
+    Fence *sillyFence = static_cast<Fence *>(HeapAlloc(GetProcessHeap(), 0, sizeof(Fence)));
+
+    if (sillyFence == nullptr) {
+        std::cout << "Could not allocate silly fence" << std::endl;
+    };
+
 
     if (!InitializeCriticalSectionAndSpinCount(&QueueSection, 0x00000400) ) {
         throw std::runtime_error("Could not create critical section");
@@ -600,12 +626,16 @@ int main() {
     std::cout << "Main thread became fiber " << fiberID << std::endl;
 
     std::cout << "Main thread item: " << item->data << std::endl;
-
-    DummyData data;
-
+    
     const size_t taskCount = 800;
 
     new (fence) Fence(taskCount);
+    new (sillyFence) Fence(taskCount);
+
+    DummyData data;
+    data.x = 0;
+    data.y = 1;
+    data.sillyFence = sillyFence;
 
     for (size_t i = 0; i < 800; i++) {
         makeTask(DummyTask, &data, fence);
@@ -615,7 +645,13 @@ int main() {
 
     fence->~Fence();
 
+    sillyFence->waitForSignal();
+
+    sillyFence->~Fence();
+
     HeapFree(GetProcessHeap(), 0, fence);
+
+    HeapFree(GetProcessHeap(), 0, sillyFence);
     
     //WaitForMultipleObjects(threadCount, threadHandleArray, TRUE, INFINITE);
 
