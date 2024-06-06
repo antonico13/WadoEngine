@@ -100,31 +100,68 @@ namespace Wado::Malloc {
                 void* blocks[255];
             };
 
-            using MediumBlock = struct MediumBlock {
-                void *block; // actual mem pointer 
-                
+            using BlockMetaData = struct BlockMetaData {
+                void *allocator;
+                BlockType type;
+            };
+
+            using DLLNode = struct DLLNode {
+                void *prev;
+                void *next;
+            };
+
+            using SmallBlockMetadata = struct SmallBlockMetaData {
+                uint8_t used;
+                union {
+                    uint8_t next;
+                    struct {
+                        uint8_t head;
+                        uint8_t link;
+                        uint8_t sizeClass;
+                    } usedMetaData;
+                } data;
+            };
+
+            using SuperBlockMetadata = struct SuperBlockMetadata {
+                DLLNode dllNode;
+                uint16_t freeCount;
+                uint8_t head;
+                uint8_t used;
+                SmallBlockMetadata smallBlocks[255]; 
+            };
+
+            using MediumBlockMetadata = struct MediumBlockMetadata {
+                DLLNode dllNode;
+                uint16_t freeCount;
+                uint8_t head;
+                uint8_t sizeClass;
+                struct {
+                    uint8_t next;
+                    uint8_t object;
+                } freeStack[256];
+            };
+
+            using MediumBlock = struct MediumBlock {                
                 // DLL offset would be cache line size 
 
-                const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
-                const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
-                const size_t HEAD_SIZE = sizeof(uint8_t);
-                const size_t CLASS_SIZE = sizeof(uint8_t);
+                static const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
+                static const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
+                static const size_t HEAD_SIZE = sizeof(uint8_t);
+                static const size_t CLASS_SIZE = sizeof(uint8_t);
 
                 // then free stack follows, a linked list of unused objects 
             };
 
             // Superblocks contain many small blocks. A small block is the size of a page 
             using SuperBlock = struct SuperBlock {
-                void *block; // actual mem pointer 
+                static const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
+                static const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
+                static const size_t HEAD_SIZE = sizeof(uint8_t); // index into metadata array 
+                static const size_t CLASS_SIZE = sizeof(uint8_t); // this is the size of the next/size class small meta element. since we index a 255 sized arary, fine to keep it 8 bit 
+                static const size_t USED_SIZE = sizeof(uint8_t);
+                static const size_t LINK_SIZE = sizeof(void *);
 
-                const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
-                const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
-                const size_t HEAD_SIZE = sizeof(uint8_t);
-                const size_t CLASS_SIZE = sizeof(uint8_t);
-                const size_t USED_SIZE = sizeof(uint8_t);
-                const size_t LINK_SIZE = sizeof(void *);
-
-                const size_t SMALL_META_SIZE = USED_SIZE + HEAD_SIZE + LINK_SIZE + sizeof(void *); 
+                static const size_t SMALL_META_SIZE = USED_SIZE + HEAD_SIZE + LINK_SIZE + sizeof(void *); 
             };
 
             static void SendToDeallocQueue(Allocator* allocator, DeallocMessage *first, volatile DeallocMessage *last, size_t addedSize);
@@ -135,6 +172,9 @@ namespace Wado::Malloc {
 
             static void freeInternal(void *ptr); 
 
+            static void InitializeSuperBlock(uint8_t sizeClass, void *address);
+
+            static void InitializeMediumBlock(uint8_t sizeClass, void *address);
     };
 };
 

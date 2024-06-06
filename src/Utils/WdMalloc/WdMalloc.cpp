@@ -162,9 +162,8 @@ namespace Wado::Malloc {
 
         // Initial alloc count:
         // Bytes needed for the higher level page map + bytes needed for each page + bytes needed for allocator for each core count 
-        size_t initialCommitCount = pageCount + pageCount * pageSize + coreCount * sizeof(Allocator);
 
-        LPVOID pageMapAddress = VirtualAlloc(initial2GBRegion, initialCommitCount, MEM_COMMIT, PAGE_READWRITE);
+        LPVOID pageMapAddress = VirtualAlloc(initial2GBRegion, pageCount, MEM_COMMIT, PAGE_READWRITE);
 
         pageMap = pageMapAddress;
 
@@ -186,8 +185,11 @@ namespace Wado::Malloc {
 
         std::cout << "Allocation start: " << (PVOID) allocateStartAddress << std::endl;
 
-        // Need to create pointers to all allocators now 
+        allocatorArea = allocateStartAddress;
+        // Commit allocators 
+        VirtualAlloc(allocateStartAddress, coreCount * sizeof(Allocator), MEM_COMMIT, PAGE_READWRITE);
 
+        // Need to create pointers to all allocators now 
         for (size_t alloc = 0; alloc < coreCount; alloc++) {
             // make a new allocator in this region 
             new (allocateStartAddress + alloc * sizeof(Allocator)) Allocator;
@@ -322,7 +324,91 @@ namespace Wado::Malloc {
     };
 
     void *WdMalloc::malloc(size_t size) {
+        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        uint8_t sizeClass = sizeToSizeClass(size);
+        std::cout << "Alloc address: " << alloc << std::endl;
+        std::cout << "Looking for an object of sizeclass: " << (int) sizeClass << std::endl;
+        if (alloc->blocks[sizeClass] == nullptr) { 
+            std::cout << "Did not have slot available for this size" << std::endl;
+        };
         return nullptr;
+    };
+
+    void WdMalloc::InitializeSuperBlock(uint8_t sizeClass, void *address) {
+        // 255 small blocks in a super block, with the first one taking 
+        // metadata space 
+        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        BlockMetaData *blockMetaData = static_cast<BlockMetaData *>(address);
+        blockMetaData->allocator = alloc;
+        blockMetaData->type = BlockType::Super;
+
+        void *startAddress = (static_cast<char *>(address) + cacheLineSize);
+        SuperBlockMetadata *superBlockMetadata = static_cast<SuperBlockMetadata *>(startAddress);
+        superBlockMetadata->dllNode.prev = nullptr;
+        superBlockMetadata->dllNode.next = nullptr;
+
+        superBlockMetadata->freeCount = 0; // Should this be the amount fo free objects in all the slabs? 
+        superBlockMetadata->head = 0; // start from half slab 
+        superBlockMetadata->used = 0;
+
+        for (int i = 1; i < 254; i++) {
+            superBlockMetadata->smallBlocks[i].used = 0;
+            superBlockMetadata->smallBlocks[i].data.next = i + 1;
+        };
+
+        superBlockMetadata->smallBlocks[255].used = 0;
+        superBlockMetadata->smallBlocks[255].data.next = 0;
+
+        // However, slab 0 is actually being used right now,
+        // to host element of size sizeclass 
+        // need to set up its bump pointer, free list, etc
+
+        // First block, allocation starts from cache line size + superblock metadata
+        superBlockMetadata->smallBlocks[0].used = 1; // we consider the metadata one object in this case 
+        superBlockMetadata->smallBlocks[0].data.usedMetaData.sizeClass = sizeClass;
+
+        size_t metaDataSize = cacheLineSize + sizeof(SuperBlockMetadata);
+        size_t smallBlockObjectSize = sizeClassSizes[sizeClass];
+
+        uint8_t head = 0;
+        size_t cummulativeSize = 0;
+        while (cummulativeSize < metaDataSize) {
+            head++;
+            cummulativeSize += smallBlockObjectSize;
+        };
+
+        // Can set allocation start for this slab now 
+        // TODO: need to make this bump pointer? How do I check bottom bit? Should this be 9 bits then? 
+        superBlockMetadata->smallBlocks[0].data.usedMetaData.head = head;
+        void *firstBlockAddr = static_cast<char *>(address) + pageSize;
+        superBlockMetadata->smallBlocks[0].data.usedMetaData.link = (pageSize / smallBlockObjectSize) - 1; // last element of the small block, TODO: fix division here 
+    };
+
+    void WdMalloc::InitializeMediumBlock(uint8_t sizeClass, void *address) {
+        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        BlockMetaData *blockMetaData = static_cast<BlockMetaData *>(address);
+        blockMetaData->allocator = alloc;
+        blockMetaData->type = BlockType::Medium;
+
+        void *startAddress = (static_cast<char *>(address) + cacheLineSize);
+        MediumBlockMetadata *mediumBlockMetaData = static_cast<MediumBlockMetadata *>(startAddress);
+        mediumBlockMetaData->dllNode.next = nullptr;
+        mediumBlockMetaData->dllNode.prev = nullptr;
+        mediumBlockMetaData->head = 0;
+        mediumBlockMetaData->sizeClass = sizeClass;
+
+        // first object unused because we store metadata there 
+        uint16_t objectCount = BLOCK_SIZE / sizeClassSizes[sizeClass] - 1;
+        mediumBlockMetaData->freeCount = objectCount;
+        // Initial setup, everything is free and the free stack 
+        // contains a pointer to the next element in the free stack 
+        // and its object always 
+        for (char i = 0; i < objectCount; i++) {
+            mediumBlockMetaData->freeStack[i].next = i + 1;
+            mediumBlockMetaData->freeStack[i].object = i;
+        };
+        // Mark end of list 
+        mediumBlockMetaData->freeStack[objectCount - 1].next = -1;
     };
 
     void WdMalloc::freeInternal(void *ptr) {
