@@ -5,7 +5,35 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <intrin.h>
+
 namespace Wado::Malloc {
+
+        // Sys info stuff 
+        size_t WdMalloc::cacheLineSize;
+        // Objects > block size -> large objects
+        // Objects <= block size but > mediumBoundary -> medium
+        // Objects <= mediumBoundary => medium 
+        size_t WdMalloc::blockSize;
+        size_t WdMalloc::mediumBoundary;
+        size_t WdMalloc::coreCount;
+
+        size_t WdMalloc::areaSize;
+        // reserved Area is also the start of the higher level page map area 
+        void *WdMalloc::reservedArea;
+
+            // page map area is split up into pages 
+        void *WdMalloc::pageMap;
+        void *WdMalloc::pageMapArea;
+        size_t WdMalloc::pageSize; 
+
+        // start of allocation area 
+        void *WdMalloc::allocationArea;
+        // Bump pointer for current allocation (everything block based)
+        size_t WdMalloc::currentAllocBumpPtr;
+
+        void *WdMalloc::allocatorArea;
+        size_t WdMalloc::sizeClassSizes[255];    
 
     void WdMalloc::mallocInit(const size_t initialSize, const size_t coreCount) {
         LPSYSTEM_INFO sysInfo = (LPSYSTEM_INFO) HeapAlloc(GetProcessHeap(), 0, sizeof(SYSTEM_INFO));
@@ -15,27 +43,6 @@ namespace Wado::Malloc {
         };
 
         GetSystemInfo(sysInfo);
-
-        // std::cout << "Page size: " << sysInfo->dwPageSize << std::endl;
-        // std::cout << "Minimum application address: " << sysInfo->lpMinimumApplicationAddress << std::endl;
-        // std::cout << "Maximum application address: " << sysInfo->lpMaximumApplicationAddress << std::endl;
-        // std::cout << "Allocation granularity: " << sysInfo->dwAllocationGranularity << std::endl;
-        // uint64_t availableBytes = ((uint64_t) (sysInfo->lpMaximumApplicationAddress) - (uint64_t) (sysInfo->lpMinimumApplicationAddress));
-        // std::cout << "Bytes available: " << availableBytes << std::endl;
-
-        // std::cout << "Active processor mask: " << std::bitset<64>(sysInfo->dwActiveProcessorMask) << std::endl;
-        // std::cout << "Number of processors: " << sysInfo->dwNumberOfProcessors << std::endl;
-        // std::cout << "Processor type: " << sysInfo->dwProcessorType << std::endl;
-        // std::cout << "Processor type: " << sysInfo->dwProcessorType << std::endl;
-
-        // std::cout << "Processor architecture: " << sysInfo->wProcessorArchitecture << std::endl;
-        // std::cout << "Processor revision: " << sysInfo->wProcessorRevision << std::endl;
-        // std::cout << "Processor level: " << sysInfo->wProcessorLevel << std::endl;
-
-        // SIZE_T largePageSize = GetLargePageMinimum();
-
-        // std::cout << "Large page size: " << largePageSize << std::endl;
-
 
         // Need to get the cache line size 
         
@@ -97,6 +104,8 @@ namespace Wado::Malloc {
 
         size_t PageSize = sysInfo->dwPageSize;
 
+        pageSize = PageSize;
+
         PVOID start = (PVOID) ((ULONG_PTR) sysInfo->lpMinimumApplicationAddress);
         PVOID end = (PVOID) ((ULONG_PTR) sysInfo->lpMaximumApplicationAddress);
 
@@ -112,7 +121,6 @@ namespace Wado::Malloc {
         MEM_EXTENDED_PARAMETER memExtendParam;
         memExtendParam.Type = MemExtendedParameterAddressRequirements;
         memExtendParam.Pointer = &addressReqs;
-
 
         // Need to map entire usable address space to page map. 
 
@@ -148,9 +156,17 @@ namespace Wado::Malloc {
             //throw std::runtime_error("Could not reserve memory");
         };
 
+        reservedArea = initial2GBRegion;
+
         std::cout << "Need to create the two level page map now" << std::endl;
 
-        LPVOID pageMapAddress = VirtualAlloc(initial2GBRegion, (SIZE_T) pageCount, MEM_COMMIT, PAGE_READWRITE);
+        // Initial alloc count:
+        // Bytes needed for the higher level page map + bytes needed for each page + bytes needed for allocator for each core count 
+        size_t initialCommitCount = pageCount + pageCount * pageSize + coreCount * sizeof(Allocator);
+
+        LPVOID pageMapAddress = VirtualAlloc(initial2GBRegion, initialCommitCount, MEM_COMMIT, PAGE_READWRITE);
+
+        pageMap = pageMapAddress;
 
         std::cout << "page map address: " << pageMapAddress << std::endl;
 
@@ -160,13 +176,24 @@ namespace Wado::Malloc {
 
         PCHAR pageMapPagesAddress = (PCHAR) pageMapAddress + pageCount;
 
+        pageMapArea = pageMapPagesAddress; 
+
         // Allocation starts at pageMapPagesAddress + all pages size
 
-        std::cout << "Page map leafs start at: " << (PVOID) pageMapPagesAddress << std::endl;
+        std::cout << "Page map leaves start at: " << (PVOID) pageMapPagesAddress << std::endl;
 
         PCHAR allocateStartAddress = pageMapPagesAddress + pageCount * PageSize;
 
         std::cout << "Allocation start: " << (PVOID) allocateStartAddress << std::endl;
+
+        // Need to create pointers to all allocators now 
+
+        for (size_t alloc = 0; alloc < coreCount; alloc++) {
+            // make a new allocator in this region 
+            new (allocateStartAddress + alloc * sizeof(Allocator)) Allocator;
+        };
+
+        allocateStartAddress += coreCount * sizeof(Allocator);
 
         // Now, need to find start of blocks for block allocator 
 
@@ -178,10 +205,44 @@ namespace Wado::Malloc {
 
         std::cout << "Block allocator start (aligned): " << (PVOID) blockAllocatorStart << std::endl;
 
+        allocationArea = blockAllocatorStart;
+        currentAllocBumpPtr = 0;
+
         // Need to mark used blocks now 
 
         std::cout << "Page map does not include meta data" << std::endl;
 
+        // Now need to calculat sizes for all size classes 
+        
+        uint8_t sc = 0;
+        // need to avoid overflow here 
+        while ((sizeClassSizes[sc - 1] < BLOCK_SIZE) && (sc < 255)) {
+            sizeClassSizes[sc] = sizeClassToSize(sc);
+            sc++;
+        };
+        sizeClassSizes[sc] = sizeClassToSize(sc);    
+
+        for (size_t j = 0; j < 256; j++) {
+            std::cout << "For size class " << j << " size is: " << sizeClassSizes[j] << std::endl;
+        };
+    };
+
+    size_t WdMalloc::sizeClassToSize(uint8_t sizeClass) {
+        sizeClass++;
+        // get first 2 bits 
+        size_t m = sizeClass & 3;
+        size_t e = sizeClass >> 2; // exponent is next 6 bits 
+        size_t b = (e == 0) ? 0 : 1;
+        // all sizes should be 2 byte aligned 
+        return (m + 4 * b) << (4 + e - b);
+    };
+
+    uint8_t WdMalloc::sizeToSizeClass(size_t size) {
+        size--;
+        size_t e = 58 - __lzcnt64(size | 32);
+        size_t b = (e == 0) ? 0 : 1;
+        size_t m = (size >> (4 + e - b)) & 3;
+        return (e << 2) + m;
     };
 
     void WdMalloc::mallocShutdown() {
@@ -261,7 +322,7 @@ namespace Wado::Malloc {
     };
 
     void *WdMalloc::malloc(size_t size) {
-
+        return nullptr;
     };
 
     void WdMalloc::freeInternal(void *ptr) {

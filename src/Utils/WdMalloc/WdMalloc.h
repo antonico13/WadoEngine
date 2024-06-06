@@ -1,13 +1,19 @@
 #ifndef WD_MALLOC_H
 #define WD_MALLOC_H
 
+#include <stdint.h>
+
 namespace Wado::Malloc {
+
+    // Types:
+    using size_class = uint8_t;
 
     // block size, also used to calculate starting address.
     static const size_t BLOCK_EXPONENT = 21;
     static const size_t TWO_GIGABYTE_EXPONENT = 31;
     static const size_t BLOCK_SIZE = (size_t)1 << BLOCK_EXPONENT;
     static const size_t TWO_GIGABYTE = (size_t)1 << TWO_GIGABYTE_EXPONENT; // can fit 2^10 chunks in this allocation 
+    static const size_t MEDIUM = 4096; // 4kb, should just make it page size maybe 
 
 
     class WdMalloc {
@@ -27,6 +33,11 @@ namespace Wado::Malloc {
 
             // Sys info stuff 
             static size_t cacheLineSize;
+            // Objects > block size -> large objects
+            // Objects <= block size but > mediumBoundary -> medium
+            // Objects <= mediumBoundary => medium 
+            static size_t blockSize;
+            static size_t mediumBoundary;
             static size_t coreCount;
 
             static size_t areaSize;
@@ -34,6 +45,7 @@ namespace Wado::Malloc {
             static void *reservedArea;
 
             // page map area is split up into pages 
+            static void *pageMap;
             static void *pageMapArea;
             static size_t pageSize; 
 
@@ -41,6 +53,14 @@ namespace Wado::Malloc {
             static void *allocationArea;
             // Bump pointer for current allocation (everything block based)
             static size_t currentAllocBumpPtr;
+
+            static void *allocatorArea;
+            static size_t sizeClassSizes[255];
+
+            // Some size class utils 
+
+            static size_t sizeClassToSize(uint8_t sizeClass);
+            static uint8_t sizeToSizeClass(size_t size);
 
             enum BlockType {
                 Free = 0x00,
@@ -74,6 +94,37 @@ namespace Wado::Malloc {
                 volatile size_t currentDeallocSize = 0;
                 DeallocQueue deallocQueues[MALLOC_BUCKETS];
                 size_t currentBitMask = INITIAL_BIT_MASK;
+
+                // array of pointer to blocks of all possible size classes for
+                // this alloc, which are traversable DLLs
+                void* blocks[255];
+            };
+
+            using MediumBlock = struct MediumBlock {
+                void *block; // actual mem pointer 
+                
+                // DLL offset would be cache line size 
+
+                const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
+                const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
+                const size_t HEAD_SIZE = sizeof(uint8_t);
+                const size_t CLASS_SIZE = sizeof(uint8_t);
+
+                // then free stack follows, a linked list of unused objects 
+            };
+
+            // Superblocks contain many small blocks. A small block is the size of a page 
+            using SuperBlock = struct SuperBlock {
+                void *block; // actual mem pointer 
+
+                const size_t DLL_NODE_SIZE = 2 * sizeof(void *); // DLL node for same size class, same owner free medium slabs 
+                const size_t FREE_COUNT_SIZE = sizeof(uint16_t); // 16 bit free count 
+                const size_t HEAD_SIZE = sizeof(uint8_t);
+                const size_t CLASS_SIZE = sizeof(uint8_t);
+                const size_t USED_SIZE = sizeof(uint8_t);
+                const size_t LINK_SIZE = sizeof(void *);
+
+                const size_t SMALL_META_SIZE = USED_SIZE + HEAD_SIZE + LINK_SIZE + sizeof(void *); 
             };
 
             static void SendToDeallocQueue(Allocator* allocator, DeallocMessage *first, volatile DeallocMessage *last, size_t addedSize);
@@ -83,6 +134,7 @@ namespace Wado::Malloc {
             static void flushDeallocRequests();
 
             static void freeInternal(void *ptr); 
+
     };
 };
 
