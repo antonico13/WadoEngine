@@ -503,6 +503,11 @@ namespace Wado::Malloc {
         metadata->freeCount--;
         metadata->head = nextIndex;
 
+        if (metadata->freeCount == 0) {
+            std::cout << "Block is full, removing from list" << std::endl;
+            allocator->blocks[sizeClass] = metadata->dllNode.next;
+        };
+
         return reinterpret_cast<void *>(objectAddress);
     };
 

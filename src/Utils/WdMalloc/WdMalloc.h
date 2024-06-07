@@ -94,8 +94,8 @@ namespace Wado::Malloc {
             };
 
             using DLLNode = struct DLLNode {
-                uintptr_t prev;
-                uintptr_t next;
+                void *prev;
+                void *next;
             };
 
             using Allocator = struct Allocator {
