@@ -2,6 +2,7 @@
 #define WD_MALLOC_H
 
 #include <stdint.h>
+#include <cstdint>
 
 namespace Wado::Malloc {
 
@@ -42,20 +43,20 @@ namespace Wado::Malloc {
 
             static size_t areaSize;
             // reserved Area is also the start of the higher level page map area 
-            static void *reservedArea;
+            static uintptr_t reservedArea;
 
             // page map area is split up into pages 
-            static void *pageMap;
-            static void *pageMapArea;
+            static uintptr_t pageMap;
+            static uintptr_t pageMapArea;
             static size_t pageSize; 
             static size_t pageExponent;
-            
+
             // start of allocation area 
-            static void *allocationArea;
+            static uintptr_t allocationArea;
             // Bump pointer for current allocation (everything block based)
             static volatile size_t currentAllocBumpPtr;
 
-            static void *allocatorArea;
+            static uintptr_t allocatorArea;
             static size_t sizeClassSizes[255];
             static size_t MEDIUM_ALLOC;
             static size_t LARGE_ALLOC;
@@ -82,7 +83,7 @@ namespace Wado::Malloc {
             struct Allocator;
 
             using DeallocMessage = struct DeallocMessage {
-                Allocator *parentAlloc;
+                Allocator* parentAlloc;
                 DeallocMessage *next;
             };
 
@@ -93,8 +94,8 @@ namespace Wado::Malloc {
             };
 
             using DLLNode = struct DLLNode {
-                void *prev;
-                void *next;
+                uintptr_t prev;
+                uintptr_t next;
             };
 
             using Allocator = struct Allocator {

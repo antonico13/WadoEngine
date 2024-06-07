@@ -20,11 +20,11 @@ namespace Wado::Malloc {
 
         size_t WdMalloc::areaSize;
         // reserved Area is also the start of the higher level page map area 
-        void *WdMalloc::reservedArea;
+        uintptr_t WdMalloc::reservedArea;
 
             // page map area is split up into pages 
-        void *WdMalloc::pageMap;
-        void *WdMalloc::pageMapArea;
+        uintptr_t WdMalloc::pageMap;
+        uintptr_t WdMalloc::pageMapArea;
         size_t WdMalloc::pageSize; 
         size_t WdMalloc::pageExponent;
 
@@ -32,12 +32,28 @@ namespace Wado::Malloc {
         size_t WdMalloc::LARGE_ALLOC;
 
         // start of allocation area 
-        void *WdMalloc::allocationArea;
+        uintptr_t WdMalloc::allocationArea;
         // Bump pointer for current allocation (everything block based)
         volatile size_t WdMalloc::currentAllocBumpPtr;
 
-        void *WdMalloc::allocatorArea;
-        size_t WdMalloc::sizeClassSizes[255];    
+        uintptr_t WdMalloc::allocatorArea;
+        size_t WdMalloc::sizeClassSizes[255];
+        
+
+    // Aligns a pointer up to the specified size, in bytes 
+    // Pre: size is a power of 2 
+    inline uintptr_t alignUp(uintptr_t ptr, size_t size) {
+        uintptr_t sizeMask = ~(size - 1);
+        std::cout << "Size mask being used to round up: " << (void *) sizeMask << std::endl;
+        return (ptr + size) & sizeMask;
+    };
+
+    // Aligns a pointer down to the specified size, in bytes 
+    // Pre: size is a power of 2
+    inline uintptr_t alignDown(uintptr_t ptr, size_t size) {
+        uintptr_t sizeMask = ~(size - 1);
+        return ptr & sizeMask;
+    };
 
     void WdMalloc::mallocInit(const size_t initialSize, const size_t coreCount) {
         LPSYSTEM_INFO sysInfo = (LPSYSTEM_INFO) HeapAlloc(GetProcessHeap(), 0, sizeof(SYSTEM_INFO));
@@ -148,8 +164,6 @@ namespace Wado::Malloc {
 
         std::cout << "Page exponent is: " << pageExponent << std::endl;
 
-        
-
         std::cout << "In a single page can fit information for " << PageSize << " blocks, which means we need " << pageCount << " pages" << std::endl; 
 
         std::cout << "The page map needs stores an offset for every page, so we need a: " <<  pageCount << " sized map" << std::endl;
@@ -165,7 +179,7 @@ namespace Wado::Malloc {
             //throw std::runtime_error("Could not reserve memory");
         };
 
-        reservedArea = initial2GBRegion;
+        reservedArea = reinterpret_cast<uintptr_t>(initial2GBRegion);
 
         std::cout << "Need to create the two level page map now" << std::endl;
 
@@ -174,49 +188,48 @@ namespace Wado::Malloc {
 
         LPVOID pageMapAddress = VirtualAlloc(initial2GBRegion, pageCount, MEM_COMMIT, PAGE_READWRITE);
 
-        pageMap = pageMapAddress;
+        pageMap = reinterpret_cast<uintptr_t>(pageMapAddress);
 
-        std::cout << "page map address: " << pageMapAddress << std::endl;
+        std::cout << "page map address: " << (void *) pageMapAddress << std::endl;
 
         std::cout << "Don't care about the space for the pages, just need to move the offset pointer for allocations now" << std::endl;
         
-        std::cout << "Reserved 2GB at: " << initial2GBRegion << std::endl;
+        std::cout << "Reserved 2GB at: " << (void *) initial2GBRegion << std::endl;
 
-        PCHAR pageMapPagesAddress = (PCHAR) pageMapAddress + pageCount;
-
-        pageMapArea = pageMapPagesAddress; 
+        pageMapArea = pageMap + pageCount;
 
         // Allocation starts at pageMapPagesAddress + all pages size
 
-        std::cout << "Page map leaves start at: " << (PVOID) pageMapPagesAddress << std::endl;
+        std::cout << "Page map leaves start at: " << (void *) pageMapArea << std::endl;
 
-        PCHAR allocateStartAddress = pageMapPagesAddress + pageCount * PageSize;
+        allocatorArea = pageMapArea + pageCount * PageSize;
 
-        std::cout << "Allocation start: " << (PVOID) allocateStartAddress << std::endl;
-
-        allocatorArea = allocateStartAddress;
+        std::cout << "Allocation start: " << (void *) allocatorArea << std::endl;
         // Commit allocators 
-        VirtualAlloc(allocateStartAddress, coreCount * sizeof(Allocator), MEM_COMMIT, PAGE_READWRITE);
+        if (VirtualAlloc((void *) allocatorArea, coreCount * sizeof(Allocator), MEM_COMMIT, PAGE_READWRITE) == NULL) {
+            std::cout << "Could not commit allocator space: " << GetLastError() << std::endl;
+            throw std::runtime_error("Could not commit allocator space");
+        };
 
+        std::cout << "Comitted allocator pages" << std::endl;
         // Need to create pointers to all allocators now 
         for (size_t alloc = 0; alloc < coreCount; alloc++) {
             // make a new allocator in this region 
-            new (allocateStartAddress + alloc * sizeof(Allocator)) Allocator;
+            new (reinterpret_cast<void *> (allocatorArea + alloc * sizeof(Allocator))) Allocator;
         };
 
-        allocateStartAddress += coreCount * sizeof(Allocator);
+        uintptr_t allocatorEnd =  allocatorArea + coreCount * sizeof(Allocator);
 
         // Now, need to find start of blocks for block allocator 
 
-        PCHAR blockAllocatorStart = 0;
+        allocationArea = 0;
 
-        while (blockAllocatorStart < allocateStartAddress) {
-            blockAllocatorStart += BLOCK_SIZE;
+        while (allocationArea < allocatorEnd) {
+            allocationArea += BLOCK_SIZE;
         };
 
-        std::cout << "Block allocator start (aligned): " << (PVOID) blockAllocatorStart << std::endl;
+        std::cout << "Block allocator start (aligned): " << (void *) allocationArea << std::endl;
 
-        allocationArea = blockAllocatorStart;
         currentAllocBumpPtr = 0;
 
         // Need to mark used blocks now 
@@ -227,12 +240,14 @@ namespace Wado::Malloc {
         
         uint8_t sc = 0;
         // need to avoid overflow here 
+        sizeClassSizes[0] = sizeClassToSize(sc);
+        sc++;
         while ((sizeClassSizes[sc - 1] < BLOCK_SIZE) && (sc < 255)) {
             sizeClassSizes[sc] = sizeClassToSize(sc);
             sc++;
         };
 
-        for (size_t j = 0; j < 256; j++) {
+        for (size_t j = 0; j < 255; j++) {
             std::cout << "For size class " << j << " size is: " << sizeClassSizes[j] << std::endl;
         };
     };
@@ -256,7 +271,7 @@ namespace Wado::Malloc {
     };
 
     void WdMalloc::mallocShutdown() {
-        if (!VirtualFree(reservedArea, 0, MEM_RELEASE)) {
+        if (!VirtualFree(reinterpret_cast<LPVOID>(reservedArea), 0, MEM_RELEASE)) {
             throw std::runtime_error("Could not free memory");
         };
     };
@@ -332,7 +347,7 @@ namespace Wado::Malloc {
     };
 
     void *WdMalloc::malloc(size_t size) {
-        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
         uint8_t sizeClass = sizeToSizeClass(size);
         std::cout << "Alloc address: " << alloc << std::endl;
         std::cout << "Looking for an object of sizeclass: " << (int) sizeClass << std::endl;
@@ -351,15 +366,15 @@ namespace Wado::Malloc {
     void WdMalloc::InitializeSuperBlock(uint8_t sizeClass, void *address) {
         // 255 small blocks in a super block, with the first one taking 
         // metadata space 
-        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
         BlockMetaData *blockMetaData = static_cast<BlockMetaData *>(address);
         blockMetaData->allocator = alloc;
         blockMetaData->type = BlockType::Super;
 
         void *startAddress = (static_cast<char *>(address) + cacheLineSize);
         SuperBlockMetadata *superBlockMetadata = static_cast<SuperBlockMetadata *>(startAddress);
-        superBlockMetadata->dllNode.prev = nullptr;
-        superBlockMetadata->dllNode.next = nullptr;
+        superBlockMetadata->dllNode.prev = 0;
+        superBlockMetadata->dllNode.next = 0;
 
         superBlockMetadata->freeCount = 0; // Should this be the amount fo free objects in all the slabs? 
         superBlockMetadata->head = 0; // start from half slab 
@@ -407,41 +422,44 @@ namespace Wado::Malloc {
         // Need to increment this to ensure we have a saved block 
         // TODO: this will need to be a free list
         InterlockedIncrement(&currentAllocBumpPtr);
-        // TODO: change this to use bit shifts instead 
-        return (static_cast<char *>(allocationArea) + (currentAllocBumpPtr - 1) * BLOCK_SIZE);
+        uintptr_t blockPtr = allocationArea + ((currentAllocBumpPtr - 1) << BLOCK_EXPONENT);
+        if (VirtualAlloc((PVOID) blockPtr, BLOCK_SIZE, MEM_COMMIT, PAGE_READWRITE) == NULL) {
+            std::cout << "Could not commit block memory" << std::endl;
+            throw std::runtime_error("Could not commit block memory");
+        };
+        return reinterpret_cast<void *>(blockPtr);
     };
     
     void WdMalloc::registerBlock(void *blockAddress, BlockType type) {
-        size_t blockOffset = ((size_t)(blockAddress) & blockOffsetMask) >> blockOffsetExponent;
-        std::cout << "For block at " << blockAddress << " offset is " << blockOffset;
+        size_t blockOffset = ((uintptr_t)(blockAddress) & blockOffsetMask) >> blockOffsetExponent;
+        std::cout << "For block at " << blockAddress << " offset is " << blockOffset << std::endl;
         size_t pageOffset = blockOffset >> pageExponent;
         std::cout << "For this block, the page offset is: " << pageOffset << std::endl;
-        size_t inPageOffset = blockOffset & ((size_t) 1 << pageExponent - 1);
+        size_t inPageOffset = blockOffset & (((size_t) 1 << pageExponent) - 1);
         std::cout << "For this block, the in page offset is: " << inPageOffset << std::endl;
 
-        void* pageAddress = static_cast<char *>(pageMapArea) + pageOffset * pageSize;
+        uintptr_t pageAddress = pageMapArea + pageOffset * pageSize;
 
-        std::cout << "Address of the requested page is: " << pageAddress << std::endl;
+        std::cout << "Address of the requested page is: " << (void *) pageAddress << std::endl;
 
-        if ( (static_cast<char *>(pageMap) + blockOffset) == 0) {
+        if ( *reinterpret_cast<char *>(pageMap + pageOffset) == 0) {
             std::cout << "Page storing this block's details has not been committed yet" << std::endl;
 
-            void* pageAddress = static_cast<char *>(pageMapArea) + pageOffset * pageSize;
-            std::cout << "Committing page at: " << pageAddress << std::endl;
-            LPVOID page = VirtualAlloc(pageAddress, pageSize, MEM_COMMIT, PAGE_READWRITE);
+            std::cout << "Committing page at: " << (void *) pageAddress << std::endl;
+            LPVOID page = VirtualAlloc((void *) pageAddress, pageSize, MEM_COMMIT, PAGE_READWRITE);
             if (page == nullptr) {
                 std::cout << "Could not commit page" << std::endl;
                 throw std::runtime_error("Could not commit page map page");
             };
-            *(static_cast<char *>(pageMap) + blockOffset) = 1;
+            *(reinterpret_cast<char *>(pageMap + pageOffset)) = 1;
         };
         
-        *(static_cast<char *>(pageAddress) + inPageOffset) = type;
+        *(reinterpret_cast<char *>(pageAddress + inPageOffset)) = type;
     };
 
     
     void *WdMalloc::allocMedium(size_t size) {
-        Allocator *allocator = static_cast<Allocator *>(allocatorArea);
+        Allocator *allocator = reinterpret_cast<Allocator *>(allocatorArea);
         uint8_t sizeClass = sizeToSizeClass(size);
         if (allocator->blocks[sizeClass] == nullptr) {
             // not found;
@@ -455,35 +473,74 @@ namespace Wado::Malloc {
             std::cout << "Initialized the medium block at this memory block" << std::endl;
             allocator->blocks[sizeClass] = blockAddr;
         };
-        return nullptr;
+
+        MediumBlockMetadata *metadata = reinterpret_cast<MediumBlockMetadata *>((uintptr_t) allocator->blocks[sizeClass] + cacheLineSize);
+        // As a precondition this has to be free 
+        uint8_t head = metadata->head;
+        // To calculate head, we need to get the next address aligned with the allocation size from here 
+        // Mask to align pointers 
+        // Sizes are always powers of two 
+        uintptr_t startAddress = alignUp((uintptr_t) metadata, sizeClassSizes[sizeClass]);
+
+        std::cout << "Metadata start address: " << metadata << std::endl;
+        std::cout << "First object start address after rounding up to object size: " << (void *) startAddress << std::endl;
+
+        std::cout << "Head pointer of free list is: " << (int) head << std::endl;
+
+        std::cout << "Free count for medium block is: " << (int) metadata->freeCount << std::endl;
+
+        uint8_t headObj = metadata->freeStack[head].object;
+        uint8_t nextIndex = metadata->freeStack[head].next;
+
+        std::cout << "At head, the free list element is: " << "[" << (int) headObj << ", " << (int) nextIndex << "]" << std::endl;
+
+        uintptr_t objectAddress = startAddress + headObj * sizeClassSizes[sizeClass];
+
+        std::cout << "Object allocated at: " << (void *) objectAddress << std::endl;
+
+        std::cout << "Modifying free list head, and free count" << std::endl;
+
+        metadata->freeCount--;
+        metadata->head = nextIndex;
+
+        return reinterpret_cast<void *>(objectAddress);
     };
 
 
     void WdMalloc::InitializeMediumBlock(uint8_t sizeClass, void *address) {
-        Allocator* alloc = static_cast<Allocator *>(allocatorArea);
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
         BlockMetaData *blockMetaData = static_cast<BlockMetaData *>(address);
         blockMetaData->allocator = alloc;
         blockMetaData->type = BlockType::Medium;
 
-        void *startAddress = (static_cast<char *>(address) + cacheLineSize);
-        MediumBlockMetadata *mediumBlockMetaData = static_cast<MediumBlockMetadata *>(startAddress);
-        mediumBlockMetaData->dllNode.next = nullptr;
-        mediumBlockMetaData->dllNode.prev = nullptr;
+        uintptr_t startAddress = (reinterpret_cast<uintptr_t>(address) + cacheLineSize);
+        MediumBlockMetadata *mediumBlockMetaData = reinterpret_cast<MediumBlockMetadata *>(startAddress);
+
+        std::cout << "After adding cache line size, recording medium block metadata at: " << (void *) mediumBlockMetaData << std::endl;
+        mediumBlockMetaData->dllNode.next = 0;
+        mediumBlockMetaData->dllNode.prev = 0;
         mediumBlockMetaData->head = 0;
         mediumBlockMetaData->sizeClass = sizeClass;
 
         // first object unused because we store metadata there 
-        uint16_t objectCount = BLOCK_SIZE / sizeClassSizes[sizeClass] - 1;
+        uint16_t objectCount = BLOCK_SIZE / sizeClassSizes[sizeClass] - 1; // TODO: replace with bit shift
         mediumBlockMetaData->freeCount = objectCount;
+        std::cout << "For the requested size, can fit " << objectCount << " objects in the medium block" << std::endl;
+        std::cout << "Free count is: " << (int) mediumBlockMetaData->freeCount << std::endl;
         // Initial setup, everything is free and the free stack 
         // contains a pointer to the next element in the free stack 
         // and its object always 
-        for (char i = 0; i < objectCount; i++) {
+        for (size_t i = 0; i < objectCount; i++) {
             mediumBlockMetaData->freeStack[i].next = i + 1;
             mediumBlockMetaData->freeStack[i].object = i;
         };
         // Mark end of list 
         mediumBlockMetaData->freeStack[objectCount - 1].next = -1;
+
+        std::cout << "Free stack for this block: " << std::endl;
+        for (size_t i = 0; i < objectCount; i++) {
+            std::cout << "[" << (int) mediumBlockMetaData->freeStack[i].next << ", " << (int) mediumBlockMetaData->freeStack[i].object << "]" << std::endl; 
+        };
     };
 
     void WdMalloc::freeInternal(void *ptr) {
