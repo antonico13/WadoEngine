@@ -178,6 +178,8 @@ namespace Wado::Malloc {
 
             static void freeInternal(void *ptr); 
 
+            static void freeInternalMedium(void *ptr); 
+
             static void InitializeSuperBlock(uint8_t sizeClass, void *address);
 
             static void *allocSmall(size_t size);

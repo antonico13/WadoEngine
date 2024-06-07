@@ -339,11 +339,24 @@ namespace Wado::Malloc {
     };
 
     void WdMalloc::free(void* ptr) {
-        Allocator* allocator; // thread local storage
-        // add to bucket 
-        // Need to look in page map to find things 
-        // and use slabs alll that 
-        //allocator->deallocQueues[]
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
+        uintptr_t block = alignDown(reinterpret_cast<uintptr_t>(ptr), BLOCK_SIZE);
+
+        std::cout << "For pointer " << ptr << " aligned down to block pointer: " << (void *) block << std::endl;
+
+        uintptr_t parentAllocPtr = *reinterpret_cast<uintptr_t *>(block);
+
+        std::cout << "Parent allocator pointer is: " << (void *) parentAllocPtr << std::endl;
+
+        size_t bucketId = parentAllocPtr & INITIAL_BIT_MASK;
+
+        DeallocMessage *msg = reinterpret_cast<DeallocMessage *>(ptr);
+        msg->next = nullptr;
+        msg->parentAlloc = reinterpret_cast<Allocator *>(parentAllocPtr);
+
+        alloc->deallocQueues[bucketId].end->next = msg;
+
+        // TODO: how to get size here? 
     };
 
     void *WdMalloc::malloc(size_t size) {
@@ -552,4 +565,39 @@ namespace Wado::Malloc {
 
     };
 
+    void WdMalloc::freeInternalMedium(void *ptr) {
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
+        uintptr_t block = alignDown((uintptr_t) ptr, BLOCK_SIZE);
+
+        MediumBlockMetadata *metaData = reinterpret_cast<MediumBlockMetadata *>(block + cacheLineSize);
+        size_t size = sizeClassSizes[metaData->sizeClass];
+
+        std::cout << "We have size " << size << std::endl;
+
+        size_t sizeExponent = __lzcnt64(size);
+
+        std::cout << "With exponent: " << sizeExponent << std::endl;
+
+        uint8_t objectID = (((uintptr_t) ptr - block) >> sizeExponent) - 1; // Need to account for initial metadata object
+
+        std::cout << "This object has id: " << (int) objectID << std::endl;
+
+        metaData->freeStack[objectID].object = objectID;
+        metaData->freeStack[objectID].next = metaData->head;
+
+        metaData->head = objectID;
+
+        metaData->freeCount++;
+
+        std::cout << "Created free stack new node" << std::endl;
+
+        if (metaData->freeCount == 1) {
+            std::cout << "This object was full before, adding to metadata array for this allocator " << std::endl;
+            
+            // TODO: Is this good enough? It's a DLL but i'm only using/setting the front
+            metaData->dllNode.next = alloc->blocks[metaData->sizeClass];
+            // Assign new block  
+            alloc->blocks[metaData->sizeClass] = (void *) block;
+        };
+    };
 };
