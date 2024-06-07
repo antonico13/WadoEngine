@@ -48,14 +48,17 @@ namespace Wado::Malloc {
             static void *pageMap;
             static void *pageMapArea;
             static size_t pageSize; 
-
+            static size_t pageExponent;
+            
             // start of allocation area 
             static void *allocationArea;
             // Bump pointer for current allocation (everything block based)
-            static size_t currentAllocBumpPtr;
+            static volatile size_t currentAllocBumpPtr;
 
             static void *allocatorArea;
             static size_t sizeClassSizes[255];
+            static size_t MEDIUM_ALLOC;
+            static size_t LARGE_ALLOC;
 
             // Some size class utils 
 
@@ -89,11 +92,18 @@ namespace Wado::Malloc {
                 volatile size_t size = 0;
             };
 
+            using DLLNode = struct DLLNode {
+                void *prev;
+                void *next;
+            };
+
             using Allocator = struct Allocator {
                 // The allocator. 
                 volatile size_t currentDeallocSize = 0;
                 DeallocQueue deallocQueues[MALLOC_BUCKETS];
                 size_t currentBitMask = INITIAL_BIT_MASK;
+
+                DLLNode superBlocks;
 
                 // array of pointer to blocks of all possible size classes for
                 // this alloc, which are traversable DLLs
@@ -103,11 +113,6 @@ namespace Wado::Malloc {
             using BlockMetaData = struct BlockMetaData {
                 void *allocator;
                 BlockType type;
-            };
-
-            using DLLNode = struct DLLNode {
-                void *prev;
-                void *next;
             };
 
             using SmallBlockMetadata = struct SmallBlockMetaData {
@@ -174,7 +179,18 @@ namespace Wado::Malloc {
 
             static void InitializeSuperBlock(uint8_t sizeClass, void *address);
 
+            static void *allocSmall(size_t size);
+
             static void InitializeMediumBlock(uint8_t sizeClass, void *address);
+
+            static void *allocMedium(size_t size);
+
+            static void *getBlock();
+
+            // Need to mask out first 21 bits 
+            static const size_t blockOffsetMask = ~((size_t)1 << 21 - 1);
+            static const size_t blockOffsetExponent = 21;
+            static void registerBlock(void *blockAddress, BlockType type);
     };
 };
 

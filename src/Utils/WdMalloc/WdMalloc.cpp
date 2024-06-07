@@ -26,11 +26,15 @@ namespace Wado::Malloc {
         void *WdMalloc::pageMap;
         void *WdMalloc::pageMapArea;
         size_t WdMalloc::pageSize; 
+        size_t WdMalloc::pageExponent;
+
+        size_t WdMalloc::MEDIUM_ALLOC;
+        size_t WdMalloc::LARGE_ALLOC;
 
         // start of allocation area 
         void *WdMalloc::allocationArea;
         // Bump pointer for current allocation (everything block based)
-        size_t WdMalloc::currentAllocBumpPtr;
+        volatile size_t WdMalloc::currentAllocBumpPtr;
 
         void *WdMalloc::allocatorArea;
         size_t WdMalloc::sizeClassSizes[255];    
@@ -105,6 +109,8 @@ namespace Wado::Malloc {
         size_t PageSize = sysInfo->dwPageSize;
 
         pageSize = PageSize;
+        MEDIUM_ALLOC = PageSize;
+        LARGE_ALLOC = BLOCK_SIZE;
 
         PVOID start = (PVOID) ((ULONG_PTR) sysInfo->lpMinimumApplicationAddress);
         PVOID end = (PVOID) ((ULONG_PTR) sysInfo->lpMaximumApplicationAddress);
@@ -132,14 +138,17 @@ namespace Wado::Malloc {
 
         std::cout << "The size of a page is: " << PageSize << std::endl;
 
-        size_t pageExponent = 0;
-        while (PageSize >> pageExponent != 1) {
-            pageExponent++;
+        size_t PageExponent = 0;
+        while (PageSize >> PageExponent != 1) {
+            PageExponent++;
         };
+        pageExponent = PageExponent;
 
         size_t pageCount = blockCount >> pageExponent;
 
         std::cout << "Page exponent is: " << pageExponent << std::endl;
+
+        
 
         std::cout << "In a single page can fit information for " << PageSize << " blocks, which means we need " << pageCount << " pages" << std::endl; 
 
@@ -222,7 +231,6 @@ namespace Wado::Malloc {
             sizeClassSizes[sc] = sizeClassToSize(sc);
             sc++;
         };
-        sizeClassSizes[sc] = sizeClassToSize(sc);    
 
         for (size_t j = 0; j < 256; j++) {
             std::cout << "For size class " << j << " size is: " << sizeClassSizes[j] << std::endl;
@@ -328,9 +336,15 @@ namespace Wado::Malloc {
         uint8_t sizeClass = sizeToSizeClass(size);
         std::cout << "Alloc address: " << alloc << std::endl;
         std::cout << "Looking for an object of sizeclass: " << (int) sizeClass << std::endl;
-        if (alloc->blocks[sizeClass] == nullptr) { 
-            std::cout << "Did not have slot available for this size" << std::endl;
+        if (size > LARGE_ALLOC) {
+            // TODO:
+            return nullptr;
         };
+        if (size > MEDIUM_ALLOC) {
+            std::cout << "Got a medium allocation " << std::endl;
+            return allocMedium(size);
+        };
+
         return nullptr;
     };
 
@@ -383,6 +397,67 @@ namespace Wado::Malloc {
         void *firstBlockAddr = static_cast<char *>(address) + pageSize;
         superBlockMetadata->smallBlocks[0].data.usedMetaData.link = (pageSize / smallBlockObjectSize) - 1; // last element of the small block, TODO: fix division here 
     };
+
+
+    void *WdMalloc::allocSmall(size_t size) {
+        return nullptr;
+    };
+
+    void *WdMalloc::getBlock() {
+        // Need to increment this to ensure we have a saved block 
+        // TODO: this will need to be a free list
+        InterlockedIncrement(&currentAllocBumpPtr);
+        // TODO: change this to use bit shifts instead 
+        return (static_cast<char *>(allocationArea) + (currentAllocBumpPtr - 1) * BLOCK_SIZE);
+    };
+    
+    void WdMalloc::registerBlock(void *blockAddress, BlockType type) {
+        size_t blockOffset = ((size_t)(blockAddress) & blockOffsetMask) >> blockOffsetExponent;
+        std::cout << "For block at " << blockAddress << " offset is " << blockOffset;
+        size_t pageOffset = blockOffset >> pageExponent;
+        std::cout << "For this block, the page offset is: " << pageOffset << std::endl;
+        size_t inPageOffset = blockOffset & ((size_t) 1 << pageExponent - 1);
+        std::cout << "For this block, the in page offset is: " << inPageOffset << std::endl;
+
+        void* pageAddress = static_cast<char *>(pageMapArea) + pageOffset * pageSize;
+
+        std::cout << "Address of the requested page is: " << pageAddress << std::endl;
+
+        if ( (static_cast<char *>(pageMap) + blockOffset) == 0) {
+            std::cout << "Page storing this block's details has not been committed yet" << std::endl;
+
+            void* pageAddress = static_cast<char *>(pageMapArea) + pageOffset * pageSize;
+            std::cout << "Committing page at: " << pageAddress << std::endl;
+            LPVOID page = VirtualAlloc(pageAddress, pageSize, MEM_COMMIT, PAGE_READWRITE);
+            if (page == nullptr) {
+                std::cout << "Could not commit page" << std::endl;
+                throw std::runtime_error("Could not commit page map page");
+            };
+            *(static_cast<char *>(pageMap) + blockOffset) = 1;
+        };
+        
+        *(static_cast<char *>(pageAddress) + inPageOffset) = type;
+    };
+
+    
+    void *WdMalloc::allocMedium(size_t size) {
+        Allocator *allocator = static_cast<Allocator *>(allocatorArea);
+        uint8_t sizeClass = sizeToSizeClass(size);
+        if (allocator->blocks[sizeClass] == nullptr) {
+            // not found;
+            std::cout << "Couldn't find block for the specified size" << std::endl;
+            void *blockAddr = getBlock();
+            std::cout << "Reserved a block at: " << blockAddr << std::endl;
+            // Need to mark on page map now 
+            registerBlock(blockAddr, BlockType::Medium);
+            std::cout << "Registered block as a medium block" << std::endl;
+            InitializeMediumBlock(sizeClass, blockAddr);
+            std::cout << "Initialized the medium block at this memory block" << std::endl;
+            allocator->blocks[sizeClass] = blockAddr;
+        };
+        return nullptr;
+    };
+
 
     void WdMalloc::InitializeMediumBlock(uint8_t sizeClass, void *address) {
         Allocator* alloc = static_cast<Allocator *>(allocatorArea);
