@@ -373,7 +373,9 @@ namespace Wado::Malloc {
             return allocMedium(size);
         };
 
-        return nullptr;
+        std::cout << "Got a small allocation" << std::endl;
+
+        return allocSmall(size);
     };
 
     void WdMalloc::InitializeSuperBlock(uint8_t sizeClass, void *address) {
@@ -384,14 +386,14 @@ namespace Wado::Malloc {
         blockMetaData->allocator = alloc;
         blockMetaData->type = BlockType::Super;
 
-        void *startAddress = (static_cast<char *>(address) + cacheLineSize);
+        void *startAddress = reinterpret_cast<void *>((uintptr_t) (address) + cacheLineSize);
         SuperBlockMetadata *superBlockMetadata = static_cast<SuperBlockMetadata *>(startAddress);
         superBlockMetadata->dllNode.prev = 0;
         superBlockMetadata->dllNode.next = 0;
 
-        superBlockMetadata->freeCount = 0; // Should this be the amount fo free objects in all the slabs? 
-        superBlockMetadata->head = 0; // start from half slab 
-        superBlockMetadata->used = 0;
+        superBlockMetadata->freeCount = (BLOCK_SIZE >> pageExponent) - 1;
+        superBlockMetadata->head = 1; // half block is not free
+        superBlockMetadata->used = 1; // half block is used
 
         for (int i = 1; i < 254; i++) {
             superBlockMetadata->smallBlocks[i].used = 0;
@@ -412,23 +414,136 @@ namespace Wado::Malloc {
         size_t metaDataSize = cacheLineSize + sizeof(SuperBlockMetadata);
         size_t smallBlockObjectSize = sizeClassSizes[sizeClass];
 
-        uint8_t head = 0;
-        size_t cummulativeSize = 0;
-        while (cummulativeSize < metaDataSize) {
-            head++;
-            cummulativeSize += smallBlockObjectSize;
-        };
+        uintptr_t metaDataEnd = metaDataSize + (uintptr_t) (address);
 
+        std::cout << "Meta data ends at: " << (void *) metaDataEnd << std::endl;
+
+        uintptr_t firstObject = alignUp(metaDataEnd, smallBlockObjectSize);
+
+        std::cout << "First object starts at: " << firstObject << std::endl;
+
+        uint8_t headIndex = firstObject >> (__lzcnt64(smallBlockObjectSize));
+
+        std::cout << "This object is the " << (int) headIndex << "th element" << std::endl;
         // Can set allocation start for this slab now 
-        // TODO: need to make this bump pointer? How do I check bottom bit? Should this be 9 bits then? 
-        superBlockMetadata->smallBlocks[0].data.usedMetaData.head = head;
-        void *firstBlockAddr = static_cast<char *>(address) + pageSize;
-        superBlockMetadata->smallBlocks[0].data.usedMetaData.link = (pageSize / smallBlockObjectSize) - 1; // last element of the small block, TODO: fix division here 
+        // Bump pointer if index at that location is itself 
+        superBlockMetadata->smallBlocks[0].data.usedMetaData.head = headIndex;
+
+        std::cout << "Also need to set the bump pointer for the first object" << std::endl;
+
+        *reinterpret_cast<uint8_t *>(firstObject) = headIndex;
+
+        uint8_t linkIndex = (pageSize >> (__lzcnt64(smallBlockObjectSize))) - 1;
+
+        std::cout << "The link index is: " << (int) linkIndex << std::endl;
+        superBlockMetadata->smallBlocks[0].data.usedMetaData.link = linkIndex; // last element of the small block
     };
 
 
     void *WdMalloc::allocSmall(size_t size) {
-        return nullptr;
+        // First, look for a block of the requested size
+        Allocator *allocator = reinterpret_cast<Allocator *>(allocatorArea);
+        uint8_t sizeClass = sizeToSizeClass(size);
+        size_t roundedSize = sizeClassSizes[sizeClass];
+        
+        if (allocator->blocks[sizeClass] == nullptr) {
+            // not found;
+            std::cout << "Couldn't find block for the specified size" << std::endl;
+            void *smallBlockAddr;
+            if (allocator->superBlocks == nullptr) {
+                std::cout << "All allocator superblocks are empty, making a new one" << std::endl;
+                void *blockAddr = getBlock();
+                std::cout << "Reserved a block at: " << blockAddr << std::endl;
+                // Need to mark on page map now 
+                registerBlock(blockAddr, BlockType::Super);
+                std::cout << "Registered block as a super block" << std::endl;
+                InitializeSuperBlock(sizeClass, blockAddr);
+
+                // up to the first metadata
+                allocator->superBlocks = blockAddr;
+                smallBlockAddr = reinterpret_cast<void*>((uintptr_t) blockAddr + cacheLineSize + sizeof(DLLNode) + sizeof(uint16_t) + sizeof(uint8_t) + sizeof(uint8_t));
+            } else {
+                SuperBlockMetadata* superBlock = reinterpret_cast<SuperBlockMetadata *>((uintptr_t) allocator->superBlocks + cacheLineSize);
+                
+                // Guaranteed not to be empty 
+                uint8_t freeIndex = superBlock->head;
+                SmallBlockMetaData& smallBlock = superBlock->smallBlocks[freeIndex];
+
+                std::cout << "Found superblock, has free small block with index: " << (int) freeIndex << std::endl;
+                std::cout << "Next free one is: " << (int) smallBlock.data.next << std::endl;
+
+                superBlock->freeCount--;
+                superBlock->head = smallBlock.data.next;
+
+                if (superBlock->freeCount == 0) {
+                    std::cout << "This super block is fully empty now" << std::endl;
+                    allocator->superBlocks = superBlock->dllNode.next;
+                    std::cout << "Replaced superblock pointer with next pointer: " << allocator->superBlocks << std::endl;
+                };
+                
+                smallBlockAddr = &(superBlock->smallBlocks[freeIndex]);
+
+                std::cout << "Setting up bump pointer for small block" << std::endl;
+
+                smallBlock.used = 1;
+                smallBlock.data.usedMetaData.sizeClass = sizeClass;
+                smallBlock.data.usedMetaData.head = 0;
+                smallBlock.data.usedMetaData.link = (pageSize - roundedSize) >> __lzcnt(roundedSize);
+                
+                std::cout << "Setting bump pointer now" << std::endl;
+                *reinterpret_cast<uint8_t *>((uintptr_t) superBlock + freeIndex * pageSize) = 0;
+            };
+            std::cout << "Initialized the super block at this memory block and got small block at: " << smallBlockAddr << std::endl;
+            allocator->blocks[sizeClass] = smallBlockAddr;
+        };
+
+        SmallBlockMetaData *metadata = reinterpret_cast<SmallBlockMetaData *>(allocator->blocks[sizeClass]);
+
+        std::cout << "Got small block metadata at: " << metadata << std::endl;
+
+        uintptr_t superBlockAddress = alignDown((uintptr_t) metadata, BLOCK_SIZE);
+
+        std::cout << "Superblock address is: " <<  (void *) superBlockAddress << std::endl;
+
+        uintptr_t metaStartAddress = superBlockAddress + cacheLineSize + sizeof(DLLNode) + sizeof(uint16_t) + sizeof(uint8_t) + sizeof(uint8_t);
+
+        uint8_t metaIndex = (reinterpret_cast<uintptr_t>(metadata) - metaStartAddress) >> __lzcnt(sizeof(SmallBlockMetaData));
+
+        std::cout << "Index of this metadata is: " << (int) metaIndex << std::endl;
+
+        uintptr_t smallBlockStart = superBlockAddress + metaIndex * pageSize;
+
+        std::cout << "The small block for this metadata starts at: " << (void *) smallBlockStart << std::endl;
+
+        uintptr_t allocatedAddress = smallBlockStart + metadata->data.usedMetaData.head * roundedSize;
+
+        uint8_t listHead = *reinterpret_cast<uint8_t *>(allocatedAddress);
+
+        if (listHead == metadata->data.usedMetaData.head) {
+            std::cout << "Bump pointer allocation" << std::endl;
+            metadata->data.usedMetaData.head++;
+            std::cout << "New head is: " << (int) metadata->data.usedMetaData.head << std::endl;
+            *reinterpret_cast<uint8_t *>(allocatedAddress + roundedSize) = metadata->data.usedMetaData.head;
+        } else {
+            std::cout << "Free list allocation" << std::endl;
+            std::cout << "New head is: " << (int) listHead << std::endl;
+            metadata->data.usedMetaData.head = listHead;
+        };
+
+        std::cout << "Now checking if allocation has been filled " << std::endl;
+
+
+        if (metadata->data.usedMetaData.head == -1) {
+            std::cout << "Head has been filled " << std::endl;
+
+            std::cout << "Setting new value from linked list node, which must be the fully allocated address now " << std::endl;
+
+            DLLNode *node = reinterpret_cast<DLLNode *>(allocatedAddress);
+
+            allocator->blocks[sizeClass] = node->next;
+        };
+
+        return reinterpret_cast<void *>(allocatedAddress);
     };
 
     void *WdMalloc::getBlock() {

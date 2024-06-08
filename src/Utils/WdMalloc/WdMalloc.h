@@ -104,7 +104,7 @@ namespace Wado::Malloc {
                 DeallocQueue deallocQueues[MALLOC_BUCKETS];
                 size_t currentBitMask = INITIAL_BIT_MASK;
 
-                DLLNode superBlocks;
+                void* superBlocks;
 
                 // array of pointer to blocks of all possible size classes for
                 // this alloc, which are traversable DLLs
