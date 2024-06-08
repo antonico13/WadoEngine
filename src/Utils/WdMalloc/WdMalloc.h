@@ -85,7 +85,7 @@ namespace Wado::Malloc {
                 Medium = 0x02,
                 Unused = 0x03,
                 // For jump, we need n = addressable elements exponent - block exponent, and we have Jump[0,...n) and Large[0,....n). then
-                // the large will be  bx01<n bits>, and jump will be bx10<nbits>, so n has to be at most 6 for this design to work
+                // the large will be bx01<n bits>, and jump will be bx10<nbits>, so n has to be at most 6 for this design to work
             };
 
             static const size_t KEY_BITS = 6;
@@ -195,6 +195,8 @@ namespace Wado::Malloc {
 
             static void freeInternalSmall(void *ptr); 
 
+            static void freeInternalLarge(void *ptr);
+
             static void InitializeSuperBlock(uint8_t sizeClass, void *address);
 
             static void *allocSmall(size_t size);
@@ -212,6 +214,8 @@ namespace Wado::Malloc {
             static const size_t blockOffsetMask = ~((size_t)1 << 21 - 1);
             static const size_t blockOffsetExponent = 21;
             static void registerBlock(void *blockAddress, BlockType type);
+            static void registerBlocks(void *blockAddress, size_t blockCount, int type);
+
 
             static void pushToLargeStack(LargeStackNode *node, const size_t exponent);
             static void *popLargeStack(const size_t exponent);

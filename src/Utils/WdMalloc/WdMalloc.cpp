@@ -597,7 +597,35 @@ namespace Wado::Malloc {
         *(reinterpret_cast<char *>(pageAddress + inPageOffset)) = type;
     };
 
-    
+    void WdMalloc::registerBlocks(void *blockAddress, size_t blockCount, int type) {
+        size_t blockOffset = ((uintptr_t)(blockAddress) & blockOffsetMask) >> blockOffsetExponent;
+        std::cout << "For block at " << blockAddress << " offset is " << blockOffset << std::endl;
+        size_t pageOffset = blockOffset >> pageExponent;
+        std::cout << "For this block, the page offset is: " << pageOffset << std::endl;
+        size_t inPageOffset = blockOffset & (((size_t) 1 << pageExponent) - 1);
+        std::cout << "For this block, the in page offset is: " << inPageOffset << std::endl;
+
+        uintptr_t pageAddress = pageMapArea + pageOffset * pageSize;
+
+        std::cout << "Address of the requested page is: " << (void *) pageAddress << std::endl;
+
+        if ( *reinterpret_cast<char *>(pageMap + pageOffset) == 0) {
+            std::cout << "Page storing this block's details has not been committed yet" << std::endl;
+
+            std::cout << "Committing page at: " << (void *) pageAddress << std::endl;
+            LPVOID page = VirtualAlloc((void *) pageAddress, pageSize, MEM_COMMIT, PAGE_READWRITE);
+            if (page == nullptr) {
+                std::cout << "Could not commit page" << std::endl;
+                throw std::runtime_error("Could not commit page map page");
+            };
+            *(reinterpret_cast<char *>(pageMap + pageOffset)) = 1;
+        };
+
+        for (size_t i = 0; i < blockCount; i++) {
+            *(reinterpret_cast<char *>(pageAddress + inPageOffset + i)) = type; 
+        };
+    };
+
     void *WdMalloc::allocMedium(size_t size) {
         Allocator *allocator = reinterpret_cast<Allocator *>(allocatorArea);
         uint8_t sizeClass = sizeToSizeClass(size);
@@ -690,6 +718,11 @@ namespace Wado::Malloc {
 
     void WdMalloc::freeInternal(void *ptr) {
 
+    };
+
+    void freeInternalLarge(void *ptr) {
+        std::cout << "Got a centrally managed large free" << std::endl;
+        std::cout << "Need to check pagemap to get size" << std::endl;
     };
 
     void WdMalloc::freeInternalMedium(void *ptr) {
@@ -825,10 +858,12 @@ namespace Wado::Malloc {
             sizeExponent--;
         };
         std::cout << "For size " << size << " the next power of two exponent is: " << sizeExponent;
+        size_t blockCount = sizeExponent - BLOCK_EXPONENT;
+        std::cout << "For this size, the block count is: " << blockCount << std::endl;
+
         void *startBlock = popLargeStack(sizeExponent);
         if (startBlock == nullptr) {
             std::cout << "There was nothing on the large stack for this, need to reserve blocks" << std::endl;
-            size_t blockCount = sizeExponent - BLOCK_EXPONENT;
             startBlock = getBlocks(blockCount, size);
         } else {
             std::cout << "Found blocks, just need to commit exactly the amount of pages we care about" << std::endl;
@@ -842,6 +877,9 @@ namespace Wado::Malloc {
                 throw std::runtime_error("Could not commit block memory");
             };
         };
+
+        size_t blockType = blockCount << 16; // Move past half 
+        registerBlocks(startBlock, blockCount, blockType);
 
         std::cout << "All memory allocated or commited, returning pointer" << std::endl;
         return startBlock;
