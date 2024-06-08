@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <cstdint>
 
+#define BYTE_TO_BITS 8
+
 namespace Wado::Malloc {
 
     // Types:
@@ -58,6 +60,13 @@ namespace Wado::Malloc {
 
             static uintptr_t allocatorArea;
             static size_t sizeClassSizes[255];
+            
+            using LargeStackNode = struct LargeStackNode {
+                volatile LargeStackNode *next;
+            };
+
+            static volatile LargeStackNode *largeStacks[BYTE_TO_BITS * sizeof(void *)];
+
             static size_t MEDIUM_ALLOC;
             static size_t LARGE_ALLOC;
 
@@ -196,6 +205,9 @@ namespace Wado::Malloc {
             static const size_t blockOffsetMask = ~((size_t)1 << 21 - 1);
             static const size_t blockOffsetExponent = 21;
             static void registerBlock(void *blockAddress, BlockType type);
+
+            static void pushToLargeStack(LargeStackNode *node, const size_t exponent);
+            static void *popLargeStack(const size_t exponent);
     };
 };
 

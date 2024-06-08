@@ -9,36 +9,37 @@
 
 namespace Wado::Malloc {
 
-        // Sys info stuff 
-        size_t WdMalloc::cacheLineSize;
-        // Objects > block size -> large objects
-        // Objects <= block size but > mediumBoundary -> medium
-        // Objects <= mediumBoundary => medium 
-        size_t WdMalloc::blockSize;
-        size_t WdMalloc::mediumBoundary;
-        size_t WdMalloc::coreCount;
+    // Sys info stuff 
+    size_t WdMalloc::cacheLineSize;
+    // Objects > block size -> large objects
+    // Objects <= block size but > mediumBoundary -> medium
+    // Objects <= mediumBoundary => medium 
+    size_t WdMalloc::blockSize;
+    size_t WdMalloc::mediumBoundary;
+    size_t WdMalloc::coreCount;
 
-        size_t WdMalloc::areaSize;
-        // reserved Area is also the start of the higher level page map area 
-        uintptr_t WdMalloc::reservedArea;
+    size_t WdMalloc::areaSize;
+    // reserved Area is also the start of the higher level page map area 
+    uintptr_t WdMalloc::reservedArea;
 
-            // page map area is split up into pages 
-        uintptr_t WdMalloc::pageMap;
-        uintptr_t WdMalloc::pageMapArea;
-        size_t WdMalloc::pageSize; 
-        size_t WdMalloc::pageExponent;
+        // page map area is split up into pages 
+    uintptr_t WdMalloc::pageMap;
+    uintptr_t WdMalloc::pageMapArea;
+    size_t WdMalloc::pageSize; 
+    size_t WdMalloc::pageExponent;
 
-        size_t WdMalloc::MEDIUM_ALLOC;
-        size_t WdMalloc::LARGE_ALLOC;
+    size_t WdMalloc::MEDIUM_ALLOC;
+    size_t WdMalloc::LARGE_ALLOC;
 
-        // start of allocation area 
-        uintptr_t WdMalloc::allocationArea;
-        // Bump pointer for current allocation (everything block based)
-        volatile size_t WdMalloc::currentAllocBumpPtr;
+    // start of allocation area 
+    uintptr_t WdMalloc::allocationArea;
+    // Bump pointer for current allocation (everything block based)
+    volatile size_t WdMalloc::currentAllocBumpPtr;
 
-        uintptr_t WdMalloc::allocatorArea;
-        size_t WdMalloc::sizeClassSizes[255];
-        
+    uintptr_t WdMalloc::allocatorArea;
+    size_t WdMalloc::sizeClassSizes[255];
+
+    volatile WdMalloc::LargeStackNode *WdMalloc::largeStacks[BYTE_TO_BITS * sizeof(void *)];
 
     // Aligns a pointer up to the specified size, in bytes 
     // Pre: size is a power of 2 
@@ -801,4 +802,25 @@ namespace Wado::Malloc {
         };
     };
 
+    void WdMalloc::pushToLargeStack(LargeStackNode *node, const size_t exponent) {
+        volatile LargeStackNode *prevHead;
+
+        // Do this in a lock free way 
+        do {
+            prevHead = largeStacks[exponent];
+            node->next = prevHead;
+        } while (InterlockedCompareExchangePointer((volatile PVOID *) &largeStacks[exponent], node, (PVOID) prevHead) != prevHead);
+    };
+
+    void *WdMalloc::popLargeStack(const size_t exponent) {
+        volatile LargeStackNode *prevHead;
+        volatile LargeStackNode *newHead;
+        do {
+            prevHead = largeStacks[exponent];
+            if (prevHead == nullptr) {
+                return nullptr;
+            };
+            newHead = prevHead->next;
+        } while (InterlockedCompareExchangePointer((volatile PVOID *) &largeStacks[exponent], (PVOID) newHead, (PVOID) prevHead) != prevHead);
+    };
 };
