@@ -57,6 +57,10 @@ namespace Wado::Malloc {
             static uintptr_t allocationArea;
             // Bump pointer for current allocation (everything block based)
             static volatile size_t currentAllocBumpPtr;
+            static volatile uint64_t allocationLock;
+
+            static const uint64_t LOCKED = 1;
+            static const uint64_t UNLOCKED = 0;
 
             static uintptr_t allocatorArea;
             static size_t sizeClassSizes[255];
@@ -199,7 +203,10 @@ namespace Wado::Malloc {
 
             static void *allocMedium(size_t size);
 
-            static void *getBlock();
+            static void *allocLarge(size_t size);
+            
+            // By default get and commit just one block 
+            static void *getBlocks(const size_t blockCount = 1, const size_t commitSize = BLOCK_SIZE);
 
             // Need to mask out first 21 bits 
             static const size_t blockOffsetMask = ~((size_t)1 << 21 - 1);

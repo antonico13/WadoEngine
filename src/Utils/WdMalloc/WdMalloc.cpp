@@ -35,6 +35,7 @@ namespace Wado::Malloc {
     uintptr_t WdMalloc::allocationArea;
     // Bump pointer for current allocation (everything block based)
     volatile size_t WdMalloc::currentAllocBumpPtr;
+    volatile uint64_t WdMalloc::allocationLock = UNLOCKED;
 
     uintptr_t WdMalloc::allocatorArea;
     size_t WdMalloc::sizeClassSizes[255];
@@ -453,7 +454,7 @@ namespace Wado::Malloc {
             void *smallBlockAddr;
             if (allocator->superBlocks == nullptr) {
                 std::cout << "All allocator superblocks are empty, making a new one" << std::endl;
-                void *blockAddr = getBlock();
+                void *blockAddr = getBlocks();
                 std::cout << "Reserved a block at: " << blockAddr << std::endl;
                 // Need to mark on page map now 
                 registerBlock(blockAddr, BlockType::Super);
@@ -547,18 +548,28 @@ namespace Wado::Malloc {
         return reinterpret_cast<void *>(allocatedAddress);
     };
 
-    void *WdMalloc::getBlock() {
+    void *WdMalloc::getBlocks(const size_t blockCount, const size_t commitSize) {
         // Need to increment this to ensure we have a saved block 
         // TODO: this will need to be a free list
-        InterlockedIncrement(&currentAllocBumpPtr);
-        uintptr_t blockPtr = allocationArea + ((currentAllocBumpPtr - 1) << BLOCK_EXPONENT);
-        if (VirtualAlloc((PVOID) blockPtr, BLOCK_SIZE, MEM_COMMIT, PAGE_READWRITE) == NULL) {
+
+        // spin wait, this is fast so we can afford to do this
+
+        while (InterlockedExchange(&allocationLock, LOCKED) == LOCKED) {
+            // spin
+        };
+        
+        uintptr_t blockPtr = allocationArea + (currentAllocBumpPtr << BLOCK_EXPONENT);
+        if (VirtualAlloc((PVOID) blockPtr, alignUp(commitSize, pageSize), MEM_COMMIT, PAGE_READWRITE) == NULL) {
             std::cout << "Could not commit block memory" << std::endl;
             throw std::runtime_error("Could not commit block memory");
         };
+
+        currentAllocBumpPtr += blockCount;
+
+        InterlockedExchange(&allocationLock, UNLOCKED);
         return reinterpret_cast<void *>(blockPtr);
     };
-    
+
     void WdMalloc::registerBlock(void *blockAddress, BlockType type) {
         size_t blockOffset = ((uintptr_t)(blockAddress) & blockOffsetMask) >> blockOffsetExponent;
         std::cout << "For block at " << blockAddress << " offset is " << blockOffset << std::endl;
@@ -593,7 +604,7 @@ namespace Wado::Malloc {
         if (allocator->blocks[sizeClass] == nullptr) {
             // not found;
             std::cout << "Couldn't find block for the specified size" << std::endl;
-            void *blockAddr = getBlock();
+            void *blockAddr = getBlocks();
             std::cout << "Reserved a block at: " << blockAddr << std::endl;
             // Need to mark on page map now 
             registerBlock(blockAddr, BlockType::Medium);
@@ -800,6 +811,40 @@ namespace Wado::Malloc {
                 std::cout << "Updated super block array for allocator " << std::endl;
             };
         };
+    };
+
+    inline size_t roundUpToPowerOfTwo(size_t size) {
+        return (sizeof(size_t) * BYTE_TO_BITS) - (__lzcnt(size));
+    };
+
+    void *WdMalloc::allocLarge(size_t size) {
+        // First, round up to largest power of two 
+        // TODO: this can surely be done in a cleaner way
+        size_t sizeExponent = roundUpToPowerOfTwo(size);
+        if ( ((size_t)1 << (sizeExponent - 1)) == size) {
+            sizeExponent--;
+        };
+        std::cout << "For size " << size << " the next power of two exponent is: " << sizeExponent;
+        void *startBlock = popLargeStack(sizeExponent);
+        if (startBlock == nullptr) {
+            std::cout << "There was nothing on the large stack for this, need to reserve blocks" << std::endl;
+            size_t blockCount = sizeExponent - BLOCK_EXPONENT;
+            startBlock = getBlocks(blockCount, size);
+        } else {
+            std::cout << "Found blocks, just need to commit exactly the amount of pages we care about" << std::endl;
+            std::cout << "First page is always left uncomitted, so we need to commit allocation size rounded up to page size - one page in size" << std::endl;
+
+            void* commitStart = reinterpret_cast<void *>((uintptr_t) startBlock + pageSize);
+            size_t commitSize = alignUp(size, pageSize) - pageSize;
+
+            if (VirtualAlloc((PVOID) commitStart, commitSize, MEM_COMMIT, PAGE_READWRITE) == NULL) {
+                std::cout << "Could not commit block memory for large allocation" << std::endl;
+                throw std::runtime_error("Could not commit block memory");
+            };
+        };
+
+        std::cout << "All memory allocated or commited, returning pointer" << std::endl;
+        return startBlock;
     };
 
     void WdMalloc::pushToLargeStack(LargeStackNode *node, const size_t exponent) {
