@@ -715,4 +715,90 @@ namespace Wado::Malloc {
             alloc->blocks[metaData->sizeClass] = (void *) block;
         };
     };
+
+    void WdMalloc::freeInternalSmall(void *ptr) {
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
+        uintptr_t block = alignDown((uintptr_t) ptr, BLOCK_SIZE);
+
+        SuperBlockMetadata *metaData = reinterpret_cast<SuperBlockMetadata *>(block + cacheLineSize);
+
+        std::cout << "Freeing small object at superblock: " << (void *) metaData << std::endl;
+
+        uintptr_t objectPage = alignDown((uintptr_t) ptr, pageSize);
+
+        std::cout << "Freeing small object in page that starts at: " << (void *) objectPage << std::endl;
+
+        uint8_t smallBlockMetaIndex = (objectPage - block) >> pageExponent;
+
+        std::cout << "This has metadata index: " << (int) smallBlockMetaIndex << std::endl;
+        
+        SmallBlockMetaData& smallBlockMetada = metaData->smallBlocks[smallBlockMetaIndex];
+        
+        std::cout << "The small block has this many used objects: " << (uint8_t) smallBlockMetada.used << std::endl;
+
+        std::cout << "The size class is: " << (uint8_t) smallBlockMetada.data.usedMetaData.sizeClass << std::endl;
+        
+        size_t size = sizeClassSizes[smallBlockMetada.data.usedMetaData.sizeClass];
+
+        uint8_t previousHead = smallBlockMetada.data.usedMetaData.head;
+
+        std::cout << "Previous head is: " << (int) previousHead << std::endl;
+
+        std::cout << "We have size " << size << std::endl;
+
+        uint8_t objectIndex = ((uintptr_t) ptr - objectPage) >> __lzcnt(size);
+
+        std::cout << "The object being freed is at this index in the page: " << (int) objectIndex << std::endl;
+
+        smallBlockMetada.used--;
+
+        std::cout << "The used count for this small block is now: " << (int) smallBlockMetada.used << std::endl;
+
+        smallBlockMetada.data.usedMetaData.head = objectIndex;
+
+        std::cout << "Updated small block head " << std::endl;
+
+        *reinterpret_cast<uint8_t *>(ptr) = previousHead;
+
+        std::cout << "Updated what is stored in the ptr too" << std::endl;
+
+        if (previousHead == -1) {
+            std::cout << "This small block was full before" << std::endl;
+
+            smallBlockMetada.data.usedMetaData.link = objectIndex;
+
+            std::cout << "Updated head and link to point to the same object" << std::endl;
+
+            reinterpret_cast<DLLNode *>(ptr)->next = alloc->blocks[smallBlockMetada.data.usedMetaData.sizeClass];
+
+            alloc->blocks[smallBlockMetada.data.usedMetaData.sizeClass] = reinterpret_cast<void*>((uintptr_t) block + cacheLineSize + sizeof(DLLNode) + sizeof(uint16_t) + sizeof(uint8_t) + sizeof(uint8_t));
+
+            std::cout << "Updated DLL nodes and allocator block array" << std::endl;
+            return;
+        };
+
+        if (smallBlockMetada.used == 0) {
+            std::cout << "This small block is now completely free, can mark this as a free block once again and update superblock" << std::endl;
+
+            metaData->freeCount++;
+            metaData->used--;
+
+            smallBlockMetada.data.next = metaData->head;
+
+            std::cout << "This is where I have to use the DLL node, I'm removing something that could be part of the list";
+
+            // TOOD
+
+            if (metaData->freeCount == 1) {
+                std::cout << "Super block now has a free block " << std::endl;
+
+                metaData->dllNode.next = alloc->superBlocks;
+
+                alloc->superBlocks = (void *) block;
+
+                std::cout << "Updated super block array for allocator " << std::endl;
+            };
+        };
+    };
+
 };
