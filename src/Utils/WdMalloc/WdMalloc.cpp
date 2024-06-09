@@ -303,7 +303,7 @@ namespace Wado::Malloc {
     };
 
     void WdMalloc::flushDeallocRequests() {
-        Allocator* allocator; // thread local storage 
+        Allocator* allocator = reinterpret_cast<Allocator *>(allocatorArea);
 
         size_t addressMask = INITIAL_BIT_MASK;
         size_t bits = 0;
@@ -337,16 +337,79 @@ namespace Wado::Malloc {
                 ptr = next;
             }; 
         };
+        allocator->currentDeallocSize = 0;
         // everything should be assigned now 
     };
 
+    size_t WdMalloc::getPtrSizeMedium(void *ptr) {
+        uintptr_t block = alignDown((uintptr_t) ptr, BLOCK_SIZE);
+
+        MediumBlockMetadata *metaData = reinterpret_cast<MediumBlockMetadata *>(block + cacheLineSize);
+        size_t size = sizeClassSizes[metaData->sizeClass];
+
+        std::cout << "We have size " << size << std::endl;
+
+        return size;
+    };
+
+    size_t WdMalloc::getPtrSizeSmall(void *ptr) {
+        uintptr_t block = alignDown((uintptr_t) ptr, BLOCK_SIZE);
+
+        SuperBlockMetadata *metaData = reinterpret_cast<SuperBlockMetadata *>(block + cacheLineSize);
+
+        std::cout << "Freeing small object at superblock: " << (void *) metaData << std::endl;
+
+        uintptr_t objectPage = alignDown((uintptr_t) ptr, pageSize);
+
+        std::cout << "Freeing small object in page that starts at: " << (void *) objectPage << std::endl;
+
+        uint8_t smallBlockMetaIndex = (objectPage - block) >> pageExponent;
+
+        std::cout << "This has metadata index: " << (int) smallBlockMetaIndex << std::endl;
+        
+        SmallBlockMetaData& smallBlockMetada = metaData->smallBlocks[smallBlockMetaIndex];
+        
+        std::cout << "The small block has this many used objects: " << (uint8_t) smallBlockMetada.used << std::endl;
+
+        std::cout << "The size class is: " << (uint8_t) smallBlockMetada.data.usedMetaData.sizeClass << std::endl;
+        
+        return sizeClassSizes[smallBlockMetada.data.usedMetaData.sizeClass];
+    };
+
     void WdMalloc::free(void* ptr) {
+        std::cout << "Checking page map first to see if we have a large block " << std::endl;
+
+        size_t blockOffset = ((uintptr_t)(ptr) & blockOffsetMask) >> blockOffsetExponent;
+        std::cout << "For block at " << ptr << " offset is " << blockOffset << std::endl;
+        size_t pageOffset = blockOffset >> pageExponent;
+        std::cout << "For this block, the page offset is: " << pageOffset << std::endl;
+        size_t inPageOffset = blockOffset & (((size_t) 1 << pageExponent) - 1);
+        std::cout << "For this block, the in page offset is: " << inPageOffset << std::endl;
+
+        uintptr_t pageAddress = pageMapArea + pageOffset * pageSize;
+
+        std::cout << "Address of the requested page is: " << (void *) pageAddress << std::endl;
+
+        if (*(reinterpret_cast<int *>(pageAddress + inPageOffset)) > BlockType::Unused) {
+            std::cout << "Freeing a large block" << std::endl;
+            freeInternalLarge(ptr);
+            return;
+        };
+
         Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
-        uintptr_t block = alignDown(reinterpret_cast<uintptr_t>(ptr), BLOCK_SIZE);
+        BlockMetaData* block = reinterpret_cast<BlockMetaData *>(alignDown(reinterpret_cast<uintptr_t>(ptr), BLOCK_SIZE));
 
         std::cout << "For pointer " << ptr << " aligned down to block pointer: " << (void *) block << std::endl;
 
-        uintptr_t parentAllocPtr = *reinterpret_cast<uintptr_t *>(block);
+        uintptr_t parentAllocPtr = reinterpret_cast<uintptr_t>(block->allocator);
+        BlockType type = block->type;
+
+        size_t allocSize = 0;
+        if (type == BlockType::Medium) {
+            allocSize = getPtrSizeMedium(ptr);
+        } else {
+            allocSize = getPtrSizeSmall(ptr);
+        };
 
         std::cout << "Parent allocator pointer is: " << (void *) parentAllocPtr << std::endl;
 
@@ -357,8 +420,12 @@ namespace Wado::Malloc {
         msg->parentAlloc = reinterpret_cast<Allocator *>(parentAllocPtr);
 
         alloc->deallocQueues[bucketId].end->next = msg;
+        alloc->currentDeallocSize += allocSize;
 
-        // TODO: how to get size here? 
+        if (alloc->currentDeallocSize >= ALLOC_THRESHOLD) {
+            std::cout << "Exceeded dealloc threshold on this core, flushing" << std::endl;
+            flushDeallocRequests();
+        };
     };
 
     void *WdMalloc::malloc(size_t size) {
@@ -367,8 +434,7 @@ namespace Wado::Malloc {
         std::cout << "Alloc address: " << alloc << std::endl;
         std::cout << "Looking for an object of sizeclass: " << (int) sizeClass << std::endl;
         if (size > LARGE_ALLOC) {
-            // TODO:
-            return nullptr;
+            return allocLarge(size);
         };
         if (size > MEDIUM_ALLOC) {
             std::cout << "Got a medium allocation " << std::endl;
@@ -717,7 +783,13 @@ namespace Wado::Malloc {
     };
 
     void WdMalloc::freeInternal(void *ptr) {
-
+        Allocator* alloc = reinterpret_cast<Allocator *>(allocatorArea);
+        BlockMetaData* block = reinterpret_cast<BlockMetaData *>(alignDown(reinterpret_cast<uintptr_t>(ptr), BLOCK_SIZE));
+        if (block->type == BlockType::Medium) {
+            freeInternalMedium(ptr);
+        } else {
+            freeInternalSmall(ptr);
+        };
     };
 
     void WdMalloc::freeInternalLarge(void *ptr) {

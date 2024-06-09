@@ -93,6 +93,8 @@ namespace Wado::Malloc {
             static const size_t DEALLOC_THRESHOLD = ((size_t)1 << 17);
             static const size_t INITIAL_BIT_MASK = MALLOC_BUCKETS - 1; // 2^k - 1 to get first k bits all set to 1 
 
+            static const size_t ALLOC_THRESHOLD = BLOCK_SIZE >> 1; 
+
             struct Allocator;
 
             using DeallocMessage = struct DeallocMessage {
@@ -103,7 +105,6 @@ namespace Wado::Malloc {
             using DeallocQueue = struct DeallocQueue {
                 DeallocMessage *first;
                 volatile DeallocMessage *end;
-                volatile size_t size = 0;
             };
 
             using DLLNode = struct DLLNode {
@@ -113,7 +114,8 @@ namespace Wado::Malloc {
 
             using Allocator = struct Allocator {
                 // The allocator. 
-                volatile size_t currentDeallocSize = 0;
+                // TOOD: should this be different so other allocators can check this? 
+                size_t currentDeallocSize = 0;
                 DeallocQueue deallocQueues[MALLOC_BUCKETS];
                 size_t currentBitMask = INITIAL_BIT_MASK;
 
@@ -188,6 +190,10 @@ namespace Wado::Malloc {
             static DeallocMessage *DequeueDeallocQueue(DeallocMessage *first);
 
             static void flushDeallocRequests();
+
+            static size_t getPtrSizeMedium(void *ptr);
+
+            static size_t getPtrSizeSmall(void *ptr);
 
             static void freeInternal(void *ptr); 
 
