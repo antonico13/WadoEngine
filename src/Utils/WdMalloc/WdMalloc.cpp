@@ -720,9 +720,41 @@ namespace Wado::Malloc {
 
     };
 
-    void freeInternalLarge(void *ptr) {
+    void WdMalloc::freeInternalLarge(void *ptr) {
         std::cout << "Got a centrally managed large free" << std::endl;
         std::cout << "Need to check pagemap to get size" << std::endl;
+
+        size_t blockOffset = ((uintptr_t)(ptr) & blockOffsetMask) >> blockOffsetExponent;
+        std::cout << "For block at " << ptr << " offset is " << blockOffset << std::endl;
+        size_t pageOffset = blockOffset >> pageExponent;
+        std::cout << "For this block, the page offset is: " << pageOffset << std::endl;
+        size_t inPageOffset = blockOffset & (((size_t) 1 << pageExponent) - 1);
+        std::cout << "For this block, the in page offset is: " << inPageOffset << std::endl;
+
+        uintptr_t pageAddress = pageMapArea + pageOffset * pageSize;
+
+        std::cout << "Address of the requested page is: " << (void *) pageAddress << std::endl;
+
+        size_t blockCount = *(reinterpret_cast<char *>(pageAddress + inPageOffset)) >> 16;
+
+        std::cout << "Block count: " << blockCount << std::endl;
+
+        std::cout << "Need to decommit all except for first page " << std::endl;
+
+        size_t decommitSize = BLOCK_SIZE * blockCount - pageSize;
+        void *decommitStart = reinterpret_cast<void *>((uintptr_t) ptr + pageSize);
+
+        if (!VirtualFree(decommitStart, decommitSize, MEM_DECOMMIT)) {
+            throw std::runtime_error("Could not decommit pages for this block");
+        };
+
+        registerBlocks(ptr, blockCount, BlockType::Unused);
+
+        DWORD blockCountExponent = 0;
+
+        _BitScanReverse(&blockCountExponent, blockCount);
+
+        pushToLargeStack(reinterpret_cast<LargeStackNode *>(ptr), BLOCK_EXPONENT + blockCountExponent);
     };
 
     void WdMalloc::freeInternalMedium(void *ptr) {
