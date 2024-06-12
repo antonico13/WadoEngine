@@ -44,5 +44,13 @@ namespace Wado::GAL {
                 size(_size),
                 dataPointers(handles.size()) {};
     };
+
+    using WdBufferDescription = struct WdBufferDescription {
+        WdBufferDescription(const WdBufferUsageFlags& _usage, const WdSize& _elementCount, const WdSize& _sizePerElement) : usage(_usage), elementCount(_elementCount), sizePerElement(_sizePerElement), size(_sizePerElement * _elementCount) { };
+        const WdBufferUsageFlags usage;
+        const WdSize elementCount;
+        const WdSize sizePerElement;
+        const WdSize size;
+    };
 }
 #endif
