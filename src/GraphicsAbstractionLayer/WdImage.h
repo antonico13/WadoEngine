@@ -14,6 +14,9 @@ namespace Wado::GAL {
     using WdImageHandle = WdHandle;
     using WdSamplerHandle = WdHandle;
 
+    using WdMipCount = uint64_t;
+    using WdNumSamples = uint64_t;
+
     // Describes how an image's texels (~pixels) are laid out in memory.
     // To match Vulkan, linear represent row-major order. 
     // Always recommended to select optimal tiling, implementations
@@ -184,7 +187,17 @@ namespace Wado::GAL {
                 extent(_extent),
                 usage(_usage),
                 clearValue(_clearValue) {};
-    };    
-}
+    };
+
+    using WdImageDescription = struct WdImageDescription {
+        public:
+            WdImageDescription(const WdFormat& _format, const WdExtent2D& _extent, const WdClearValue& _clearValue, const WdMipCount _mipCount, const WdSampleCount _sampleCount) : format(_format), extent(_extent), clearValue(_clearValue), mipCount(_mipCount), sampleCount(_sampleCount) { };
+            const WdFormat format;
+            const WdExtent2D extent;
+            const WdClearValue clearValue;
+            const WdMipCount mipCount;
+            const WdSampleCount sampleCount;
+    };
+};
 
 #endif
