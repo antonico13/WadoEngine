@@ -5,16 +5,14 @@
 
 namespace Wado::RenderGraph {
     // Basic Vulkan-GLSL types 
-    using RDTextureHandle = uint64_t;
-    using RDBufferHandle = uint64_t;
-    using RDSamplerHandle = uint64_t;
+    using RDResourceHandle = uint64_t;
+    using RDTextureHandle = RDResourceHandle;
+    using RDBufferHandle = RDResourceHandle;
+    using RDSamplerHandle = RDResourceHandle;
 
     using RDCombinedTextureSampler = struct RDCombinedTextureSampler {
-        const RDTextureHandle texture;
-        const RDSamplerHandle sampler;
-
-        private:
-            RDCombinedTextureSampler(RDTextureHandle _textureHandle, RDSamplerHandle _samplerHandle) : texture(_textureHandle), sampler(_samplerHandle) { };
+        RDTextureHandle texture;
+        RDSamplerHandle sampler;
     };
 
     using RDReadWriteTexture = RDTextureHandle;

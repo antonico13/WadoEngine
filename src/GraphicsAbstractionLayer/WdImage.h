@@ -191,8 +191,9 @@ namespace Wado::GAL {
 
     using WdImageDescription = struct WdImageDescription {
         public:
-            WdImageDescription(const WdFormat& _format, const WdExtent2D& _extent, const WdClearValue& _clearValue, const WdMipCount _mipCount, const WdSampleCount _sampleCount) : format(_format), extent(_extent), clearValue(_clearValue), mipCount(_mipCount), sampleCount(_sampleCount) { };
+            WdImageDescription(WdFormat _format, WdImageUsageFlags _flags, WdExtent2D _extent, WdClearValue _clearValue, WdMipCount _mipCount, WdSampleCount _sampleCount) : format(_format), flags(_flags), extent(_extent), clearValue(_clearValue), mipCount(_mipCount), sampleCount(_sampleCount) { };
             const WdFormat format;
+            const WdImageUsageFlags flags;
             const WdExtent2D extent;
             const WdClearValue clearValue;
             const WdMipCount mipCount;

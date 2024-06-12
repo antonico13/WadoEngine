@@ -12,8 +12,8 @@ namespace Wado::GAL {
     using WdBufferUsageFlags = uint32_t;
 
     enum WdBufferUsage {
-        WD_TRANSFER_SRC = 0x00000001,
-        WD_TRANSFER_DST = 0x00000002,
+        WD_TRANSFER_SRC_BUFFER = 0x00000001,
+        WD_TRANSFER_DST_BUFFER = 0x00000002,
         WD_UNIFORM_BUFFER = 0x00000004,
         WD_STORAGE_BUFFER = 0x00000008,
         WD_INDEX_BUFFER = 0x00000010,

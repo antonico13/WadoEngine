@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(googleTestSrc "../../../lib/googletest")
 set(wadoRDGSource "../../../src/Rendering/RenderGraph")
+set(wadoGALSource "../../../src/GraphicsAbstractionLayer")
 
 enable_testing()
 
@@ -23,6 +24,7 @@ target_link_libraries(RenderGraphTest PUBLIC gtest_main)
 target_include_directories(RenderGraphTest PUBLIC
                           "${wadoRDGSource}"
                           "."
+                          "${wadoGALSource}"
                           )
 
 include(GoogleTest)
