@@ -33,6 +33,7 @@ namespace Wado::RenderGraph {
             void execute();
         private:
 
+            void cullUnused();
             void compile();
 
             using RDRenderPassID = size_t;

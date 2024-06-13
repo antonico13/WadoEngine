@@ -98,6 +98,38 @@ namespace Wado::RenderGraph {
     };
 
     void WdRenderGraphBuilder::execute() {
+        //cullUnused();
         compile();
+    };
+
+    void WdRenderGraphBuilder::cullUnused() {
+        std::vector<RDGraphNode *> unconsumedResources;
+
+        for (std::unordered_map<uint64_t, RDGraphNode*>::iterator it = _resourceRDGNodes.begin(); it != _resourceRDGNodes.end(); ++it) {
+            if (it->second->consumerCount == 0) {
+                std::cout << "Found unconsumed resource: " << it->second->underlyingResourceID << ", version: " << it->second->version << std::endl;
+                unconsumedResources.emplace_back(it->second);
+            };
+        };
+        
+        // Perform flood-fill to remove nodes from graph 
+        while (!unconsumedResources.empty()) {  
+            // We know all are resources so they have one producer 
+            RDGraphNode *resNode = *unconsumedResources.begin();
+            unconsumedResources.erase(unconsumedResources.begin());
+            // TODO: how to mark final render pass as that it always has a consumer for its resources? 
+            // This deletes every graph otherwise 
+            RDGraphNode *producerNode = *resNode->producers.begin();
+            producerNode->consumerCount--;
+            if (producerNode->consumerCount == 0) {
+                std::cout << "Found render pass that can be erased: " << producerNode->underlyingResourceID << std::endl;
+                for (RDGraphNode *renderPassProducer : producerNode->producers) {
+                    renderPassProducer->consumerCount--;
+                    if (renderPassProducer->consumerCount == 0) {
+                        unconsumedResources.emplace_back(renderPassProducer);
+                    };
+                };
+            };
+        };
     };
 };
