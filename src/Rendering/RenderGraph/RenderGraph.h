@@ -1,9 +1,11 @@
 #ifndef WADO_RENDERGRAPH_H
 #define WADO_RENDERGRAPH_H
 
+#include "WdCommandList.h"
 #include "RenderGraphShaderTypes.h"
 #include "WdBuffer.h"
 #include "WdImage.h"
+#include "WdLayer.h"
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -14,16 +16,16 @@
 
 namespace Wado::RenderGraph {
 
-    using WdRDGExecuteCallbackFn = const std::function<void()>;
+    using WdRDGExecuteCallbackFn = std::function<void(Wado::GAL::WdCommandList& cmdList)>;
 
     class WdRenderGraphBuilder {
         public:
-            WdRenderGraphBuilder();
+            WdRenderGraphBuilder(Wado::GAL::WdLayer* layer) : _layer(layer) { };
             ~WdRenderGraphBuilder();
 
             // templated by param type 
             template <typename T>
-            void addRenderPass(const std::string& passName, const T& params, WdRDGExecuteCallbackFn&& callback);
+            void addRenderPass(const std::string& passName, const T& params, WdRDGExecuteCallbackFn callback);
             RDBufferHandle createBuffer(const GAL::WdBufferDescription& description);
             RDTextureHandle createTexture(const GAL::WdImageDescription& description);
 
@@ -42,10 +44,11 @@ namespace Wado::RenderGraph {
             static const RDRenderPassID UNDEFINED_RENDERPASS_ID = 0;
 
             using RDRenderPass = struct RDRenderPass {
-                std::vector<RDTextureHandle> readResoucres;
-                std::vector<RDTextureHandle> writeResoucres;
-                uint64_t writeRefCount;
-                uint64_t readRefCount;
+                RDRenderPass(WdRDGExecuteCallbackFn _executeFunction) {
+                    executeFunction = _executeFunction;
+                 };
+
+                WdRDGExecuteCallbackFn executeFunction;
             };
 
             using RDReadWriteSet = struct RDReadWriteSet {
@@ -66,7 +69,9 @@ namespace Wado::RenderGraph {
                 uint64_t layout1;
                 uint64_t layout2;
             };
-            
+
+            void registerTransition(const RDResourceTransition& transition, Wado::GAL::WdCommandList& cmdList);
+
             using RDSubmitGroup = struct RDSubmitGroup {
                 std::vector<RDRenderPass> renderPasses;
                 std::vector<RDResourceTransition> resourceTransitions;
@@ -74,6 +79,7 @@ namespace Wado::RenderGraph {
 
             using RDGraphNode = struct RDGraphNode {
                 uint64_t underlyingResourceID;
+                uint64_t dependencyLevel;
                 uint64_t version;
                 uint64_t producerCount;
                 uint64_t consumerCount;
@@ -84,16 +90,26 @@ namespace Wado::RenderGraph {
             std::unordered_map<uint64_t, RDGraphNode*> _resourceRDGNodes;
             std::unordered_map<RDRenderPassID, RDGraphNode*> _renderPassRDGNodes;
 
+            using RDDependencyLevel = struct RDDependencyLevel {
+                std::vector<RDGraphNode *> passes;
+                std::vector<RDGraphNode *> resourceTransitions;
+            };
+
+            std::vector<RDDependencyLevel> _sortedGraph;
+
             std::vector<RDRenderPass> _renderPasses;
             std::vector<RDGraphNode *> _noReadNodes;
             std::vector<RDResourceInfo> _textureRegistry;
             std::vector<RDResourceInfo> _bufferRegistry;
+
+            Wado::GAL::WdLayer* _layer;
 
             inline RDGraphNode *makeRenderPassNode(uint64_t producerCount, uint64_t consumerCount) {
                 RDGraphNode *renderPassNode = new RDGraphNode();
                 renderPassNode->consumerCount = consumerCount;
                 renderPassNode->producerCount = producerCount;
                 renderPassNode->underlyingResourceID = CUMMULATIVE_RENDERPASS_ID;
+                renderPassNode->dependencyLevel = 0;
 
                 return renderPassNode;
             };
@@ -112,8 +128,8 @@ namespace Wado::RenderGraph {
 
                 resInfo.lastUse = CUMMULATIVE_RENDERPASS_ID;
                 uint64_t versionedHandle = resourceHandle | (resInfo.version << 32);
-                std::cout << "Original handle: " << (void *) resourceHandle << std::endl;
-                std::cout << "Versioned handle: " << (void *) versionedHandle << std::endl;
+                //std::cout << "Original handle: " << (void *) resourceHandle << std::endl;
+                //std::cout << "Versioned handle: " << (void *) versionedHandle << std::endl;
                 RDGraphNode *resInfoNode  = _resourceRDGNodes.at(versionedHandle);
 
                 resInfoNode->consumerCount++;
@@ -149,8 +165,8 @@ namespace Wado::RenderGraph {
                 resInfoNode->version = resInfo.version;
                 resInfoNode->producers.insert(renderPassNode);
                 uint64_t versionedHandle = resourceHandle | (resInfo.version << 32);
-                std::cout << "Original handle: " << (void *) resourceHandle << std::endl;
-                std::cout << "Versioned handle: " << (void *) versionedHandle << std::endl;
+                //std::cout << "Original handle: " << (void *) resourceHandle << std::endl;
+                //std::cout << "Versioned handle: " << (void *) versionedHandle << std::endl;
                 // Insert the new node now 
                 _resourceRDGNodes[versionedHandle] = resInfoNode;
 

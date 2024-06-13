@@ -9,22 +9,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(googleTestSrc "../../../lib/googletest")
 set(wadoRDGSource "../../../src/Rendering/RenderGraph")
 set(wadoGALSource "../../../src/GraphicsAbstractionLayer")
+set(wadoDebugGLSource "../../../src/GraphicsLayers/DebugLayer")
+
 
 enable_testing()
 
 add_subdirectory(${googleTestSrc} ${googleTestSrc}/build)
 add_subdirectory(${wadoRDGSource} ${wadoRDGSource}/build)
-
+add_subdirectory(${wadoGALSource} ${wadoGALSource}/build)
+add_subdirectory(${wadoDebugGLSource} ${wadoDebugGLSource}/build)
 
 add_executable(RenderGraphTest RenderGraphTests.cpp)
 
 target_link_libraries(RenderGraphTest PUBLIC WadoRenderGraph)
+target_link_libraries(RenderGraphTest PUBLIC WadoDebugGAL)
+target_link_libraries(RenderGraphTest PUBLIC WadoGAL)
 target_link_libraries(RenderGraphTest PUBLIC gtest_main)
 
 target_include_directories(RenderGraphTest PUBLIC
                           "${wadoRDGSource}"
                           "."
                           "${wadoGALSource}"
+                          "${wadoDebugGLSource}"
                           )
 
 include(GoogleTest)

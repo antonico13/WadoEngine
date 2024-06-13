@@ -21,7 +21,7 @@ namespace Wado::RenderGraph {
 
 
     template <>
-    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const GBufferFragmentParams& params, WdRDGExecuteCallbackFn&& callback) {
+    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const GBufferFragmentParams& params, WdRDGExecuteCallbackFn callback) {
         RDGraphNode *renderPassNode = makeRenderPassNode(9, 4);
 
         addResourceRead(params.diffuseSampler.texture, renderPassNode);
@@ -37,6 +37,7 @@ namespace Wado::RenderGraph {
 
         _renderPassRDGNodes.emplace(CUMMULATIVE_RENDERPASS_ID, renderPassNode);
         _noReadNodes.emplace_back(renderPassNode);
+        _renderPasses.emplace_back(callback);
         CUMMULATIVE_RENDERPASS_ID++;
     };
 
@@ -46,12 +47,13 @@ namespace Wado::RenderGraph {
 
 
     template <>
-    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const TestShaderParams& params, WdRDGExecuteCallbackFn&& callback) {
+    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const TestShaderParams& params, WdRDGExecuteCallbackFn  callback) {
         RDGraphNode *renderPassNode = makeRenderPassNode(1, 1);
 
         addResourceWrite(params.Test1, renderPassNode);
 
         _renderPassRDGNodes.emplace(CUMMULATIVE_RENDERPASS_ID, renderPassNode);
+        _renderPasses.emplace_back(callback);
         CUMMULATIVE_RENDERPASS_ID++;
     };
 
@@ -63,13 +65,14 @@ namespace Wado::RenderGraph {
 
 
     template <>
-    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const TestShaderParams2& params, WdRDGExecuteCallbackFn&& callback) {
+    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const TestShaderParams2& params, WdRDGExecuteCallbackFn  callback) {
         RDGraphNode *renderPassNode = makeRenderPassNode(2, 2);
 
         addResourceWrite(params.Test1, renderPassNode);
         addResourceWrite(params.Test2, renderPassNode);
 
         _renderPassRDGNodes.emplace(CUMMULATIVE_RENDERPASS_ID, renderPassNode);
+        _renderPasses.emplace_back(callback);
         CUMMULATIVE_RENDERPASS_ID++;
     };
 
@@ -86,7 +89,7 @@ namespace Wado::RenderGraph {
     };
 
     template <>
-    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const DeferredLightingShaderParams& params, WdRDGExecuteCallbackFn&& callback) {
+    void WdRenderGraphBuilder::addRenderPass(const std::string& passName, const DeferredLightingShaderParams& params, WdRDGExecuteCallbackFn  callback) {
 
     };
 

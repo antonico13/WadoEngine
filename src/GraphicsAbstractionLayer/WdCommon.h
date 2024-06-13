@@ -2,6 +2,7 @@
 #define WADO_GRAPHICS_ABSTRACTION_LAYER_COMMON
 
 #include <cstdint>
+#include <vector>
 
 namespace Wado::GAL {
     

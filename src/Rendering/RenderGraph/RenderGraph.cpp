@@ -4,10 +4,6 @@
 
 namespace Wado::RenderGraph {
 
-    WdRenderGraphBuilder::WdRenderGraphBuilder() {
-
-    };
-
     WdRenderGraphBuilder::~WdRenderGraphBuilder() {
         for (std::unordered_map<uint64_t, RDGraphNode*>::iterator it = _resourceRDGNodes.begin(); it != _resourceRDGNodes.end(); ++it) {
             free(it->second);
@@ -20,33 +16,10 @@ namespace Wado::RenderGraph {
 
     void WdRenderGraphBuilder::compile() {
         // While there are render passes with 0 reads, do this
-        std::vector<RDGraphNode *> sortedGraph;
-        
-        std::cout << "Render passes look like: " << std::endl;
+        // Pessimistic size 
+        std::vector<std::vector<RDGraphNode *>> sortedGraph((_renderPassRDGNodes.size() + _resourceRDGNodes.size()));
 
-        for (std::unordered_map<RDRenderPassID, RDGraphNode*>::iterator it = _renderPassRDGNodes.begin(); it != _renderPassRDGNodes.end(); ++it) {
-            std::cout << "Render pass: " << it->second->underlyingResourceID << " has: " << std::endl;
-            std::cout << "Producers: " << std::endl;
-            for (RDGraphNode * producer : it->second->producers) {
-                std::cout << "Render resource " << producer->underlyingResourceID << ", version: " << producer->version << std::endl;
-            };
-            std::cout << "Consumers: " << std::endl;
-            for (RDGraphNode * consumer : it->second->consumers) {
-                std::cout << "Render resource " << consumer->underlyingResourceID << ", version: " << consumer->version << std::endl;
-            };
-        };
-
-        for (std::unordered_map<uint64_t, RDGraphNode*>::iterator it = _resourceRDGNodes.begin(); it != _resourceRDGNodes.end(); ++it) {
-            std::cout << "Resource: " << it->second->underlyingResourceID << ", version: " << it->second->version << " has: " << std::endl;
-            std::cout << "Producers: " << std::endl;
-            for (RDGraphNode * producer : it->second->producers) {
-                std::cout << "Render pass " << producer->underlyingResourceID << ", version: " << producer->version << std::endl;
-            };
-            std::cout << "Consumers: " << std::endl;
-            for (RDGraphNode * consumer : it->second->consumers) {
-                std::cout << "Render pass " << consumer->underlyingResourceID << ", version: " << consumer->version << std::endl;
-            };        
-        };
+        size_t levels = 0;
 
         // Do topological sort.
         while (!_noReadNodes.empty()) {
@@ -54,22 +27,39 @@ namespace Wado::RenderGraph {
             RDGraphNode *frontNode = *_noReadNodes.begin();
             _noReadNodes.erase(_noReadNodes.begin());
             // Add to sorted graph
-            sortedGraph.emplace_back(frontNode);
+            sortedGraph[frontNode->dependencyLevel].emplace_back(frontNode);
 
             for (RDGraphNode *consumerNode : frontNode->consumers) {
                 // Decrement producer count
-                std::cout << "Node " << frontNode->underlyingResourceID << " version " << frontNode->version << " has consumer: " << consumerNode->underlyingResourceID << std::endl;
+                //std::cout << "Node " << frontNode->underlyingResourceID << " version " << frontNode->version << " has consumer: " << consumerNode->underlyingResourceID << std::endl;
                 consumerNode->producerCount--;
                 if (consumerNode->producerCount == 0) {
-                    std::cout << "Producer count for that node reached 0 " << std::endl;
+                    //std::cout << "Producer count for that node reached 0 " << std::endl;
                     // can add to no read set now
+                    consumerNode->dependencyLevel = frontNode->dependencyLevel + 1;
+                    if (consumerNode->dependencyLevel > levels) {
+                        levels = consumerNode->dependencyLevel;
+                    };
+
                     _noReadNodes.emplace_back(consumerNode);
                 };
             };
         };
-
-        for (RDGraphNode *sortedNode : sortedGraph) {
-            std::cout << "Underlying ID: " << sortedNode->underlyingResourceID << " Version: " << sortedNode->version << std::endl;
+        std::cout << levels << std::endl;
+        sortedGraph.resize(levels + 1);
+        _sortedGraph.resize((levels >> 1) + 1);
+        for (int i = 0; i < sortedGraph.size(); i = i + 2) {
+            //std::cout << "Depedency level: " << (i >> 1) << std::endl; 
+            _sortedGraph[i >> 1].passes = sortedGraph[i];
+            _sortedGraph[i >> 1].resourceTransitions = sortedGraph[i + 1];
+            //std::cout << "Render passes" << std::endl;
+            // for (RDGraphNode *sortedNode : sortedGraph[i]) {
+            //     std::cout << "Underlying ID: " << sortedNode->underlyingResourceID << " Version: " << sortedNode->version << std::endl;
+            // }; 
+            // std::cout << "Resource transitions: " << std::endl;
+            // for (RDGraphNode *sortedNode : sortedGraph[i + 1]) {
+            //     std::cout << "Underlying ID: " << sortedNode->underlyingResourceID << " Version: " << sortedNode->version << std::endl;
+            // }; 
         };
     };
 
@@ -97,9 +87,30 @@ namespace Wado::RenderGraph {
         return handle;
     };
 
+    void WdRenderGraphBuilder::registerTransition(const RDResourceTransition& transition, Wado::GAL::WdCommandList& cmdList) {
+        // TODO, don't have this feature in the CMD list 
+        std::cout << "Transition: " << transition.texture << " from " << transition.layout1 << " to " << transition.layout2 << std::endl;
+    };
+
+    // this should be build not execute 
     void WdRenderGraphBuilder::execute() {
         //cullUnused();
         compile();
+        Wado::GAL::WdCommandList &cmdList = _layer->createCommandList().operator*();
+        // We have the topologically sorted render graph now, even vectors are passes, odd vectors are resource dependencies
+        for (const RDDependencyLevel& depLevel : _sortedGraph) {
+            for (const RDGraphNode *renderPassNode : depLevel.passes) {
+                std::cout << "Render pass id: " << renderPassNode->underlyingResourceID;
+                _renderPasses.at(renderPassNode->underlyingResourceID - 1).executeFunction(cmdList);
+            };
+            for (const RDGraphNode *resourceNode : depLevel.resourceTransitions) {
+                RDResourceTransition transition;
+                transition.layout1 = 0;
+                transition.layout2 = 0;
+                transition.texture = resourceNode->underlyingResourceID;
+                registerTransition(transition, cmdList);
+            };
+        };
     };
 
     void WdRenderGraphBuilder::cullUnused() {
@@ -107,7 +118,7 @@ namespace Wado::RenderGraph {
 
         for (std::unordered_map<uint64_t, RDGraphNode*>::iterator it = _resourceRDGNodes.begin(); it != _resourceRDGNodes.end(); ++it) {
             if (it->second->consumerCount == 0) {
-                std::cout << "Found unconsumed resource: " << it->second->underlyingResourceID << ", version: " << it->second->version << std::endl;
+                //std::cout << "Found unconsumed resource: " << it->second->underlyingResourceID << ", version: " << it->second->version << std::endl;
                 unconsumedResources.emplace_back(it->second);
             };
         };
@@ -122,7 +133,7 @@ namespace Wado::RenderGraph {
             RDGraphNode *producerNode = *resNode->producers.begin();
             producerNode->consumerCount--;
             if (producerNode->consumerCount == 0) {
-                std::cout << "Found render pass that can be erased: " << producerNode->underlyingResourceID << std::endl;
+                //std::cout << "Found render pass that can be erased: " << producerNode->underlyingResourceID << std::endl;
                 for (RDGraphNode *renderPassProducer : producerNode->producers) {
                     renderPassProducer->consumerCount--;
                     if (renderPassProducer->consumerCount == 0) {

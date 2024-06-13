@@ -7,11 +7,21 @@
 #include "WdPipeline.h"
 #include "WdCommandList.h"
 
-#include "Shader.h"
 
 #include "MainClonePtr.h"
 
 #include <vector>
+
+namespace Wado::Shader {
+
+    using WdShaderByteCode = const std::vector<uint8_t>&;
+
+    class WdShader {
+        public:
+            WdShaderByteCode shaderByteCode;
+        private:
+    };
+};
 
 namespace Wado::GAL {
     // Graphics abstraction layer.

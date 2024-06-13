@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+
+#include "DebugLayer.h"
 #include "RenderGraphShaderTypes.h"
 #include "RenderGraph.h"
 
@@ -7,7 +9,8 @@
 TEST(RenderGraphTest, CorrectTopologicalSort) {
     using namespace Wado::RenderGraph;
 
-    WdRenderGraphBuilder rdgBuilder = WdRenderGraphBuilder();
+    Wado::GAL::Debug::DebugLayer layer = Wado::GAL::Debug::DebugLayer();
+    WdRenderGraphBuilder rdgBuilder = WdRenderGraphBuilder(&layer);
 
     RDTextureHandle diffuseTexture = rdgBuilder.registerExternalTexture(nullptr);
     ASSERT_EQ(diffuseTexture, 0);
@@ -62,11 +65,11 @@ TEST(RenderGraphTest, CorrectTopologicalSort) {
     testParams2.Test1 = diffuseProperties;
     testParams2.Test2 = specularProperties;
     
-    std::function<void()> dummyFunc = []() { std::cout << "aa" << std::endl; };
+    Wado::RenderGraph::WdRDGExecuteCallbackFn dummyFunc = [](Wado::GAL::WdCommandList& cmdList) { std::cout << "aa" << std::endl; };
     std::string name = "abc";
-    rdgBuilder.addRenderPass(name, gBufferParams, std::ref(dummyFunc));
-    rdgBuilder.addRenderPass(name, testParams, std::ref(dummyFunc));
-    rdgBuilder.addRenderPass(name, testParams2, std::ref(dummyFunc));
+    rdgBuilder.addRenderPass(name, gBufferParams, dummyFunc);
+    rdgBuilder.addRenderPass(name, testParams, dummyFunc);
+    rdgBuilder.addRenderPass(name, testParams2, dummyFunc);
 
     rdgBuilder.execute();
 };
