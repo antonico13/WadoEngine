@@ -55,21 +55,6 @@ namespace Wado::GAL {
         uint32_t depth;
     }; 
 
-    using WdViewportProperties = struct WdViewportProperties {
-        WdExtent2D startCoords;
-        WdExtent2D endCoords;
-
-        struct DepthProperties {
-            float min = 0.0f;
-            float max = 1.0f;
-        } depth;
-
-        struct ScissorProperties {
-            WdExtent2D offset;
-            WdExtent2D extent;
-        } scissor;
-    };
-
     enum WdStage {
         Unknown = 0,
         Vertex = 1,
