@@ -1,8 +1,12 @@
 #include "Windows.h"
 
+#include "FiberSystem.h"
+
 #include "System.h"
 #include "Thread.h"
 #include "Fiber.h"
+
+#include "Atomics.h"
 
 #include "ArrayQueue.h"
 #include "LinkedListQueue.h"
@@ -24,7 +28,7 @@ namespace Wado::FiberSystem {
     static volatile DWORD close = 0;
 
     // TODO: this needs cleaning up 
-    Wado::Queue::Queue<void>::Item* PickNewFiber() {
+    WdReadyQueueItem PickNewFiber() {
         Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
         
         if ((localReadyQueue == nullptr)) {
@@ -36,7 +40,7 @@ namespace Wado::FiberSystem {
             return localReadyQueue->dequeue();
         };
 
-        Wado::Queue::Queue<void>::Item *nextFiber = nullptr;
+        WdReadyQueueItem nextFiber = nullptr;
 
         while ((nextFiber == nullptr) && (close == 0)) {
             while (FiberGlobalReadyQueue.isEmpty() && (close == 0)) { };
@@ -45,7 +49,7 @@ namespace Wado::FiberSystem {
 
         //std::cout << "Stopped polling" << std::endl;
         if ( (close == 1) && (nextFiber == nullptr) ) {
-            Wado::Queue::Queue<void>::Item *readyQueueItem = static_cast<Wado::Queue::Queue<void>::Item *>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
+            WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
             FiberGlobalReadyQueue.release(readyQueueItem);
             free(readyQueueItem);
 
@@ -76,7 +80,7 @@ namespace Wado::FiberSystem {
         
         // Make own ready queue item now 
         // TODO: malloc should be initialized here and should be using WdMalloc 
-        Wado::Queue::Queue<void>::Item *readyQueueItem = static_cast<Wado::Queue::Queue<void>::Item *>(malloc(sizeof(Wado::Queue::Queue<void>::Item)));
+        WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(malloc(sizeof(Wado::Queue::Queue<void>::Item)));
 
         if (readyQueueItem == nullptr) {
             throw std::runtime_error("Could not create item for new fiber");
@@ -97,7 +101,7 @@ namespace Wado::FiberSystem {
         Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, Wado::Fiber::WdGetCurrentFiber());
 
         //std::cout << "About to exit worker thread" << std::endl;
-        Wado::Queue::Queue<void>::Item *readyQueueItem = static_cast<Wado::Queue::Queue<void>::Item *>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
+        WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
 
         FiberGlobalReadyQueue.release(readyQueueItem);
         free(readyQueueItem);
@@ -185,6 +189,111 @@ namespace Wado::FiberSystem {
     }; 
 
     void ShutdownFiberSystem() { 
+        // Need to destroy all queue items etc here 
+    };
 
+    void FiberYield() {
+        Wado::Fiber::WdFiberID nextFiberID = PickNewFiber()->data;
+        Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, nullptr);
+        Wado::Fiber::WdSwitchFiber(nextFiberID); 
+    };
+
+    // Synchronisation primitives 
+
+    WdLock::WdLock() noexcept {
+        _lock = _unlocked;
+        _waitGuard = _unlocked;
+        _willYield = _unlocked;
+        _ownerFiber = nullptr;
+    };
+
+    WdLock::~WdLock() noexcept {
+        // TODO: good?
+        _waiters.~LinkedListQueue<void>();
+    };
+
+    void WdLock::acquire() {
+        while (Wado::Atomics::TestAndSet(&_waitGuard, _locked) == _locked) { }; //spin
+
+        if (_lock == _locked) {
+            _waiters.enqueue(static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID)));    
+            // Need to say will yield here 
+            Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);      
+            //if (_willYield == _locked) {
+            FiberYield();
+            //};
+        } else {
+            Wado::Atomics::TestAndSet(&_lock, _locked);
+            Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);      
+        };
+
+        _ownerFiber = Wado::Fiber::WdGetCurrentFiber();
+    };
+
+    void WdLock::release() {
+        if (_ownerFiber != Wado::Fiber::WdGetCurrentFiber()) {
+            throw std::runtime_error("Tried to release a lock the fiber didn't onw");
+        };
+        
+        while (Wado::Atomics::TestAndSet(&_waitGuard, _locked) == _locked) { }; // spin
+
+        if (_waiters.isEmpty()) {
+            Wado::Atomics::TestAndSet(&_lock, _unlocked);
+        } else {
+            Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
+            _ownerFiber = nullptr;
+            WdReadyQueueItem nextFiber = _waiters.dequeue();
+            // if (_willYield == _unlocked) {
+            // if (localReadyQueue->isFull()) {
+            FiberGlobalReadyQueue.enqueue(nextFiber);
+            // } else {
+            //     localReadyQueue->enqueue(nextFiber); 
+            // };
+        };
+        Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);
+    };
+
+    WdFence::WdFence(size_t count) noexcept {
+        fence = count;
+        _waiterGuard = _unsignaled;
+    };
+
+    WdFence::~WdFence() noexcept {
+
+    };
+
+    void WdFence::signal() noexcept {
+        Wado::Atomics::Decrement(&fence);
+
+        while (Wado::Atomics::TestAndSet(&_waiterGuard, _signaled) == _signaled) { }; //busy spin
+
+        // std::cout << "Signaled fence " << std::endl;
+
+        if (fence == 0) {
+            // std::cout << "Reached count down" << std::endl;
+            Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
+            
+            while (!waiters.isEmpty()) {
+                WdReadyQueueItem toWakeFiber = waiters.dequeue();
+                //if (localReadyQueue->isFull()) {
+                FiberGlobalReadyQueue.enqueue(toWakeFiber);
+                // } else {
+                //     localReadyQueue->enqueue(toWakeFiber); 
+                // };
+                }; 
+        };
+        _waiterGuard = _unsignaled;
+    };
+
+    void WdFence::waitForSignal() {
+        if (fence > 0) {
+            while (Wado::Atomics::TestAndSet(&_waiterGuard, _signaled) == _signaled) { }; // busy spin
+            
+            waiters.enqueue(static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID))); 
+            //std::cout << "About to yield for fence " << std::endl;
+            // TODO: willYield here too 
+            _waiterGuard = _unsignaled;
+            FiberYield();
+        };
     };
 };
