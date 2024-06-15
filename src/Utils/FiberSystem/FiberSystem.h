@@ -8,8 +8,8 @@ namespace Wado::FiberSystem {
 
     using WdReadyQueueItem = Wado::Queue::Queue<void>::Item*;
     
-    WdReadyQueueItem PickNewFiber();
     void InitWorkerFiber();
+    void IdleFiberFunction(void *param);
     unsigned long WorkerThreadStartFunction(void *param);
     void FiberYield();
     void InitFiberSystem();

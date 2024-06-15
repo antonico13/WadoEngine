@@ -21,47 +21,12 @@ namespace Wado::FiberSystem {
     Wado::Thread::WdThreadLocalID TLlocalReadyQueueID;
     Wado::Thread::WdThreadLocalID TLpreviousFiberID;
     Wado::Thread::WdThreadLocalID TLallocatorID;
+    Wado::Thread::WdThreadLocalID TLidleFiberID;
     Wado::Fiber::WdFiberLocalID FLqueueNodeID;
 
     Wado::Queue::LockFreeQueue<void> FiberGlobalReadyQueue;
 
-    static volatile DWORD close = 0;
-
-    // TODO: this needs cleaning up 
-    WdReadyQueueItem PickNewFiber() {
-        Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
-        
-        if ((localReadyQueue == nullptr)) {
-            throw std::runtime_error("Could not get local ready queue");
-        };
-        
-        if (!localReadyQueue->isEmpty()) {
-            //std::cout << "Managed to choose fiber on local core " << reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex)) << std::endl;
-            return localReadyQueue->dequeue();
-        };
-
-        WdReadyQueueItem nextFiber = nullptr;
-
-        while ((nextFiber == nullptr) && (close == 0)) {
-            while (FiberGlobalReadyQueue.isEmpty() && (close == 0)) { };
-            nextFiber = FiberGlobalReadyQueue.dequeue();
-        };
-
-        //std::cout << "Stopped polling" << std::endl;
-        if ( (close == 1) && (nextFiber == nullptr) ) {
-            WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
-            FiberGlobalReadyQueue.release(readyQueueItem);
-            free(readyQueueItem);
-
-            Wado::Queue::ArrayQueue<void> *localQueuePtr = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID)); 
-            localQueuePtr->~ArrayQueue();
-
-            HeapFree(GetProcessHeap(), 0, localQueuePtr);
-            
-            Wado::Fiber::WdDeleteFiber(Wado::Fiber::WdGetCurrentFiber());
-        };
-        return nextFiber;
-    };
+    volatile uint64_t close = 0;
 
     void InitWorkerFiber() {
         LPVOID lpvQueue; 
@@ -78,35 +43,49 @@ namespace Wado::FiberSystem {
         // Convert worker thread to fiber 
         Wado::Fiber::WdFiberID currentFiberID = Wado::Fiber::WdStartFiber();
         
-        // Make own ready queue item now 
-        // TODO: malloc should be initialized here and should be using WdMalloc 
-        WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(malloc(sizeof(Wado::Queue::Queue<void>::Item)));
+        Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, currentFiberID);
+    };
 
-        if (readyQueueItem == nullptr) {
-            throw std::runtime_error("Could not create item for new fiber");
+    void IdleFiberFunction(void *param) {
+        Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
+        WdReadyQueueItem nextFiber = nullptr;
+
+        while (close == 0) {
+            if (nextFiber != nullptr) {
+                Wado::Fiber::WdSwitchFiber(nextFiber->data);
+                Wado::Fiber::WdFiberID previousFiberID = static_cast<Wado::Fiber::WdFiberID>(Wado::Thread::WdThreadLocalGetValue(TLpreviousFiberID));
+                if (previousFiberID != nullptr) {
+                    Wado::Fiber::WdDeleteFiber(previousFiberID);
+                    Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, nullptr);
+                };
+                nextFiber = nullptr;
+            };
+
+            if (!localReadyQueue->isEmpty()) {
+                nextFiber = localReadyQueue->dequeue();
+                continue;
+            };
+
+            nextFiber = FiberGlobalReadyQueue.dequeue();
         };
 
-        readyQueueItem->data = currentFiberID;
-        readyQueueItem->node = nullptr;
+        //std::cout << "About to exit worker thread" << std::endl;
+        //std::cout << "Exiting initial worker thread" << std::endl;
+        Wado::Queue::ArrayQueue<void> *threadLocalReadyQueue = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
 
-        Wado::Fiber::WdFiberLocalSetValue(FLqueueNodeID, readyQueueItem);
+        threadLocalReadyQueue->~ArrayQueue();
+        // TODO: de-windows this 
+        HeapFree(GetProcessHeap(), 0, threadLocalReadyQueue);
+            
+        Wado::Fiber::WdDeleteFiber(Wado::Fiber::WdGetCurrentFiber());        
     };
 
     unsigned long WorkerThreadStartFunction(void *param) {
 
         InitWorkerFiber();
+        Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, Wado::Fiber::WdGetCurrentFiber());
+        IdleFiberFunction(param);
 
-        Wado::Fiber::WdFiberID nextFiberID = PickNewFiber()->data;
-
-        Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, Wado::Fiber::WdGetCurrentFiber());
-
-        //std::cout << "About to exit worker thread" << std::endl;
-        WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
-
-        FiberGlobalReadyQueue.release(readyQueueItem);
-        free(readyQueueItem);
-        //std::cout << "Exiting initial worker thread" << std::endl;
-        Wado::Fiber::WdSwitchFiber(nextFiberID);
         return 0;
     };
 
@@ -133,6 +112,8 @@ namespace Wado::FiberSystem {
         TLpreviousFiberID = Wado::Thread::WdThreadLocalAllocate();
         
         TLallocatorID = Wado::Thread::WdThreadLocalAllocate();
+
+        TLidleFiberID = Wado::Thread::WdThreadLocalAllocate();
 
         FLqueueNodeID = Wado::Fiber::WdFiberLocalAllocate();
 
@@ -182,6 +163,9 @@ namespace Wado::FiberSystem {
 
         InitWorkerFiber();
 
+        Wado::Fiber::WdFiberID idleFiberID = Wado::Fiber::WdCreateFiber(IdleFiberFunction, nullptr);
+        Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, idleFiberID);
+
         // Start all other worker fibers 
         for (int i = 1; i < threadCount; i++) {
             Wado::Thread::WdStartThread(threadHandles[i]);
@@ -189,13 +173,56 @@ namespace Wado::FiberSystem {
     }; 
 
     void ShutdownFiberSystem() { 
-        // Need to destroy all queue items etc here 
+        // Need to destroy all queue items etc here and send termination to all idle fibers 
+
+        Wado::Atomics::TestAndSet(&close, 1);
+
+        // TODO: need to wait on all worker threads here somehow 
+        
+        // int core = (int) TlsGetValue(coreNumberTlsIndex);
+        // //std::cout << "Waiting on " << core << " for threads to finish" << std::endl;
+        // for (int i = 0; i < threadCount; i++) {
+        //     if (i != core) {
+        //         WaitForSingleObject(threadHandleArray[i], INFINITE);
+        //     };
+        // };
+
+        // //std::cout << "Finished waiting and closing everything" << std::endl;
+
+        // for (int i = 0; i < threadCount; i++) {
+        //     if (i != core) {
+        //         CloseHandle(threadHandleArray[i]);
+        //     };
+        // };
+
+        Wado::Fiber::WdFiberID currentIdleFiberID = Wado::Thread::WdThreadLocalGetValue(TLidleFiberID);
+        
+        Wado::Fiber::WdDeleteFiber(currentIdleFiberID);
+
+        WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
+        FiberGlobalReadyQueue.release(readyQueueItem);
+        free(readyQueueItem);
+
+        Wado::Queue::ArrayQueue<void> *threadLocalReadyQueue = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
+
+        threadLocalReadyQueue->~ArrayQueue();
+        // TODO: de-windows this 
+        HeapFree(GetProcessHeap(), 0, threadLocalReadyQueue);
+
+        FiberGlobalReadyQueue.~LockFreeQueue();
+
+        Wado::Fiber::WdFiberLocalFree(FLqueueNodeID);
+
+        Wado::Thread::WdThreadLocalFree(TLidleFiberID);
+        Wado::Thread::WdThreadLocalFree(TLpreviousFiberID);
+        Wado::Thread::WdThreadLocalFree(TLallocatorID);
+        Wado::Thread::WdThreadLocalFree(TLlocalReadyQueueID);
+
+        DeleteFiber(GetCurrentFiber());
     };
 
     void FiberYield() {
-        Wado::Fiber::WdFiberID nextFiberID = PickNewFiber()->data;
-        Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, nullptr);
-        Wado::Fiber::WdSwitchFiber(nextFiberID); 
+        Wado::Fiber::WdSwitchFiber(Wado::Thread::WdThreadLocalGetValue(TLidleFiberID)); 
     };
 
     // Synchronisation primitives 
@@ -218,13 +245,13 @@ namespace Wado::FiberSystem {
         if (_lock == _locked) {
             _waiters.enqueue(static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID)));    
             // Need to say will yield here 
-            Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);      
+            _waitGuard = _unlocked;   
             //if (_willYield == _locked) {
             FiberYield();
             //};
         } else {
-            Wado::Atomics::TestAndSet(&_lock, _locked);
-            Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);      
+            _lock = _locked;
+            _waitGuard = _unlocked;   
         };
 
         _ownerFiber = Wado::Fiber::WdGetCurrentFiber();
@@ -238,10 +265,9 @@ namespace Wado::FiberSystem {
         while (Wado::Atomics::TestAndSet(&_waitGuard, _locked) == _locked) { }; // spin
 
         if (_waiters.isEmpty()) {
-            Wado::Atomics::TestAndSet(&_lock, _unlocked);
+            _lock = _unlocked;
         } else {
             Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
-            _ownerFiber = nullptr;
             WdReadyQueueItem nextFiber = _waiters.dequeue();
             // if (_willYield == _unlocked) {
             // if (localReadyQueue->isFull()) {
@@ -250,7 +276,8 @@ namespace Wado::FiberSystem {
             //     localReadyQueue->enqueue(nextFiber); 
             // };
         };
-        Wado::Atomics::TestAndSet(&_waitGuard, _unlocked);
+        _ownerFiber = nullptr;
+        _waitGuard = _unlocked;
     };
 
     WdFence::WdFence(size_t count) noexcept {

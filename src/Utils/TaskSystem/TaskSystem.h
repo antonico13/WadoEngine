@@ -10,6 +10,7 @@ namespace Wado::Task {
     extern Wado::Thread::WdThreadLocalID TLlocalReadyQueueID;
     extern Wado::Thread::WdThreadLocalID TLpreviousFiberID;
     extern Wado::Thread::WdThreadLocalID TLallocatorID;
+    extern Wado::Thread::WdThreadLocalID TLidleFiberID;
     extern Wado::Fiber::WdFiberLocalID FLqueueNodeID;
 
     extern Wado::Queue::LockFreeQueue<void> FiberGlobalReadyQueue;
@@ -26,10 +27,6 @@ namespace Wado::Task {
 
     #define TASK(TaskName, ArgumentType, ArgumentName, Code)\
         void TaskName(void *fiberParam) {\
-            Wado::Fiber::WdFiberID previousFiberID = static_cast<Wado::Fiber::WdFiberID>(Wado::Thread::WdThreadLocalGetValue(TLpreviousFiberID));\
-            if (previousFiberID != nullptr) {\
-                Wado::Fiber::WdDeleteFiber(previousFiberID);\
-            };\
             WdFiberArgs *args = static_cast<WdFiberArgs *>(fiberParam);\
             Wado::Fiber::WdFiberLocalSetValue(FLqueueNodeID, args->readyQueueItem);\
             ArgumentType *ArgumentName = static_cast<ArgumentType *>(args->mainArgs);\
@@ -37,13 +34,12 @@ namespace Wado::Task {
             if (args->fenceToSignal != nullptr) {\
                 args->fenceToSignal->signal();\
             };\
-            Wado::Fiber::WdFiberID nextFiberID = Wado::FiberSystem::PickNewFiber()->data;\
             Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, Wado::Fiber::WdGetCurrentFiber());\
             Wado::FiberSystem::WdReadyQueueItem readyQueueItem = static_cast<Wado::FiberSystem::WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));\
             FiberGlobalReadyQueue.release(readyQueueItem);\
             free(readyQueueItem);\
             free(args);\
-            Wado::Fiber::WdSwitchFiber(nextFiberID);\
+            Wado::FiberSystem::FiberYield();\
         };
 
     void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Fence* fenceToSignal = nullptr);
