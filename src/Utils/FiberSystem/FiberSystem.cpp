@@ -21,6 +21,44 @@ namespace Wado::FiberSystem {
 
     Wado::Queue::LockFreeQueue<void> FiberGlobalReadyQueue;
 
+    static volatile DWORD close = 0;
+
+    // TODO: this needs cleaning up 
+    Wado::Queue::Queue<void>::Item* PickNewFiber() {
+        Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
+        
+        if ((localReadyQueue == nullptr)) {
+            throw std::runtime_error("Could not get local ready queue");
+        };
+        
+        if (!localReadyQueue->isEmpty()) {
+            //std::cout << "Managed to choose fiber on local core " << reinterpret_cast<int>(TlsGetValue(coreNumberTlsIndex)) << std::endl;
+            return localReadyQueue->dequeue();
+        };
+
+        Wado::Queue::Queue<void>::Item *nextFiber = nullptr;
+
+        while ((nextFiber == nullptr) && (close == 0)) {
+            while (FiberGlobalReadyQueue.isEmpty() && (close == 0)) { };
+            nextFiber = FiberGlobalReadyQueue.dequeue();
+        };
+
+        //std::cout << "Stopped polling" << std::endl;
+        if ( (close == 1) && (nextFiber == nullptr) ) {
+            Wado::Queue::Queue<void>::Item *readyQueueItem = static_cast<Wado::Queue::Queue<void>::Item *>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID));
+            FiberGlobalReadyQueue.release(readyQueueItem);
+            free(readyQueueItem);
+
+            Wado::Queue::ArrayQueue<void> *localQueuePtr = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID)); 
+            localQueuePtr->~ArrayQueue();
+
+            HeapFree(GetProcessHeap(), 0, localQueuePtr);
+            
+            Wado::Fiber::WdDeleteFiber(Wado::Fiber::WdGetCurrentFiber());
+        };
+        return nextFiber;
+    };
+
     void InitWorkerFiber() {
         LPVOID lpvQueue; 
         lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<void>));
