@@ -10,4 +10,4 @@ set(WadoQueueDir "../Queue/")
 
 add_library(WadoFiberSystem FiberSystem.cpp)
 
-target_include_directories(WadoFiberSystem PUBLIC "${WadoPALDir}" ".")
+target_include_directories(WadoFiberSystem PUBLIC "${WadoPALDir}" "${WadoQueueDir}" ".")

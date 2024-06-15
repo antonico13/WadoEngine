@@ -9,7 +9,7 @@ namespace Wado::Thread {
     using WdThreadHandle = void *;
 
     // Always creates a thread in suspended mode 
-    WdThreadHandle WdCreateThread(WdThreadStartFunctionPtr startFunction, void *threadParam);
+    WdThreadHandle WdCreateThread(WdThreadStartFunctionPtr startFunction, size_t coreIndex);
     WdThreadHandle WdGetCurrentThreadHandle();
     void WdStartThread(WdThreadHandle threadHandle);
 

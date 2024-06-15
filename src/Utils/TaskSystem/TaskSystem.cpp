@@ -2,9 +2,10 @@
 
 #include <cstdlib>
 #include <stdexcept>
+#include <iostream>
 
 namespace Wado::Task {
-    void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Fence* fenceToSignal) {
+    void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Wado::FiberSystem::WdFence* fenceToSignal) {
         WdFiberArgs* args = static_cast<WdFiberArgs *>(malloc(sizeof(WdFiberArgs)));
 
         if (args == nullptr) {
@@ -31,8 +32,10 @@ namespace Wado::Task {
 
         Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
         if (localReadyQueue->isFull()) {
+            //std::cout << "Enqeueing on global queue" << std::endl;
             FiberGlobalReadyQueue.enqueue(readyQueueItem);
         } else {
+            //std::cout << "Enqeueing on local queue" << std::endl;
             localReadyQueue->enqueue(readyQueueItem); 
         };    
     };

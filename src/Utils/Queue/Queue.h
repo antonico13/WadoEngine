@@ -8,12 +8,12 @@ namespace Wado::Queue {
             class Node;
             
             using Item = struct Item {
-                Node volatile* node;
+                Node* volatile node;
                 T* data;
             };
 
             using Node = struct Node {
-                Node volatile* next;
+                Node* volatile next;
                 Item* item;
             };
 

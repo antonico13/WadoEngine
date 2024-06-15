@@ -6,28 +6,27 @@
 #include "Fiber.h"
 #include "LockFreeFIFO.h"
 
+extern Wado::Thread::WdThreadLocalID TLlocalReadyQueueID;
+extern Wado::Thread::WdThreadLocalID TLpreviousFiberID;
+extern Wado::Thread::WdThreadLocalID TLallocatorID;
+extern Wado::Thread::WdThreadLocalID TLidleFiberID;
+extern Wado::Thread::WdThreadLocalID TLcoreIndexID;
+extern Wado::Fiber::WdFiberLocalID FLqueueNodeID;
+
+extern Wado::Queue::LockFreeQueue<void> FiberGlobalReadyQueue;
+
 namespace Wado::Task {
-    extern Wado::Thread::WdThreadLocalID TLlocalReadyQueueID;
-    extern Wado::Thread::WdThreadLocalID TLpreviousFiberID;
-    extern Wado::Thread::WdThreadLocalID TLallocatorID;
-    extern Wado::Thread::WdThreadLocalID TLidleFiberID;
-    extern Wado::Fiber::WdFiberLocalID FLqueueNodeID;
-
-    extern Wado::Queue::LockFreeQueue<void> FiberGlobalReadyQueue;
-
-    class Fence;
-
     // two pointer derefs with this, 
     // will hit really bad performance
     using WdFiberArgs = struct WdFiberArgs {
         void *mainArgs; 
-        Fence *fenceToSignal; 
+        Wado::FiberSystem::WdFence *fenceToSignal; 
         Wado::FiberSystem::WdReadyQueueItem readyQueueItem;
     };
 
     #define TASK(TaskName, ArgumentType, ArgumentName, Code)\
         void TaskName(void *fiberParam) {\
-            WdFiberArgs *args = static_cast<WdFiberArgs *>(fiberParam);\
+            Wado::Task::WdFiberArgs *args = static_cast<Wado::Task::WdFiberArgs *>(fiberParam);\
             Wado::Fiber::WdFiberLocalSetValue(FLqueueNodeID, args->readyQueueItem);\
             ArgumentType *ArgumentName = static_cast<ArgumentType *>(args->mainArgs);\
             Code;\
@@ -42,7 +41,7 @@ namespace Wado::Task {
             Wado::FiberSystem::FiberYield();\
         };
 
-    void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Fence* fenceToSignal = nullptr);
+    void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Wado::FiberSystem::WdFence* fenceToSignal = nullptr);
 };
 
 #endif

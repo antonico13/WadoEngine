@@ -3,12 +3,13 @@
 #include "Thread.h"
 
 #include <stdexcept>
+#include <iostream>
 
 namespace Wado::Thread {
 
-    WdThreadHandle WdCreateThread(WdThreadStartFunctionPtr startFunction, void *threadParam) {
+    WdThreadHandle WdCreateThread(WdThreadStartFunctionPtr startFunction, size_t coreIndex) {
         // Always create thread in suspended state
-        WdThreadHandle handle = CreateThread(NULL, 0, startFunction, threadParam, CREATE_SUSPENDED, NULL);
+        WdThreadHandle handle = CreateThread(NULL, 0, startFunction, (void *) coreIndex, CREATE_SUSPENDED, NULL);
         if (handle == nullptr)  {
            throw std::runtime_error("Could not create worker thread.");
         };
@@ -38,8 +39,7 @@ namespace Wado::Thread {
 
     void *WdThreadLocalGetValue(WdThreadLocalID valueID) {
         void *value = TlsGetValue(valueID);
-
-        if (value == nullptr) {
+        if (GetLastError() != ERROR_SUCCESS) {
             throw std::runtime_error("Could not get thread local value");
         };
         return value;

@@ -2,6 +2,8 @@
 #define WADO_FIBER_SYSTEM_H
 
 #include "Queue.h"
+#include "LinkedListQueue.h"
+#include "Fiber.h"
 #include <cstdint>
 
 namespace Wado::FiberSystem {
