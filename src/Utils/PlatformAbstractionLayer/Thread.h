@@ -10,6 +10,7 @@ namespace Wado::Thread {
 
     // Always creates a thread in suspended mode 
     WdThreadHandle WdCreateThread(WdThreadStartFunctionPtr startFunction, void *threadParam);
+    WdThreadHandle WdGetCurrentThreadHandle();
     void WdStartThread(WdThreadHandle threadHandle);
 
     WdThreadLocalID WdThreadLocalAllocate();
@@ -17,7 +18,7 @@ namespace Wado::Thread {
     void WdThreadLocalSetValue(WdThreadLocalID valueID, void *value);
     void WdThreadLocalFree(WdThreadLocalID valueID);
 
-    void WdSetThreadAffinity(size_t coreNumber);
+    void WdSetThreadAffinity(WdThreadHandle threadHandle, size_t coreNumber);
 
 };
 

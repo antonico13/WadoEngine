@@ -17,7 +17,7 @@ namespace Wado::Fiber {
 
     void WdDeleteFiber(WdFiberID fiber);
 
-    WdFiberLocalID WdThreadLocalAllocate();
+    WdFiberLocalID WdFiberLocalAllocate();
     void *WdFiberLocalGetValue(WdFiberLocalID valueID);
     void WdFiberLocalSetValue(WdFiberLocalID valueID, void *value);
     void WdFiberLocalFree(WdFiberLocalID valueID);
