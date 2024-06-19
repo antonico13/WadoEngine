@@ -48,7 +48,7 @@ namespace Wado::FiberSystem {
 
         // Convert worker thread to fiber 
         Wado::Fiber::WdFiberID currentFiberID = Wado::Fiber::WdStartFiber();
-        //std::cout << "Worker fiber ID: " << currentFiberID << std::endl;
+        ////std::cout << "Worker fiber ID: " << currentFiberID << std::endl;
         Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, currentFiberID);
     };
 
@@ -77,8 +77,8 @@ namespace Wado::FiberSystem {
             }
         };
 
-        //std::cout << "About to exit worker thread" << std::endl;
-        //std::cout << "Exiting initial worker thread" << std::endl;
+        ////std::cout << "About to exit worker thread" << std::endl;
+        ////std::cout << "Exiting initial worker thread" << std::endl;
         Wado::Queue::ArrayQueue<void> *threadLocalReadyQueue = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
 
         threadLocalReadyQueue->~ArrayQueue();
@@ -92,18 +92,18 @@ namespace Wado::FiberSystem {
 
         InitWorkerFiber();
         Wado::Thread::WdThreadLocalSetValue(TLcoreIndexID, param);
-        //std::cout << "Core ID for worker: " << (int) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID) << std::endl;
+        ////std::cout << "Core ID for worker: " << (int) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID) << std::endl;
         Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, Wado::Fiber::WdGetCurrentFiber());
-        //std::cout << "Idle fiber id for worker: " << Wado::Thread::WdThreadLocalGetValue(TLidleFiberID) << std::endl;
+        ////std::cout << "Idle fiber id for worker: " << Wado::Thread::WdThreadLocalGetValue(TLidleFiberID) << std::endl;
         IdleFiberFunction(param);
 
         return 0;
     };
 
     void InitFiberSystem() {
-        std::cout << "Started: " << std::endl;
+        ////std::cout << "Started: " << std::endl;
         // HANDLE currentProcess = GetCurrentProcess();
-        // //std::cout << "Current process pseudo handle: " << currentProcess << std::endl;
+        // ////std::cout << "Current process pseudo handle: " << currentProcess << std::endl;
         // DWORD_PTR processAffinityMask;
         // DWORD_PTR systemAffinityMask;
         // BOOL res;
@@ -113,24 +113,24 @@ namespace Wado::FiberSystem {
 
         std::bitset<sizeof(Wado::System::WdAvailableCoresMask)> systemSet(availableCoreMask);
 
-        std::cout << "System affinity mask: " << systemSet << std::endl;
+        ////std::cout << "System affinity mask: " << systemSet << std::endl;
 
         // Allocate TLS indices for thread local stuff 
         
         TLlocalReadyQueueID = Wado::Thread::WdThreadLocalAllocate();
-        std::cout << "Local ready queue index " << TLlocalReadyQueueID << std::endl;
+        //std::cout << "Local ready queue index " << TLlocalReadyQueueID << std::endl;
         TLpreviousFiberID = Wado::Thread::WdThreadLocalAllocate();
-        std::cout << "Previous fiber ID index " << TLpreviousFiberID << std::endl;
+        //std::cout << "Previous fiber ID index " << TLpreviousFiberID << std::endl;
         TLallocatorID = Wado::Thread::WdThreadLocalAllocate();
-        std::cout << "Allocator index " << TLallocatorID << std::endl;
+        //std::cout << "Allocator index " << TLallocatorID << std::endl;
         TLidleFiberID = Wado::Thread::WdThreadLocalAllocate();
-        std::cout << "LIdle fiber id index " << TLidleFiberID << std::endl;
+        //std::cout << "LIdle fiber id index " << TLidleFiberID << std::endl;
         TLcoreIndexID = Wado::Thread::WdThreadLocalAllocate();
-        std::cout << "Core index " << TLcoreIndexID << std::endl;
+        //std::cout << "Core index " << TLcoreIndexID << std::endl;
         FLqueueNodeID = Wado::Fiber::WdFiberLocalAllocate();
-        std::cout << "Queue node ID " << FLqueueNodeID << std::endl;
+        //std::cout << "Queue node ID " << FLqueueNodeID << std::endl;
 
-        std::cout << "Allocated fiber local indices" << std::endl;
+        //std::cout << "Allocated fiber local indices" << std::endl;
         
         const size_t lastBitMask = 1;
 
@@ -149,7 +149,7 @@ namespace Wado::FiberSystem {
             availableCoreMask = availableCoreMask >> 1;
         };
 
-        std::cout << "Total core count: " << threadCount << std::endl;
+        //std::cout << "Total core count: " << threadCount << std::endl;
 
         // Allocate memory for containers
 
@@ -162,8 +162,8 @@ namespace Wado::FiberSystem {
 
         Wado::Thread::WdSetThreadAffinity(currrentThreadHandle, threadCoreAffinities[0]);
 
-        std::cout << "Set main thread affinity" << std::endl;
-
+        //std::cout << "Set main thread affinity" << std::endl;
+        
         // The current thread takes the first slot, now do all other threads 
         for (int i = 1; i < threadCount; ++i) {
 
@@ -174,12 +174,12 @@ namespace Wado::FiberSystem {
             };
 
             Wado::Thread::WdSetThreadAffinity(threadHandles[i], threadCoreAffinities[i]);
-            std::cout << "Made and set affinity for worker thread: " << i << std::endl;
+            //std::cout << "Made and set affinity for worker thread: " << i << std::endl;
         };
 
         InitWorkerFiber();
 
-        std::cout << "Initialized main thread as worker fiber " << std::endl;
+        //std::cout << "Initialized main thread as worker fiber " << std::endl;
 
         WdReadyQueueItem readyQueueItem = static_cast<WdReadyQueueItem>(malloc(sizeof(Wado::Queue::Queue<void>::Item)));
 
@@ -191,12 +191,12 @@ namespace Wado::FiberSystem {
         readyQueueItem->node = nullptr;
 
         Wado::Fiber::WdFiberLocalSetValue(FLqueueNodeID, readyQueueItem);
-        std::cout << "Set the queue item for the main thread" << std::endl;
+        //std::cout << "Set the queue item for the main thread" << std::endl;
 
         Wado::Thread::WdThreadLocalSetValue(TLcoreIndexID, (void *) threadCoreAffinities[0]);
 
         Wado::Fiber::WdFiberID idleFiberID = Wado::Fiber::WdCreateFiber(IdleFiberFunction, nullptr);
-        std::cout << "Idle fiber id for main thread: " << idleFiberID << std::endl;
+        //std::cout << "Idle fiber id for main thread: " << idleFiberID << std::endl;
         Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, idleFiberID);
 
         // Start all other worker fibers 
@@ -204,7 +204,7 @@ namespace Wado::FiberSystem {
             Wado::Thread::WdStartThread(threadHandles[i]);
         };
 
-        std::cout << "Started all other worker threads " << std::endl;
+        //std::cout << "Started all other worker threads " << std::endl;
     }; 
 
     void ShutdownFiberSystem() { 
@@ -215,14 +215,14 @@ namespace Wado::FiberSystem {
         // TODO: un-windows this 
 
         size_t coreIndex = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
-        //std::cout << "Waiting on " << core << " for threads to finish" << std::endl;
+        ////std::cout << "Waiting on " << core << " for threads to finish" << std::endl;
         for (int i = 0; i < threadCount; i++) {
             if (i != coreIndex) {
                 WaitForSingleObject(threadHandles[i], INFINITE);
             };
         };
 
-        std::cout << "Finished waiting and closing everything" << std::endl;
+        //std::cout << "Finished waiting and closing everything" << std::endl;
 
         for (int i = 0; i < threadCount; i++) {
             if (i != coreIndex) {
@@ -329,10 +329,10 @@ namespace Wado::FiberSystem {
 
         while (Wado::Atomics::TestAndSet(&_waiterGuard, _signaled) == _signaled) { }; //busy spin
 
-        // std::cout << "Signaled fence " << std::endl;
+        // //std::cout << "Signaled fence " << std::endl;
 
         if (fence == 0) {
-            // std::cout << "Reached count down" << std::endl;
+            // //std::cout << "Reached count down" << std::endl;
             Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
             
             while (!waiters.isEmpty()) {
@@ -350,10 +350,10 @@ namespace Wado::FiberSystem {
     void WdFence::waitForSignal() noexcept {
         if (fence > 0) {
             while (Wado::Atomics::TestAndSet(&_waiterGuard, _signaled) == _signaled) { }; // busy spin
-            std::cout << "About to wait" << std::endl;
+            ////std::cout << "About to wait" << std::endl;
             waiters.enqueue(static_cast<WdReadyQueueItem>(Wado::Fiber::WdFiberLocalGetValue(FLqueueNodeID))); 
-            std::cout << "About to yield" << std::endl;
-            //std::cout << "About to yield for fence " << std::endl;
+            ////std::cout << "About to yield" << std::endl;
+            ////std::cout << "About to yield for fence " << std::endl;
             // TODO: willYield here too 
             _waiterGuard = _unsignaled;
             FiberYield();
