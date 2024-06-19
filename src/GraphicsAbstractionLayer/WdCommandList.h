@@ -99,6 +99,14 @@ namespace Wado::GAL {
 
     using WdStencilFaceFlags = uint64_t;
 
+    using WdPipelineState = struct WdPipelineState {
+
+    };
+
+    using WdShaderParamInfo = struct WdShaderParamInfo {
+
+    };
+
     // TODO: for all images, should specify subresource ranges somehow? 
     // These are supported by every type of command list 
     class WdCommandListBase {
@@ -139,6 +147,8 @@ namespace Wado::GAL {
             virtual void setScissors(const std::vector<WdRect2D>& scissors) = 0;
             virtual void setViewports(const std::vector<WdViewport>& viewports) = 0;
 
+            virtual void setPipelineState(const WdPipelineState& state) = 0;
+            virtual void setShaderParams(const std::vector<WdShaderParamInfo>& params) = 0;
 
             virtual void setStencilCompareMask(WdStencilFaceFlags faceFlags, uint32_t compareMask) = 0;
             virtual void setStencilReference(WdStencilFaceFlags faceFlags, uint32_t reference) = 0;
