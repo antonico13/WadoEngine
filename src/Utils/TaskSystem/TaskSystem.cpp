@@ -4,24 +4,19 @@
 #include <stdexcept>
 #include <iostream>
 
-#include "tracy/Tracy.hpp"
-#include "common/TracySystem.hpp"
-
 namespace Wado::Task {
     void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Wado::FiberSystem::WdFence* fenceToSignal) {
-        { ZoneScopedNS("MakeTask", 5);
         WdFiberArgs* args = static_cast<WdFiberArgs *>(malloc(sizeof(WdFiberArgs)));
 
-        // if (args == nullptr) {
-        //     throw std::runtime_error("Could not allocate space for task function arguments.");
-        // };
+        if (args == nullptr) {
+            throw std::runtime_error("Could not allocate space for task function arguments.");
+        };
 
         Wado::FiberSystem::WdReadyQueueItem readyQueueItem = static_cast<Wado::FiberSystem::WdReadyQueueItem>(malloc(sizeof(Wado::Queue::Queue<void>::Item)));
-        readyQueueItem->name = static_cast<char *>(malloc(6));
-        snprintf(readyQueueItem->name, 5, "Fiber");
-        // if (readyQueueItem == nullptr) {
-        //     throw std::runtime_error("Could not create ready queue item for new task.");
-        // };
+
+        if (readyQueueItem == nullptr) {
+            throw std::runtime_error("Could not create ready queue item for new task.");
+        };
 
         args->mainArgs = arguments;
         args->fenceToSignal = fenceToSignal;
@@ -42,8 +37,7 @@ namespace Wado::Task {
         } else {
             //std::cout << "Enqeueing on local queue" << std::endl;
             localReadyQueue->enqueue(readyQueueItem); 
-        };   
-        }
+        };    
     };
 
 };

@@ -9,11 +9,12 @@ namespace Wado::System {
         HANDLE currentProcess = GetCurrentProcess();
         DWORD_PTR processAffinityMask;
         DWORD_PTR systemAffinityMask;
-        GetProcessAffinityMask(currentProcess, &processAffinityMask, &systemAffinityMask);
+        BOOL res;
+        res = GetProcessAffinityMask(currentProcess, &processAffinityMask, &systemAffinityMask);
 
-        // if (res == FALSE) {
-        //     throw std::runtime_error("Could not get system information");
-        // };
+        if (res == FALSE) {
+            throw std::runtime_error("Could not get system information");
+        };
 
         return static_cast<WdAvailableCoresMask>(processAffinityMask);
     };

@@ -9,12 +9,11 @@ namespace Wado::Queue {
             
             using Item = struct Item {
                 Node* volatile node;
-                char* name;
                 T* data;
             };
 
             using Node = struct Node {
-                Node volatile* next;
+                Node* volatile next;
                 Item* item;
             };
 

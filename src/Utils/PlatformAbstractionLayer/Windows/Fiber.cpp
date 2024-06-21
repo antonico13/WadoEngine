@@ -28,11 +28,11 @@ namespace Wado::Fiber {
     };
 
     WdFiberLocalID WdFiberLocalAllocate() {
-        WdFiberLocalID newID = FlsAlloc(NULL);
+        WdFiberLocalID newID;
         
-        // if ((newID = FlsAlloc(NULL)) == FLS_OUT_OF_INDEXES) {
-        //     throw std::runtime_error("Ran out of indices for fiber local storage");
-        // };
+        if ((newID = FlsAlloc(NULL)) == FLS_OUT_OF_INDEXES) {
+            throw std::runtime_error("Ran out of indices for fiber local storage");
+        };
         return newID;
     };
 
@@ -41,10 +41,9 @@ namespace Wado::Fiber {
     };
 
     void WdFiberLocalSetValue(WdFiberLocalID valueID, void *value) {
-        FlsSetValue(valueID, value);
-        // if (!FlsSetValue(valueID, value)) {
-        //     throw std::runtime_error("Could not set fiber local storage value");
-        // };
+        if (!FlsSetValue(valueID, value)) {
+            throw std::runtime_error("Could not set fiber local storage value");
+        };
     };
 
     void WdFiberLocalFree(WdFiberLocalID valueID) {
