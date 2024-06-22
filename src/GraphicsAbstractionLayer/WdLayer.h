@@ -178,8 +178,16 @@ namespace Wado::GAL {
         const WdViewport *viewport;
         const WdMultisamplingInfo *multisamplingInfo;
         const WdDepthStencilStateInfo *depthStencilInfo;
-        // TODO: pipeline dynamic state here? 
+        const WdBlendStateInfo *blendStateInfo;
+        // TODO: pipeline dynamic state here?? How should users choose?
+        // Vertex, input assembly, and rasterizer -> handled automatically?
+
+        // TODO: how to do base pipeline here?
     };
+
+    using WdComputePipelineHandle = WdHandle;
+    using WdGraphicsPipelineHandle = WdHandle; 
+    using WdRenderPassHandle = WdHandle;
 
     // Graphics abstraction layer.
     // Backends such as Vulkan or Direct X implement this interface,
@@ -206,7 +214,9 @@ namespace Wado::GAL {
             // TODO: optionally externally synchronised?
             virtual WdPipelineCache createPipelineCache(const void* initialPipelineCache = nullptr, WdSize initialPipelineCacheSize = 0) = 0;
 
-            virtual void WdCreateComputePipelines() = 0;
+            virtual std::vector<WdComputePipelineHandle> createComputePipelines(const std::vector<WdComputePipelineCreateInfo>& pipelineInfos) = 0;
+            virtual std::vector<WdGraphicsPipelineHandle> createGraphicsPipelines(const std::vector<WdGraphicsPipelineCreateInfo>& pipelineInfos) = 0;
+            virtual WdRenderPassHandle createRenderPass(const std::vector<WdGraphicsPipelineHandle>& pipelines) = 0;
 
             // create texture sampler 
             virtual WdSamplerHandle createSampler(const WdTextureAddressMode& addressMode = DEFAULT_TEXTURE_ADDRESS_MODE, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) = 0;
