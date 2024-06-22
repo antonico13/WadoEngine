@@ -9,6 +9,8 @@ namespace Wado::GAL {
 
     using WdBufferHandle = WdHandle;
 
+    using WdBufferResourceHandle = WdHandle;
+
     using WdBufferUsageFlags = uint32_t;
 
     enum WdBufferUsage {
@@ -21,6 +23,7 @@ namespace Wado::GAL {
         WD_UNIFORM_TEXEL_BUFFER = 0x00000040,
         WD_STORAGE_TEXEL_BUFFER = 0x00000080,
         WD_INDIRECT_BUFFER = 0x00000100,
+        WD_SHADER_DEVICE_ACCESS = 0x00020000,
     };
 
     using WdBuffer = struct WdBuffer {

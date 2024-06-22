@@ -12,10 +12,17 @@ namespace Wado::GAL {
 
     // Image-specific type aliases 
     using WdImageHandle = WdHandle;
+    using WdImageResourceHanlde = WdHandle;
     using WdSamplerHandle = WdHandle;
 
     using WdMipCount = uint64_t;
     using WdNumSamples = uint64_t;
+
+    using WdImageSubpartsInfo = struct WdImageSubpartsInfo {
+        WdImageAspectFlags aspects;
+        WdMipCount startingMip;
+        WdMipCount mipCount;
+    };
 
     // Describes how an image's texels (~pixels) are laid out in memory.
     // To match Vulkan, linear represent row-major order. 
