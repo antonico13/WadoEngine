@@ -12,7 +12,7 @@ namespace Wado::GAL {
 
     // Image-specific type aliases 
     using WdImageHandle = WdHandle;
-    using WdImageResourceHanlde = WdHandle;
+    using WdImageResourceHandle = WdHandle;
     using WdSamplerHandle = WdHandle;
 
     using WdMipCount = uint64_t;

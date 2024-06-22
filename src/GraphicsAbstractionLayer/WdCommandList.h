@@ -22,8 +22,12 @@ namespace Wado::GAL {
 
     using WdRenderTargetHandle = uint64_t;
 
+    // 1-to-1 with Vulkan
     enum WdImageAspect {
-
+        WD_IMAGE_ASPECT_COLOR_BIT = 0x00000001,
+        WD_IMAGE_ASPECT_DEPTH_BIT = 0x00000002,
+        WD_IMAGE_ASPECT_STENCIL_BIT = 0x00000004,
+        WD_IMAGE_ASPECT_METADATA_BIT = 0x00000008,
     };
 
     using WdImageAspectFlags = uint64_t;

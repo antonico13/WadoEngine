@@ -197,15 +197,14 @@ namespace Wado::GAL {
             // Utils as static consts here for now 
             static const uint32_t FRAMES_IN_FLIGHT = 3;
             static const int CURRENT_FRAME_RESOURCE = -1;
-            static const uint32_t TEMP_RESOURCE_BARRIER = 0x3FFFFFFF;
 
             // Returns resource handle for the current display target
-            virtual WdImageResourceHanlde getDisplayTarget() = 0;
+            virtual WdImageResourceHandle getDisplayTarget() = 0;
             
             virtual WdImageHandle create2DImage(WdExtent2D extent, WdFormat imageFormat, WdMipCount mipLevels, 
                     WdSampleCount sampleCount, WdImageUsageFlags usageFlags, bool multiFrame = false) = 0;
             // TODO: vkComponentMapping here?
-            virtual WdImageResourceHanlde create2DImageShaderResource(WdImageHandle image, WdFormat resourceFormat, WdImageSubpartsInfo imageSubpartInfo) = 0;
+            virtual WdImageResourceHandle create2DImageShaderResource(WdImageHandle image, WdFormat resourceFormat, WdImageSubpartsInfo imageSubpartInfo) = 0;
 
             virtual WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame = false) = 0;
             // If using the buffer a shader resource 
