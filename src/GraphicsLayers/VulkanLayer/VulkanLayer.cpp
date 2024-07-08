@@ -739,14 +739,14 @@ namespace Wado::GAL::Vulkan {
 
     // GAL functions:
 
-    Memory::WdClonePtr<WdImage> VulkanLayer::getDisplayTarget() {
-        return _swapchainImage.getClonePtr();
+    WdImageResourceHandle VulkanLayer::getDisplayTarget() {
+        return _swapchainImage.getClonePtr()->targets[0];
     };
 
-    Memory::WdClonePtr<WdImage> VulkanLayer::create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags, bool multiFrame) {
-        std::vector<VkImage> images(FRAMES_IN_FLIGHT); // image handle, 1-to-1 translation to GAL 
-        std::vector<VkDeviceMemory> imageMemories(FRAMES_IN_FLIGHT); // memory handle, 1-to-1
-        std::vector<VkImageView> imageViews(FRAMES_IN_FLIGHT); // view handle, same concept 
+    WdImageHandle VulkanLayer::create2DImage(WdExtent2D extent, WdFormat imageFormat, WdMipCount mipLevels, 
+                    WdSampleCount sampleCount, WdImageUsageFlags usageFlags, bool multiFrame) {
+        VkImage image;
+        VkDeviceMemory imageMemory;
 
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -755,11 +755,12 @@ namespace Wado::GAL::Vulkan {
         imageInfo.mipLevels = mipLevels;
         imageInfo.arrayLayers = 1;
         imageInfo.format = WdFormatToVkFormat[imageFormat];
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; // start with optimal tiling
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // should this be undefined to start with?
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; // TODO: Always default optimal tiling, should this be controllable? When would you want linear?
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Always start in undefined layout, pre-initialied is only useful for linear tiling, but it's not used right now 
         imageInfo.usage = WdImageUsageToVkImageUsage(usageFlags);
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // Start with exclusive and change to concurrent based on usage 
 
+        // TODO: no compute support here right now 
         std::vector<uint32_t> queueFamilyIndices = getImageQueueFamilies(imageInfo.usage);
         
         if (queueFamilyIndices.size() > 1) {
@@ -769,88 +770,118 @@ namespace Wado::GAL::Vulkan {
         }
 
         imageInfo.samples = WdSampleBitsToVkSampleBits(sampleCount);
+        // TODO: flags here could be very useful for stuff like sparse images, how to determine that automatically?
+        // Also for cube maps and residency 
         imageInfo.flags = 0;
         
-        VkImageAspectFlags flags = getImageAspectFlags(imageInfo.usage);
+        //VkImageAspectFlags flags = getImageAspectFlags(imageInfo.usage);
 
-        int elemCount = multiFrame ? FRAMES_IN_FLIGHT : 1;
+        if (vkCreateImage(_device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan image!");
+        };
 
-        for (int i = 0; i < elemCount; i++) {
-
-            if (vkCreateImage(_device, &imageInfo, nullptr, &images[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create Vulkan image!");
-            };
-
-            VkMemoryRequirements memRequirements;
-            vkGetImageMemoryRequirements(_device, images[i], &memRequirements);
+        // TODO: once this works memory should be handled externally 
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(_device, image, &memRequirements);
         
-            VkMemoryAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            allocInfo.allocationSize = memRequirements.size;
-            allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
 
-            if (vkAllocateMemory(_device, &allocInfo, nullptr, &imageMemories[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to allocate Vulkan image memory!");
-            };
+        if (vkAllocateMemory(_device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate Vulkan image memory!");
+        };
 
-            vkBindImageMemory(_device, images[i], imageMemories[i], 0);
+        vkBindImageMemory(_device, image, imageMemory, 0);
 
-            VkImageViewCreateInfo viewInfo{};
-            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            viewInfo.image = images[i];
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = WdFormatToVkFormat[imageFormat];
+            // VkImageViewCreateInfo viewInfo{};
+            // viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            // viewInfo.image = images[i];
+            // viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            // viewInfo.format = WdFormatToVkFormat[imageFormat];
 
-            viewInfo.subresourceRange.aspectMask = flags;
-            viewInfo.subresourceRange.baseMipLevel = 0;
-            viewInfo.subresourceRange.levelCount = mipLevels;
-            viewInfo.subresourceRange.baseArrayLayer = 0;
-            viewInfo.subresourceRange.layerCount = 1;
-            //viewInfo.components to be explicit.
+            // viewInfo.subresourceRange.aspectMask = flags;
+            // viewInfo.subresourceRange.baseMipLevel = 0;
+            // viewInfo.subresourceRange.levelCount = mipLevels;
+            // viewInfo.subresourceRange.baseArrayLayer = 0;
+            // viewInfo.subresourceRange.layerCount = 1;
+            // //viewInfo.components to be explicit.
         
-            viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            // viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            // viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            // viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            // viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
        
-            if (vkCreateImageView(_device, &viewInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create Vulkan 2D image view!");
-            };
-        };
+            // if (vkCreateImageView(_device, &viewInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
+            //     throw std::runtime_error("Failed to create Vulkan 2D image view!");
+            // };
 
-        if (!multiFrame) {
-            for (int i = 1; i < FRAMES_IN_FLIGHT; i++) {
-                images[i] = images[0];
-                imageMemories[i] = imageMemories[0];
-                imageViews[i] = imageViews[0];
-            };
-        };
+        // // Create GAL resource now 
 
-        // Create GAL resource now 
+        // WdClearValue clearValue;
 
-        WdClearValue clearValue;
+        // if (flags & VK_IMAGE_ASPECT_DEPTH_BIT) {
+        //     clearValue.depthStencil = DEFAULT_DEPTH_STENCIL_CLEAR;
+        // } else {
+        //     clearValue.color = DEFAULT_COLOR_CLEAR;
+        // };
 
-        if (flags & VK_IMAGE_ASPECT_DEPTH_BIT) {
-            clearValue.depthStencil = DEFAULT_DEPTH_STENCIL_CLEAR;
-        } else {
-            clearValue.color = DEFAULT_COLOR_CLEAR;
-        };
+        // WdImage* img = create2DImagePtr(reinterpret_cast<const std::vector<WdImageHandle>&>(images), 
+        //                            reinterpret_cast<const std::vector<WdMemoryHandle>&>(imageMemories), 
+        //                            reinterpret_cast<const std::vector<WdRenderTarget>&>(imageViews), 
+        //                            imageFormat,
+        //                            {extent.height, extent.width},
+        //                            usageFlags,
+        //                            clearValue);
+        // // error check etc (will do with cutom allocator in own new operator)
 
-        WdImage* img = create2DImagePtr(reinterpret_cast<const std::vector<WdImageHandle>&>(images), 
-                                   reinterpret_cast<const std::vector<WdMemoryHandle>&>(imageMemories), 
-                                   reinterpret_cast<const std::vector<WdRenderTarget>&>(imageViews), 
-                                   imageFormat,
-                                   {extent.height, extent.width},
-                                   usageFlags,
-                                   clearValue);
-        // error check etc (will do with cutom allocator in own new operator)
+        _liveImages.emplace_back(image, imageMemory);
 
-        return _liveImages.emplace_back(img).getClonePtr(); // keep track of this image 
+        return image; //_liveImages.emplace_back(img).getClonePtr(); // keep track of this image 
     };
 
-    Memory::WdClonePtr<WdBuffer> VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame) {
-        std::vector<VkBuffer> buffers(FRAMES_IN_FLIGHT); // buffer handles
-        std::vector<VkDeviceMemory> bufferMemories(FRAMES_IN_FLIGHT); // memory handles
+    VkImageSubresourceRange WdImageSubpartsToVkSubresourceRange(WdImageSubpartsInfo imageSubpartInfo) {
+        VkImageSubresourceRange subresourceRange{};
+        subresourceRange.aspectMask = imageSubpartInfo.aspects;
+        subresourceRange.baseMipLevel = imageSubpartInfo.startingMip;
+        subresourceRange.levelCount = imageSubpartInfo.mipCount;
+        // TODO: not supporting layered images right now 
+        subresourceRange.baseArrayLayer = 0;
+        subresourceRange.layerCount = 1;
+
+        return subresourceRange;
+    };
+
+    WdImageResourceHandle VulkanLayer::create2DImageShaderResource(WdImageHandle image, WdFormat resourceFormat, WdImageSubpartsInfo imageSubpartInfo) {
+        VkImageView imageView;
+
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = static_cast<VkImage>(image);
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; 
+        viewInfo.format = WdFormatToVkFormat[resourceFormat];
+
+        viewInfo.subresourceRange = WdImageSubpartsToVkSubresourceRange(imageSubpartInfo);
+    
+        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    
+        if (vkCreateImageView(_device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan 2D image view!");
+        };
+
+        _liveImageViews.emplace_back(imageView);
+
+        return imageView;
+    };
+
+
+    WdBufferHandle VulkanLayer::createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame) {
+        VkBuffer buffer;
+        VkDeviceMemory bufferMemory;
 
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -858,6 +889,7 @@ namespace Wado::GAL::Vulkan {
         bufferInfo.usage = WdBufferUsageToVkBufferUsage(usageFlags);
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+        // TODO: leaving out compute here 
         std::vector<uint32_t> queueFamilyIndices = getBufferQueueFamilies(bufferInfo.usage);
         
         if (queueFamilyIndices.size() > 1) {
@@ -868,52 +900,49 @@ namespace Wado::GAL::Vulkan {
 
         bufferInfo.flags = 0;
 
-        int elemCount = multiFrame ? FRAMES_IN_FLIGHT : 1;
-
-        for (int i = 0; i < elemCount; i++) {
-
-            if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create Vulkan buffer!");
-            };
-
-            VkMemoryRequirements memRequirements;
-            vkGetBufferMemoryRequirements(_device, buffers[i], &memRequirements);
-
-            VkMemoryAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            allocInfo.allocationSize = memRequirements.size;
-            allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
-
-            if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemories[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
-            };
-
-            vkBindBufferMemory(_device, buffers[i], bufferMemories[i], 0);
+        if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan buffer!");
         };
 
-        if (!multiFrame) {
-            for (int i = 1; i < FRAMES_IN_FLIGHT; i++) {
-                buffers[i] = buffers[0];
-                bufferMemories[i] = bufferMemories[0];
-            };
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(_device, buffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, usageFlags);
+
+        if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate Vulkan buffer memory!");
         };
 
-        // Create GAL resource now 
-        WdBuffer* buf = createBufferPtr(reinterpret_cast<const std::vector<WdBufferHandle>&>(buffers), 
-                                     reinterpret_cast<const std::vector<WdMemoryHandle>&>(bufferMemories),
-                                     size, usageFlags);
-        // error check etc (will do with cutom allocator in own new operator)
+        vkBindBufferMemory(_device, buffer, bufferMemory, 0);
 
-        return _liveBuffers.emplace_back(buf).getClonePtr(); // keep track of this buffer 
+        _liveBuffers.emplace_back(buffer, bufferMemory);
+
+        return buffer;
     };
 
-    Memory::WdClonePtr<WdImage> VulkanLayer::createTemp2DImage(bool multiFrame) {
-        return _liveTempImages.emplace_back(createTemp2DImagePtr()).getClonePtr();
+    // TODO: add default VK_WHOLE_SIZE here somehow 
+    WdBufferResourceHandle VulkanLayer::createBufferShaderResource(WdBufferHandle buffer, WdFormat resourceFormat, WdSize offset, WdSize range) {
+        VkBufferViewCreateInfo createInfo{};
+        createInfo.buffer = static_cast<VkBuffer>(buffer);
+        createInfo.format = WdFormatToVkFormat[resourceFormat];
+        createInfo.offset = offset;
+        createInfo.range = range;
+
+        VkBufferView bufferView;
+
+        if (vkCreateBufferView(_device, &createInfo, nullptr, &bufferView) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create Vulkan buffer view!");
+        };
+
+        _liveBufferViews.emplace_back(bufferView);
+
+        return bufferView;
     };
 
-    Memory::WdClonePtr<WdBuffer> VulkanLayer::createTempBuffer(bool multiFrame) {
-        return _liveTempBuffers.emplace_back(createTempBufferPtr()).getClonePtr();
-    };
+
 
 
     WdSamplerHandle VulkanLayer::createSampler(const WdTextureAddressMode& addressMode, WdFilterMode minFilter, WdFilterMode magFilter, WdFilterMode mipMapFilter) {

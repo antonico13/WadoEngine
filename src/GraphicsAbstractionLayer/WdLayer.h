@@ -6,19 +6,9 @@
 #include "WdBuffer.h"
 #include "WdPipeline.h"
 #include "WdCommandList.h"
+#include "WdShader.h"
 
 #include <vector>
-
-namespace Wado::Shader {
-
-    using WdShaderByteCode = const std::vector<uint8_t>&;
-
-    class WdShader {
-        public:
-            WdShaderByteCode shaderByteCode;
-        private:
-    };
-};
 
 namespace Wado::GAL {
 
@@ -173,15 +163,15 @@ namespace Wado::GAL {
 
     using WdGraphicsPipelineCreateInfo = struct WdGraphicsPipelineCreateInfo {
         // These should be clone pointers since they all need to survive 
-        const Shader::WdShader *vertexShader;
-        const Shader::WdShader *fragmentShader;
+        const WdShader *vertexShader;
+        const WdShader *fragmentShader;
         const WdViewport *viewport;
         const WdMultisamplingInfo *multisamplingInfo;
         const WdDepthStencilStateInfo *depthStencilInfo;
         const WdBlendStateInfo *blendStateInfo;
         // TODO: pipeline dynamic state here?? How should users choose?
         // Vertex, input assembly, and rasterizer -> handled automatically?
-
+        // TODO: should handle push constant ranges here too 
         // TODO: how to do base pipeline here?
     };
 
@@ -238,7 +228,7 @@ namespace Wado::GAL {
 
             virtual void resetFences(const std::vector<WdFenceHandle>& fences) = 0;
 
-            virtual Memory::WdClonePtr<WdPipeline> createPipeline(const Shader::WdShader& vertexShader, const Shader::WdShader& fragmentShader, const WdViewportProperties& viewportProperties) = 0;
+            virtual Memory::WdClonePtr<WdPipeline> createPipeline(const WdShader& vertexShader, const WdShader& fragmentShader, const WdViewportProperties& viewportProperties) = 0;
 
             virtual Memory::WdClonePtr<WdRenderPass> createRenderPass(const std::vector<WdPipeline>& pipelines) = 0;
 

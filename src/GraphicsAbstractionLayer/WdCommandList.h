@@ -168,7 +168,7 @@ namespace Wado::GAL {
             virtual void drawIndexedIndirect(const WdBuffer& buffer, WdSize bufferOffset = 0, WdSize inputStride = 0, WdSize drawCount = 0) = 0;
         
             // Only outside of render passes 
-            virtual void blitImage(const WdImage& srcImage, const WdImage& dstImage, WdImageLayout srcLayout, WdImageLayout dstLayout, WdFilterMode scaleFilter, const std::vector<WdImageBlitInfo>& blitRegions) = 0;
+            virtual void blitImage(const WdImage& srcImag                     e, const WdImage& dstImage, WdImageLayout srcLayout, WdImageLayout dstLayout, WdFilterMode scaleFilter, const std::vector<WdImageBlitInfo>& blitRegions) = 0;
             virtual void resolveImage(const WdImage& srcImage, WdImageLayout srcLayout, const WdImage& dstImage, WdImageLayout dstLayout, const std::vector<WdImageCopyRegion>& resolveRegions) = 0;
 
             virtual void clearRenderTargets(const std::vector<WdRenderTargetClearInfo>& renderTargetClearInfos, const std::vector<WdClearRegion>& perRenderTargetClearRegions) = 0;

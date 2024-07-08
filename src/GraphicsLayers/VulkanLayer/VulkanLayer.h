@@ -99,17 +99,19 @@ namespace Wado::GAL::Vulkan {
     class VulkanLayer : public WdLayer {
         public:
             // Returns ref to a WdImage that represents the screen, can only be used as a fragment output!
-            Memory::WdClonePtr<WdImage> getDisplayTarget() override;
+            WdImageResourceHandle getDisplayTarget() override;
 
-            Memory::WdClonePtr<WdImage> create2DImage(WdExtent2D extent, uint32_t mipLevels, WdSampleCount sampleCount, WdFormat imageFormat, WdImageUsageFlags usageFlags, bool multiFrame = false) override;
+            WdImageHandle create2DImage(WdExtent2D extent, WdFormat imageFormat, WdMipCount mipLevels, 
+                    WdSampleCount sampleCount, WdImageUsageFlags usageFlags, bool multiFrame = false) override;
             
+            WdImageResourceHandle create2DImageShaderResource(WdImageHandle image, WdFormat resourceFormat, WdImageSubpartsInfo imageSubpartInfo) override;
+
+            WdBufferHandle createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame = false) override;
+
+            WdBufferResourceHandle createBufferShaderResource(WdBufferHandle buffer, WdFormat resourceFormat, WdSize offset, WdSize range) override;
+
+
             WdFormat findSupportedHardwareFormat(const std::vector<WdFormat>& formatCandidates, WdImageTiling tiling, WdFormatFeatureFlags features) override;
-
-            Memory::WdClonePtr<WdBuffer> createBuffer(WdSize size, WdBufferUsageFlags usageFlags, bool multiFrame = false) override;
-            
-            Memory::WdClonePtr<WdImage> createTemp2DImage(bool multiFrame = false) override;
-
-            Memory::WdClonePtr<WdBuffer> createTempBuffer(bool multiFrame = false) override;
 
             WdSamplerHandle createSampler(const WdTextureAddressMode& addressMode = DEFAULT_TEXTURE_ADDRESS_MODE, WdFilterMode minFilter = WdFilterMode::WD_LINEAR, WdFilterMode magFilter = WdFilterMode::WD_LINEAR, WdFilterMode mipMapFilter = WdFilterMode::WD_LINEAR) override;
             
@@ -229,10 +231,25 @@ namespace Wado::GAL::Vulkan {
             uint32_t _maxMipLevels;
 
             // the pointer management here will need to change 
-            std::vector<Memory::WdMainPtr<WdImage>> _liveImages;
-            std::vector<Memory::WdMainPtr<WdBuffer>> _liveBuffers;
-            std::vector<Memory::WdMainPtr<WdImage>> _liveTempImages;
-            std::vector<Memory::WdMainPtr<WdBuffer>> _liveTempBuffers;
+            using VkImageData = struct VkImageData {
+                VkImageData(VkImage _image, VkDeviceMemory _imageMemory) : image(_image), imageMemory(_imageMemory) { };
+                const VkImage image;
+                const VkDeviceMemory imageMemory;
+            };  
+
+            using VkBufferData = struct VkBufferData {
+                VkBufferData(VkBuffer _buffer, VkDeviceMemory _bufferMemory) : buffer(_buffer), bufferMemory(_bufferMemory) { };
+                const VkBuffer buffer;
+                const VkDeviceMemory bufferMemory;
+            };  
+
+
+            std::vector<VkImageData> _liveImages;
+            std::vector<VkImageView> _liveImageViews;
+
+            std::vector<VkBufferData> _liveBuffers;
+            std::vector<VkBufferView> _liveBufferViews;
+
             std::vector<VkSampler> _liveSamplers;
             std::vector<VkFence> _liveFences;
             std::vector<VkSemaphore> _liveSemaphores;
