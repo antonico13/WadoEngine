@@ -32,8 +32,18 @@ namespace Wado::GAL {
 
             virtual void setShaderResource(const WdShaderResourceLocation location, const WdBuffer buffer, const WdSize offset = 0, const WdSize range = 0) = 0;
         private:
-            WdShaderByteCode _shaderByteCode;
+    };
 
+    class WdVertexShader : public WdShader {
+        public:
+
+        private:
+    };
+
+    class WdFragmentShader : public WdShader {
+        public:
+            
+        private:
     };
 };
 
