@@ -34,13 +34,13 @@ namespace Wado::GAL {
         private:
     };
 
-    class WdVertexShader : public WdShader {
+    class WdVertexShader : virtual WdShader {
         public:
 
         private:
     };
 
-    class WdFragmentShader : public WdShader {
+    class WdFragmentShader : virtual WdShader {
         public:
             
         private:

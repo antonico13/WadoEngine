@@ -29,6 +29,9 @@ namespace Wado::GAL::Vulkan {
 
             void setShaderResource(const WdShaderResourceLocation location, const WdBuffer buffer, const WdSize offset = 0, const WdSize range = 0) override;
         protected:
+
+            VulkanShader(const VulkanLayer::SPIRVShaderBytecode& byteCode, VkShaderModule shaderModule);
+
             void addUniformDescription(spirv_cross::Compiler& spirvCompiler, const spirv_cross::SmallVector<spirv_cross::Resource>& resources, const VkDescriptorType descType, const VkShaderStageFlagBits stageFlag);
 
             void createDescriptorSetLayouts();
@@ -49,7 +52,7 @@ namespace Wado::GAL::Vulkan {
             friend class VulkanLayer;
 
         private:
-            VulkanVertexShader(const std::vector<char>& byteCode, VkShaderModule shaderModule);
+            VulkanVertexShader(const VulkanLayer::SPIRVShaderBytecode& byteCode, VkShaderModule shaderModule);
             ~VulkanVertexShader();
 
             void generateVertexParams();
@@ -62,7 +65,7 @@ namespace Wado::GAL::Vulkan {
         public:
             friend class VulkanLayer;
         private:
-            VulkanFragmentShader(const std::vector<char>& byteCode, VkShaderModule shaderModule);
+            VulkanFragmentShader(const VulkanLayer::SPIRVShaderBytecode& byteCode, VkShaderModule shaderModule);
             ~VulkanFragmentShader();
 
             void generateFragmentParams();

@@ -158,9 +158,11 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
+    VulkanShader::VulkanShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : _bytecode(bytecode), _shaderModule(shaderModule) { };
 
-    VulkanVertexShader::VulkanVertexShader(const std::vector<char>& byteCode, VkShaderModule shaderModule) {
 
+    VulkanVertexShader::VulkanVertexShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : VulkanShader(bytecode, shaderModule) {
+        generateVertexParams();
     };
 
     VulkanVertexShader::~VulkanVertexShader() {
@@ -168,8 +170,8 @@ namespace Wado::GAL::Vulkan {
     };
 
 
-    VulkanFragmentShader::VulkanFragmentShader(const std::vector<char>& byteCode, VkShaderModule shaderModule) {
-
+    VulkanFragmentShader::VulkanFragmentShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : VulkanShader(bytecode, shaderModule) {
+        generateFragmentParams();
     };
     
     VulkanFragmentShader::~VulkanFragmentShader() {
