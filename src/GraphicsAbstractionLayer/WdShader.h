@@ -20,17 +20,7 @@ namespace Wado::GAL {
 
     class WdShader {
         public:
-            // These are immediate-mode 
-            // TODO: make sure to auto-infer layout 
-            virtual void setShaderResource(const WdShaderResourceLocation location, const WdImageResourceHandle image) = 0;
-            // For combined image-samplers 
-            virtual void setShaderResource(const WdShaderResourceLocation location, const WdImageResourceHandle image, const WdSamplerHandle sampler) = 0;
-            // For pure sampler resources 
-            virtual void setShaderResource(const WdShaderResourceLocation location, const WdSamplerHandle sampler) = 0;
-
-            virtual void setShaderResource(const WdShaderResourceLocation location, const WdBufferResourceHandle bufferResource) = 0;
-
-            virtual void setShaderResource(const WdShaderResourceLocation location, const WdBuffer buffer, const WdSize offset = 0, const WdSize range = 0) = 0;
+            
         private:
     };
 

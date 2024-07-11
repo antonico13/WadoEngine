@@ -62,6 +62,9 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
+    void VulkanShader::createDescriptorSetLayouts() {
+        VkDescriptorSetLayoutCreateInfo createInfo{};
+    };
 
     void VulkanVertexShader::generateVertexParams() {
         // Create compiler object for the SPIR-V bytecode
@@ -158,8 +161,7 @@ namespace Wado::GAL::Vulkan {
         };
     };
 
-    VulkanShader::VulkanShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : _bytecode(bytecode), _shaderModule(shaderModule) { };
-
+    VulkanShader::VulkanShader(const VulkanLayer::SPIRVShaderBytecode &bytecode, VkShaderModule shaderModule) : _bytecode(bytecode), _shaderModule(shaderModule) { };
 
     VulkanVertexShader::VulkanVertexShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : VulkanShader(bytecode, shaderModule) {
         generateVertexParams();
@@ -168,7 +170,6 @@ namespace Wado::GAL::Vulkan {
     VulkanVertexShader::~VulkanVertexShader() {
 
     };
-
 
     VulkanFragmentShader::VulkanFragmentShader(const VulkanLayer::SPIRVShaderBytecode& bytecode, VkShaderModule shaderModule) : VulkanShader(bytecode, shaderModule) {
         generateFragmentParams();

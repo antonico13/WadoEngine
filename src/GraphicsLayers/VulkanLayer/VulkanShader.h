@@ -13,21 +13,9 @@
 
 namespace Wado::GAL::Vulkan {
 
-    class VulkanShader : public WdShader {
+    class VulkanShader : virtual WdShader {
         public:
             friend class VulkanLayer;
-
-            // These are immediate-mode 
-            // TODO: make sure to auto-infer layout 
-            void setShaderResource(const WdShaderResourceLocation location, const WdImageResourceHandle image) override;
-            // For combined image-samplers 
-            void setShaderResource(const WdShaderResourceLocation location, const WdImageResourceHandle image, const WdSamplerHandle sampler) override;
-            // For pure sampler resources 
-            void setShaderResource(const WdShaderResourceLocation location, const WdSamplerHandle sampler) override;
-
-            void setShaderResource(const WdShaderResourceLocation location, const WdBufferResourceHandle bufferResource) override;
-
-            void setShaderResource(const WdShaderResourceLocation location, const WdBuffer buffer, const WdSize offset = 0, const WdSize range = 0) override;
         protected:
 
             VulkanShader(const VulkanLayer::SPIRVShaderBytecode& byteCode, VkShaderModule shaderModule);
@@ -41,10 +29,14 @@ namespace Wado::GAL::Vulkan {
             const VulkanLayer::SPIRVShaderBytecode _bytecode;
 
             // TODO: uint64_t size ok?
+            // TODO: names are quite bad here 
             using VkDescriptorSetLayoutMap = std::unordered_map<uint64_t, VkDescriptorSetLayoutBinding>;
             using VkShaderLayoutMap = std::unordered_map<uint64_t, VkDescriptorSetLayoutMap>;
 
+            using VkDescriptorSetLayouts = std::unordered_map<uint64_t, VkDescriptorSetLayout>;
+
             VkShaderLayoutMap _shaderLayoutMap;
+            VkDescriptorSetLayouts _setLayouts;
     };
 
     class VulkanVertexShader : public WdVertexShader, public VulkanShader {
