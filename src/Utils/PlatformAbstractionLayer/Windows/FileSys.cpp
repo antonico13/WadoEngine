@@ -34,7 +34,7 @@ namespace Wado::FileSystem {
         DWORD bytesWritten = 0;
         BOOL res = WriteFile(fileHandle, data, size, &bytesWritten, NULL);
 
-        if (res == false) {
+        if (res == FALSE) {
             throw std::runtime_error("Could not write to Windows file");
         };
     };

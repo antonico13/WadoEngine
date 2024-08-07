@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <iostream>
 
+#include "DebugLog.h"
+
 namespace Wado::Task {
     void makeTask(Wado::Fiber::WdFiberFunctionPtr functionPtr, void *arguments, Wado::FiberSystem::WdFence* fenceToSignal) {
         WdFiberArgs* args = static_cast<WdFiberArgs *>(malloc(sizeof(WdFiberArgs)));
@@ -32,10 +34,10 @@ namespace Wado::Task {
 
         Wado::Queue::Queue<void> *localReadyQueue = static_cast<Wado::Queue::Queue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
         if (localReadyQueue->isFull()) {
-            //std::cout << "Enqeueing on global queue" << std::endl;
+            DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "TaskSystem", "Enqueueing new task on global queue");
             FiberGlobalReadyQueue.enqueue(readyQueueItem);
         } else {
-            //std::cout << "Enqeueing on local queue" << std::endl;
+            DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "TaskSystem", "Enqueueing new task on local queue");
             localReadyQueue->enqueue(readyQueueItem); 
         };    
     };
