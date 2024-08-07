@@ -3,18 +3,25 @@
 
 #include "Queue.h"
 #include "LinkedListQueue.h"
+#include "Thread.h"
 #include "Fiber.h"
+#include "System.h"
+
 #include <cstdint>
+#include <vector>
 
 namespace Wado::FiberSystem {
 
     using WdReadyQueueItem = Wado::Queue::Queue<void>::Item*;
+
+    static const size_t ALL_AVAILABLE = -1;
+    static const size_t DEFAULT_LOCAL_READY_QUEUE_SIZE = 20;
     
     void InitWorkerFiber();
     void IdleFiberFunction(void *param);
     unsigned long WorkerThreadStartFunction(void *param);
     void FiberYield();
-    void InitFiberSystem();
+    const std::vector<System::WdCoreInfo> InitFiberSystem(size_t maxWorkerCount = ALL_AVAILABLE);
     void ShutdownFiberSystem();
 
     class WdLock {
