@@ -62,7 +62,7 @@ namespace Wado::DebugLog {
     };
 
     void DebugLogLocal(const WdLogSeverity severity, const char* systemName, const char* data) {
-        DebugLogPrivate(Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID), severity, systemName, data);
+        DebugLogPrivate(localDebugLogHandles[reinterpret_cast<size_t>(Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID))], severity, systemName, data);
     };
 
     void DebugLogGlobal(const WdLogSeverity severity, const char* systemName, const char* data) {
