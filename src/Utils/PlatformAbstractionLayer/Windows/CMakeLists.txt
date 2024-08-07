@@ -7,6 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(WadoPALDir "..")
 
-add_library(WadoWindowsLib Atomics.cpp Fiber.cpp System.cpp Thread.cpp)
+add_library(WadoWindowsLib Atomics.cpp Fiber.cpp System.cpp Thread.cpp FileSys.cpp)
 
 target_include_directories(WadoWindowsLib PUBLIC "${WadoPALDir}")
