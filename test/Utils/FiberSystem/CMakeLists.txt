@@ -10,17 +10,19 @@ set(googleTestSrc "../../../lib/googletest")
 set(WadoWindowsDir "../../../src/Utils/PlatformAbstractionLayer/Windows/")
 set(WadoFiberSystemDir "../../../src/Utils/FiberSystem/")
 set(WadoTaskSystemDir "../../../src/Utils/TaskSystem/")
+set(WadoDebgLogDir "../../../src/Utils/DebugLog/")
 
 enable_testing()
 
 add_subdirectory(${WadoWindowsDir} build/windowsLib)
+add_subdirectory(${WadoDebgLogDir} build/debugLog)
 add_subdirectory(${WadoFiberSystemDir} build/fiberSystem)
 add_subdirectory(${WadoTaskSystemDir} build/taskSystem)
 add_subdirectory(${googleTestSrc} ${googleTestSrc}/build)
 
 add_executable(FiberTest FiberTest.cpp)
 
-target_link_libraries(FiberTest PUBLIC WadoWindowsLib WadoFiberSystem WadoTaskSystem gtest_main)
+target_link_libraries(FiberTest PUBLIC WadoWindowsLib WadoDebugLog WadoFiberSystem WadoTaskSystem gtest_main)
 
 target_include_directories(FiberTest PUBLIC
                           "${WadoFiberSystemDir}"

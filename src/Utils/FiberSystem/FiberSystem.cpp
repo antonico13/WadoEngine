@@ -15,7 +15,10 @@
 #include <stdexcept>
 #include <bitset>
 
+#include <string>
+
 #ifndef NDEBUG
+#include "DebugLog.h"
 #include <cassert>
 #include <iostream>
 #endif
@@ -108,12 +111,15 @@ namespace Wado::FiberSystem {
 
         threadCount = (maxWorkerCount == ALL_AVAILABLE) ? availableCores.size() : maxWorkerCount;
 
-        #ifndef NDEBUG
-        std::cout << "Decided thread count: " << threadCount << std::endl;
+        // TODO: should move the debug log init out of here 
+        DebugLog::DebugLogInit(threadCount);
+
+        // These are just x values rn, they will get deleted 
+        DEBUG_GLOBAL(DebugLog::WD_MESSAGE, "FiberSystem", ("Decided thread count" + std::to_string(threadCount)).c_str());
+
         for (const System::WdCoreInfo& coreInfo : availableCores) {
-            std::cout << "For core " << coreInfo.coreNumber << ", the hyperthread neighbour is: " << coreInfo.hyperthreadLocalNeighbour << std::endl;
+            DEBUG_GLOBAL(DebugLog::WD_MESSAGE, "FiberSystem", ("For core " + std::to_string(coreInfo.coreNumber) + ", the hyperthread neighbour is: " + std::to_string(coreInfo.hyperthreadLocalNeighbour)).c_str());
         };
-        #endif
 
         // Allocate TLS indices for thread local stuff 
         TLlocalReadyQueueID = Wado::Thread::WdThreadLocalAllocate();
@@ -179,22 +185,36 @@ namespace Wado::FiberSystem {
         // TODO: un-windows this 
 
         size_t coreIndex = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
-        std::cout << "Waiting on " << coreIndex << " for threads to finish" << std::endl;
-        for (int i = 0; i < threadCount; i++) {
+        
+        #ifndef NDEBUG
+            std::cout << "Waiting on " << coreIndex << " for " << threadCount << " threads to finish" << std::endl;
+        #endif;
+        
+        for (size_t i = 0; i < threadCount; ++i) {
             if (i != coreIndex) {
+                #ifndef NDEBUG
+                    std::cout << "Waiting for core " << i << std::endl;
+                #endif;
                 WaitForSingleObject(threadHandles[i], INFINITE);
             };
         };
 
-        std::cout << "Finished waiting and closing everything" << std::endl;
+        #ifndef NDEBUG
+            std::cout << "Finished waiting and closing everything" << std::endl;
+        #endif;
 
-        for (int i = 0; i < threadCount; i++) {
+        for (size_t i = 0; i < threadCount; ++i) {
             if (i != coreIndex) {
+                #ifndef NDEBUG
+                    std::cout << "Closing thread on core " << i << std::endl;
+                #endif;
                 CloseHandle(threadHandles[i]);
             };
         };
 
-        Wado::Fiber::WdFiberID currentIdleFiberID = Wado::Thread::WdThreadLocalGetValue(TLidleFiberID);
+        DebugLog::DebugLogShutdown();
+
+        /*Wado::Fiber::WdFiberID currentIdleFiberID = Wado::Thread::WdThreadLocalGetValue(TLidleFiberID);
         
         Wado::Fiber::WdDeleteFiber(currentIdleFiberID);
 
@@ -215,7 +235,7 @@ namespace Wado::FiberSystem {
         Wado::Thread::WdThreadLocalFree(TLidleFiberID);
         Wado::Thread::WdThreadLocalFree(TLpreviousFiberID);
         Wado::Thread::WdThreadLocalFree(TLallocatorID);
-        Wado::Thread::WdThreadLocalFree(TLlocalReadyQueueID);
+        Wado::Thread::WdThreadLocalFree(TLlocalReadyQueueID); */
 
         // Non-natural exit with this I think?
         //DeleteFiber(GetCurrentFiber()); 

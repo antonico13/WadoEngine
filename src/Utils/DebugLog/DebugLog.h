@@ -18,15 +18,13 @@ namespace Wado::DebugLog {
 
     void DebugLogGlobal(const WdLogSeverity severity, const char* systemName, const char* data);
 
-    #define DEBUG_LOCAL(Severity, SystemName, Message) \
-        #ifndef NDEBUG \
-            DebugLogLocal(Severity, SystemName, Message); \
-        #endif
-
-    #define DEBUG_GLOBAL(Severity, SystemName, Message) \
-        #ifndef NDEBUG \
-            DebugLogGlobal(Severity, SystemName, Message); \
-        #endif
+    #ifndef NDEBUG
+    #define DEBUG_LOCAL(Severity, SystemName, Message) DebugLogLocal(Severity, SystemName, Message);
+    #define DEBUG_GLOBAL(Severity, SystemName, Message) DebugLogGlobal(Severity, SystemName, Message); 
+    #else
+    #define DEBUG_LOCAL(Severity, SystemName, Message) {};
+    #define DEBUG_GLOBAL(Severity, SystemName, Message) {}; 
+    #endif
 };
 
 #endif

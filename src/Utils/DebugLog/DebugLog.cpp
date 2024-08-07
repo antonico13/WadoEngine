@@ -5,6 +5,8 @@
 #include <string>
 #include <chrono>
 
+#include <iostream>
+
 extern Wado::Thread::WdThreadLocalID TLcoreIndexID;
 
 namespace Wado::DebugLog {
@@ -40,13 +42,21 @@ namespace Wado::DebugLog {
     }; 
 
     void DebugLogPrivate(const FileSystem::WdFileHandle debugStream, const WdLogSeverity severity, const char* systemName, const char* data) {
-        std::chrono::system_clock::now();
+        // TODO: this is very, very ugly. Might be easier to do with buffers directly
+        // than all this string manipulation and iterators 
         const std::time_t localTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::string fullMessage;
-        fullMessage += std::ctime(&localTime) + ': ';
-        fullMessage += '[' + logSeverityMsg[severity] + '] ';
-        fullMessage += '[' + systemName + '] ';
-        fullMessage += data + '\n';
+        fullMessage += std::ctime(&localTime);
+        fullMessage.erase((++fullMessage.rbegin()).base());
+        fullMessage += ": ";
+        fullMessage += "[";
+        fullMessage += logSeverityMsg[severity];
+        fullMessage += "] ";
+        fullMessage += "[";
+        fullMessage += systemName;
+        fullMessage += "] ";
+        fullMessage += data;
+        fullMessage += "\n";
 
         FileSystem::WdWriteFile(debugStream, fullMessage.c_str(), fullMessage.size());
     };

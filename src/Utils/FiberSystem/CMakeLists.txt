@@ -7,7 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(WadoPALDir "../PlatformAbstractionLayer/")
 set(WadoQueueDir "../Queue/")
+set(WadoDebugDir "../DebugLog")
 
 add_library(WadoFiberSystem FiberSystem.cpp)
 
-target_include_directories(WadoFiberSystem PUBLIC "${WadoPALDir}" "${WadoQueueDir}" ".")
+target_include_directories(WadoFiberSystem PUBLIC "${WadoPALDir}" "${WadoQueueDir}" "${WadoDebugDir}" ".")

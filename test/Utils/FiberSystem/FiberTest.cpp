@@ -110,13 +110,29 @@ static void FiberTest() {
 
 // TEST(InitFiberTest, UsesAllCoresByDefault) {
 //     const std::vector<Wado::System::WdCoreInfo> coreInfos = Wado::FiberSystem::InitFiberSystem();
-//     ASSERT_EQ(coreInfos.size(), Wado::System::WdGetAvailableSystemCores().size());
+//     ASSERT_EQ(coreInfos.size(), Wado::System::WdGetAvailableSystemCores().size()) << "Expected the utilised core number to be the system max core number";
 //     Wado::FiberSystem::ShutdownFiberSystem();
 // };
 
 
 TEST(InitFiberTest, UsesRequestedCoreAmount) {
     const std::vector<Wado::System::WdCoreInfo> coreInfos = Wado::FiberSystem::InitFiberSystem(3);
-    ASSERT_EQ(coreInfos.size(), 3);
+    ASSERT_EQ(coreInfos.size(), 3) << "Expected the utilised core number to be the requested core number";
     Wado::FiberSystem::ShutdownFiberSystem();
 };
+
+// TEST(InitFiberTest, PrioritisesHyperthreading) {
+//     const std::vector<Wado::System::WdCoreInfo> coreInfos = Wado::FiberSystem::InitFiberSystem(5);
+
+//     uint64_t firstNeighbour = coreInfos[0].hyperthreadLocalNeighbour;
+//     ASSERT_EQ(coreInfos[firstNeighbour].hyperthreadLocalNeighbour, 0) << "Expected the neighbour of the first core's neighbour to be the first core";
+
+//     uint64_t secondNeighbour = coreInfos[2].hyperthreadLocalNeighbour;
+//     ASSERT_EQ(coreInfos[secondNeighbour].hyperthreadLocalNeighbour, 2) << "Expected the neighbour of the third core's neighbour to be the third core";
+
+//     ASSERT_GE(coreInfos[4].hyperthreadLocalNeighbour, coreInfos.size()) << "Expected the neighbour of the odd core to not be in the returned core info set";
+
+//     Wado::FiberSystem::ShutdownFiberSystem();
+// };
+
+
