@@ -117,7 +117,7 @@ TEST(DebugMessageFormatterTest, CanReplaceBinary) {
    free(testBuffer);
 };
 
-// TODO: Need to add compressed printing 
+// TODO: Need to add compressed printing, too long for some of these 
 
 
 
