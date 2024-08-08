@@ -13,8 +13,11 @@ namespace Wado::DebugLog {
     // TODO: all of this is not very safe, need to add lots of checks for stuff such as null termination and sizes 
 
     // TODO: Const?
-    static FileSystem::WdFileHandle localDebugLogHandles[sizeof(uint64_t) * 8];
+    static const size_t DEFAULT_BUFFER_SIZE = 1024;
+    static FileSystem::WdFileHandle localDebugLogHandles[sizeof(size_t) * 8];
     static FileSystem::WdFileHandle globalDebugLogHandle;
+    static char* localDebugLogBuffers[sizeof(size_t) * 8];
+    static char* globalDebugLogBuffer;
     static bool bDebugLogInit = false;
 
     static const char *prefix = "core_";
@@ -31,12 +34,26 @@ namespace Wado::DebugLog {
         if (!bDebugLogInit) {
             _coreCount = coreCount;
             for (size_t i = 0; i < coreCount; ++i) {
+                // TODO: remove the string from here, do C_STR only 
                 std::string localName = prefix + std::to_string(i) + postfix;
                 localDebugLogHandles[i] = FileSystem::WdCreateFile(localName.c_str(), FileSystem::WdFileType::WD_READ | FileSystem::WdFileType::WD_WRITE);
+                
+                // TODO: should these be malloc'ed or should I make them static?
+                // I think malloc because with static init we could have 64kB of buffers just sitting here in the file, not that it really
+                // matters for debug?
+                localDebugLogBuffers[i] = static_cast<char *>(malloc(DEFAULT_BUFFER_SIZE));
+                if (localDebugLogBuffers[i] == nullptr) {
+                    throw std::runtime_error("Could not start the debug logger");
+                };
             };
 
             globalDebugLogHandle = FileSystem::WdCreateFile(globalLog, FileSystem::WdFileType::WD_READ | FileSystem::WdFileType::WD_WRITE);
+            globalDebugLogBuffer = static_cast<char *>(malloc(DEFAULT_BUFFER_SIZE));
             
+            if (globalDebugLogBuffer == nullptr) {
+                throw std::runtime_error("Could not start the debug logger");
+            };
+
             bDebugLogInit = true;
         };
     }; 
@@ -137,8 +154,8 @@ namespace Wado::DebugLog {
 
     // TODO: Should I replace all the uints and stuff for portability?
     // TODO: lots of repetition here and above, need to look into smart templating 
-    uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args) {
-        uint64_t writtenCount = 0;
+    size_t DebugMessageFormatter(char *target, const char* format, std::va_list args) {
+        size_t writtenCount = 0;
         char *oldTarget = nullptr;
         while (*format != END_OF_MESSAGE) {
             if (*format == FORMATTER) {
@@ -176,6 +193,7 @@ namespace Wado::DebugLog {
                         writtenCount += (target - oldTarget);
 
                         break;
+                    // TODO: No floating point support yet 
                     case FLOATING_POINT:
                         break;
                     case POINTER:
@@ -215,7 +233,7 @@ namespace Wado::DebugLog {
         return writtenCount;
     };
 
-
+    // TODO: need to de-stringify this 
     void DebugLogPrivate(const FileSystem::WdFileHandle debugStream, const WdLogSeverity severity, const char* systemName, const char* data) {
         // TODO: this is very, very ugly. Might be easier to do with buffers directly
         // than all this string manipulation and iterators 
@@ -236,21 +254,32 @@ namespace Wado::DebugLog {
         FileSystem::WdWriteFile(debugStream, fullMessage.c_str(), fullMessage.size());
     };
 
-    void DebugLogLocal(const WdLogSeverity severity, const char* systemName, const char* data) {
-        DebugLogPrivate(localDebugLogHandles[reinterpret_cast<size_t>(Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID))], severity, systemName, data);
+    void DebugLogLocal(const WdLogSeverity severity, const char* systemName, const char* format, ...) {
+        size_t coreIndex = reinterpret_cast<size_t>(Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID));
+        std::va_list args;
+        va_start(args, format);
+        size_t writtenCount = DebugMessageFormatter(localDebugLogBuffers[coreIndex], format, args);
+        va_end(args);
+        DebugLogPrivate(localDebugLogHandles[coreIndex], severity, systemName, localDebugLogBuffers[coreIndex]);
     };
 
-    void DebugLogGlobal(const WdLogSeverity severity, const char* systemName, const char* data) {
-        DebugLogPrivate(globalDebugLogHandle, severity, systemName, data);
-    };
+    void DebugLogGlobal(const WdLogSeverity severity, const char* systemName, const char* format, ...) {
+        std::va_list args;
+        va_start(args, format);
+        size_t writtenCount = DebugMessageFormatter(globalDebugLogBuffer, format, args);
+        va_end(args);
+        DebugLogPrivate(globalDebugLogHandle, severity, systemName, globalDebugLogBuffer);
+       };
 
     void DebugLogShutdown() {
         if (bDebugLogInit) {
             for (size_t i = 0; i < _coreCount; ++i) {
                 FileSystem::WdCloseFile(localDebugLogHandles[i]);
+                free(localDebugLogBuffers[i]);
             };
 
             FileSystem::WdCloseFile(globalDebugLogHandle);
+            free(globalDebugLogBuffer);
 
             bDebugLogInit = false;
         };
