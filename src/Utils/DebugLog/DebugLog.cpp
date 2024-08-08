@@ -65,12 +65,11 @@ namespace Wado::DebugLog {
     static char *itoa16(T number, char *target) {
         char *initialTarget = target;
         target += HEX_REQUIRED_CHARS;
-        *(target + 1) = END_OF_MESSAGE;
+        *(target--) = END_OF_MESSAGE;
         while (number > 0) {
             T quotient = number >> HEX_BITS_REQUIRED;
             T remainder = number - (quotient << HEX_BITS_REQUIRED);
-            *target = HEX_REMAINDER[remainder];
-            --target;
+            *(target--) = HEX_REMAINDER[remainder];
             number = quotient;
         };
 
@@ -78,7 +77,7 @@ namespace Wado::DebugLog {
             *(target--) = HEX_REMAINDER[0];
         };
 
-        return target + HEX_REQUIRED_CHARS;
+        return target + HEX_REQUIRED_CHARS + 1;
     };
 
     static const char BINARY_REMAINDER[] = {'0', '1'};
@@ -90,12 +89,11 @@ namespace Wado::DebugLog {
     static char *itoa2(T number, char *target) {
         char *initialTarget = target;
         target += BINARY_REQUIRED_CHARS;
-        *(target + 1) = END_OF_MESSAGE;
+        *(target--) = END_OF_MESSAGE;
         while (number > 0) {
             T quotient = number >> BINARY_BITS_REQUIRED;
             T remainder = number - (quotient << BINARY_BITS_REQUIRED);
-            *target = BINARY_REMAINDER[remainder];
-            --target;
+            *(target--) = BINARY_REMAINDER[remainder];
             number = quotient;
         };
 
@@ -103,7 +101,7 @@ namespace Wado::DebugLog {
             *(target--) = BINARY_REMAINDER[0];
         };
 
-        return target + BINARY_REQUIRED_CHARS;
+        return target + BINARY_REQUIRED_CHARS + 1;
     };
     
     // TODO: should make this programatic too with MAX long long??
