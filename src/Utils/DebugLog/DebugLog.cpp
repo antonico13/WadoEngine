@@ -5,8 +5,6 @@
 #include <string>
 #include <chrono>
 
-#include <stdlib.h>
-
 #include <iostream>
 
 extern Wado::Thread::WdThreadLocalID TLcoreIndexID;
@@ -54,8 +52,81 @@ namespace Wado::DebugLog {
     
     static const size_t BYTE_COUNT = sizeof(int);
 
+    // TODO: should add some constraints and stuff here for 
+    // more type safety/ensuring a numeral 
+    // Should do overloading for the other base cases instead of partial specialization
+    // How do I do this in a single function here with template specialization?
+
+    static const char HEX_REMAINDER[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+    static const char HEX_BITS_REQUIRED = 4;
+    static const size_t HEX_REQUIRED_CHARS = sizeof(size_t) * 2;
+
+    template <typename T>
+    static void itoa16(T number, char *target) {
+        target+= HEX_REQUIRED_CHARS;
+        *(target + 1) = END_OF_MESSAGE;
+        while (number > 0) {
+            T quotient = number >> HEX_BITS_REQUIRED;
+            T remainder = number - quotient;
+            *target = HEX_REMAINDER[remainder];
+            --target;
+            number = quotient;
+        };
+    };
+
+    static const char BINARY_REMAINDER[] = {'0', '1'};
+    static const char BINARY_BITS_REQUIRED = 1;
+    static const size_t BINARY_REQUIRED_CHARS = sizeof(size_t) * 8;
+
+
+    template <typename T>
+    static void itoa2(T number, char *target) {
+        target+= BINARY_REQUIRED_CHARS;
+        *(target + 1) = END_OF_MESSAGE;
+        while (number > 0) {
+            T quotient = number >> BINARY_BITS_REQUIRED;
+            T remainder = number - quotient;
+            *target = BINARY_REMAINDER[remainder];
+            --target;
+            number = quotient;
+        };
+    };
+    
+    // TODO: should make this programatic too with MAX long long??
+    static const size_t MAX_DECIMAL_DIGITS = 20;
+    static const char ZERO = '0';
+
+    template <typename T>
+    static void itoa10(T number, char *target) {
+
+        if (number < 0) {
+            *target = '-';
+            ++target;
+            number = -number;
+        };
+
+        char stack[MAX_DECIMAL_DIGITS];
+        size_t digits = 0;
+        while (number > 0) {
+            T quotient = number / 10;
+            T remainder = number - quotient * 10;
+            stack[digits++] = ZERO + remainder;
+            number = quotient;
+        };
+
+        --digits;
+        while (digits != 0) {
+            *target = stack[digits];
+            ++target;
+            --digits;
+        };
+        *target = stack[0];
+        *(target + 1) = END_OF_MESSAGE;
+        
+    };
+
+    // TODO: Should I replace the itoa here with my own just for safety?
     uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args) {
-        va_start(args, format);
         uint64_t writtenCount = 0;
         while (*format != END_OF_MESSAGE) {
             if (*format == FORMATTER) {
@@ -67,21 +138,18 @@ namespace Wado::DebugLog {
                         *target = 'b';
                         ++target;
 
-                        int i = va_arg(args, int);
-                        itoa(i, target, 2);
+                        itoa2(va_arg(args, int), target);
 
-                        
-                        while (target != END_OF_MESSAGE) {
+                        while (*target != END_OF_MESSAGE) {
                             ++writtenCount;
                             ++target;
                         };
 
                         break;
                     case DECIMAL:
-                        int i = va_arg(args, int);
-                        itoa(i, target, 10);
+                        itoa10(va_arg(args, int), target);
                         
-                        while (target != END_OF_MESSAGE) {
+                        while (*target != END_OF_MESSAGE) {
                             ++writtenCount;
                             ++target;
                         };
@@ -93,11 +161,9 @@ namespace Wado::DebugLog {
                         *target = 'x';
                         ++target;
 
-                        int i = va_arg(args, int);
-                        itoa(i, target, 16);
+                        itoa16(va_arg(args, uint64_t), target);
 
-                        
-                        while (target != END_OF_MESSAGE) {
+                        while (*target != END_OF_MESSAGE) {
                             ++writtenCount;
                             ++target;
                         };
@@ -111,11 +177,9 @@ namespace Wado::DebugLog {
                         *target = 'p';
                         ++target;
 
-                        uintptr_t i = va_arg(args, uintptr_t);
-                        itoa(i, target, 16);
+                        itoa16(va_arg(args, uintptr_t), target);
 
-                        
-                        while (target != END_OF_MESSAGE) {
+                        while (*target != END_OF_MESSAGE) {
                             ++writtenCount;
                             ++target;
                         };
@@ -133,12 +197,15 @@ namespace Wado::DebugLog {
                 };
             } else {
                 *target = *format;
-                writtenCount++;
+                ++target;
+                ++writtenCount;
             };
             ++format;
         };
 
+        // Consider end of message as written also
         *target = END_OF_MESSAGE;
+        ++writtenCount;
 
         return writtenCount;
     };

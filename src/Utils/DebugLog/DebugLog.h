@@ -2,6 +2,7 @@
 #define WADO_DEBUG_LOG_H
 
 #include <cstdarg>
+#include <cstdint>
 
 namespace Wado::DebugLog { 
 
@@ -22,8 +23,8 @@ namespace Wado::DebugLog {
 
     // Returns the number of characters written to target
     // Caller must ensure that target is large enough to hold the formatted string
+    // Supported formats: d - decimal, x - hexadecimal, b - binary, f - floating point, p - pointer
     uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args);
-
 
     #ifndef NDEBUG
     #define DEBUG_LOCAL(Severity, SystemName, Message) DebugLogLocal(Severity, SystemName, Message);
