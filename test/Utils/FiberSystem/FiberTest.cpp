@@ -17,7 +17,7 @@ size_t fiberCount = 0;
 size_t coreStart[sizeof(uint64_t) * 8];
 size_t coreEnd[sizeof(uint64_t) * 8];
 
-volatile size_t count = 800;
+volatile size_t count = 50;
 
 typedef struct DummyData {
     int x; 
@@ -34,15 +34,15 @@ TASK(NextTask, NextData, data, {
     coreStart[startCore]++;
     Wado::Atomics::Decrement(&count);
     DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Finished Next Task");
-    // globalLock.acquire();
-    // size_t endCore = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
-    // coreEnd[endCore]++;
-    // fiberCount++;
-    // std::cout << "Fiber number: " << fiberCount << " as a dummy task" << std::endl;
-    // std::cout << "Started on core: " << startCore << " finished on " << endCore << std::endl;
-    // std::cout << "This many fibers also started on this core: " << coreStart[startCore] << std::endl;
-    // std::cout << "This many fibers also finished on this core: " << coreEnd[endCore] << std::endl;
-    // globalLock.release();
+    globalLock.acquire();
+    size_t endCore = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
+    coreEnd[endCore]++;
+    fiberCount++;
+    globalLock.release();
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Fiber number: %d as a dummy task", fiberCount);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Started on core: %d, finished on: %d", startCore, endCore);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "This many fibers also started on this core: %d", coreStart[startCore]);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "This many fibers also finished on this core: %d", coreEnd[endCore]);
 });
 
 TASK(DummyTask, DummyData, data, {
@@ -50,15 +50,15 @@ TASK(DummyTask, DummyData, data, {
     coreStart[startCore]++;
     Wado::Atomics::Decrement(&count);
     DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Finished Dummy Task");
-    // globalLock.acquire();
-    // size_t endCore = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
-    // coreEnd[endCore]++;
-    // fiberCount++;
-    // std::cout << "Fiber number: " << fiberCount << " as a dummy task" << std::endl;
-    // std::cout << "Started on core: " << startCore << " finished on " << endCore << std::endl;
-    // std::cout << "This many fibers also started on this core: " << coreStart[startCore] << std::endl;
-    // std::cout << "This many fibers also finished on this core: " << coreEnd[endCore] << std::endl;
-    // globalLock.release();
+    globalLock.acquire();
+    size_t endCore = (size_t) Wado::Thread::WdThreadLocalGetValue(TLcoreIndexID);
+    coreEnd[endCore]++;
+    fiberCount++;
+    globalLock.release();
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Fiber number: %d as a dummy task", fiberCount);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Started on core: %d, finished on: %d", startCore, endCore);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "This many fibers also started on this core: %d", coreStart[startCore]);
+    DEBUG_LOCAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "This many fibers also finished on this core: %d", coreEnd[endCore]);
     Wado::Task::makeTask(NextTask, nullptr, data->nextFence);
 });
 
@@ -101,13 +101,13 @@ static void FiberTest(const size_t coreCount) {
     free(nextFence);
 
     for (size_t i = 0; i < coreCount; ++i) {
-        DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", ("Core: " + std::to_string(i) + " started " + std::to_string(coreStart[i]) + " fibers ").c_str());
-        DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", ("Core: " + std::to_string(i) + " unlocked " + std::to_string(coreEnd[i]) + " fibers ").c_str());
+        DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Core: %d started %d fibers", i, coreStart[i]);
+        DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Core: %d unlocked %d fibers", i, coreEnd[i]);
     };
 
-    DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", ("Total fibers: " + std::to_string(fiberCount)).c_str());
+    DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Total fibers: %d", fiberCount);
     DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Shutting down");
-    DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", ("Count value: " + std::to_string(count)).c_str());
+    DEBUG_GLOBAL(Wado::DebugLog::WD_MESSAGE, "FiberTests", "Count value: %d", count);
 };
 
 // TEST(InitFiberTest, UsesAllCoresByDefault) {
