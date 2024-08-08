@@ -62,16 +62,23 @@ namespace Wado::DebugLog {
     static const size_t HEX_REQUIRED_CHARS = sizeof(size_t) * 2;
 
     template <typename T>
-    static void itoa16(T number, char *target) {
-        target+= HEX_REQUIRED_CHARS;
+    static char *itoa16(T number, char *target) {
+        char *initialTarget = target;
+        target += HEX_REQUIRED_CHARS;
         *(target + 1) = END_OF_MESSAGE;
         while (number > 0) {
             T quotient = number >> HEX_BITS_REQUIRED;
-            T remainder = number - quotient;
+            T remainder = number - (quotient << HEX_BITS_REQUIRED);
             *target = HEX_REMAINDER[remainder];
             --target;
             number = quotient;
         };
+
+        while (target >= initialTarget) {
+            *(target--) = HEX_REMAINDER[0];
+        };
+
+        return target + HEX_REQUIRED_CHARS;
     };
 
     static const char BINARY_REMAINDER[] = {'0', '1'};
@@ -80,16 +87,23 @@ namespace Wado::DebugLog {
 
 
     template <typename T>
-    static void itoa2(T number, char *target) {
-        target+= BINARY_REQUIRED_CHARS;
+    static char *itoa2(T number, char *target) {
+        char *initialTarget = target;
+        target += BINARY_REQUIRED_CHARS;
         *(target + 1) = END_OF_MESSAGE;
         while (number > 0) {
             T quotient = number >> BINARY_BITS_REQUIRED;
-            T remainder = number - quotient;
+            T remainder = number - (quotient << BINARY_BITS_REQUIRED);
             *target = BINARY_REMAINDER[remainder];
             --target;
             number = quotient;
         };
+
+        while (target >= initialTarget) {
+            *(target--) = BINARY_REMAINDER[0];
+        };
+
+        return target + BINARY_REQUIRED_CHARS;
     };
     
     // TODO: should make this programatic too with MAX long long??
@@ -97,8 +111,7 @@ namespace Wado::DebugLog {
     static const char ZERO = '0';
 
     template <typename T>
-    static void itoa10(T number, char *target) {
-
+    static char *itoa10(T number, char *target) {
         if (number < 0) {
             *target = '-';
             ++target;
@@ -114,75 +127,69 @@ namespace Wado::DebugLog {
             number = quotient;
         };
 
-        --digits;
-        while (digits != 0) {
-            *target = stack[digits];
+        while (digits > 0) {
+            *target = stack[digits - 1];
             ++target;
             --digits;
         };
-        *target = stack[0];
         *(target + 1) = END_OF_MESSAGE;
         
+        return target;
     };
 
-    // TODO: Should I replace the itoa here with my own just for safety?
+    // TODO: Should I replace all the uints and stuff for portability?
+    // TODO: lots of repetition here and above, need to look into smart templating 
     uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args) {
         uint64_t writtenCount = 0;
+        char *oldTarget = nullptr;
         while (*format != END_OF_MESSAGE) {
             if (*format == FORMATTER) {
                 ++format;
                 switch (*format) {
                     case BINARY:
+                        oldTarget = target;
                         *target = '0';
                         ++target;
                         *target = 'b';
                         ++target;
 
-                        itoa2(va_arg(args, int), target);
+                        target = itoa2(va_arg(args, uint64_t), target);
 
-                        while (*target != END_OF_MESSAGE) {
-                            ++writtenCount;
-                            ++target;
-                        };
+                        writtenCount += (target - oldTarget);
 
                         break;
                     case DECIMAL:
-                        itoa10(va_arg(args, int), target);
-                        
-                        while (*target != END_OF_MESSAGE) {
-                            ++writtenCount;
-                            ++target;
-                        };
+                        oldTarget = target;
+                        // TODO: why does int64_t bug out here?
+                        target = itoa10(va_arg(args, int), target);
+
+                        writtenCount += (target - oldTarget);
 
                         break;
                     case HEXADECIMAL:
+                        oldTarget = target;
                         *target = '0';
                         ++target;
                         *target = 'x';
                         ++target;
 
-                        itoa16(va_arg(args, uint64_t), target);
+                        target = itoa16(va_arg(args, uint64_t), target);
 
-                        while (*target != END_OF_MESSAGE) {
-                            ++writtenCount;
-                            ++target;
-                        };
+                        writtenCount += (target - oldTarget);
 
                         break;
                     case FLOATING_POINT:
                         break;
                     case POINTER:
+                        oldTarget = target;
                         *target = '0';
                         ++target;
                         *target = 'p';
                         ++target;
 
-                        itoa16(va_arg(args, uintptr_t), target);
+                        target = itoa16(va_arg(args, uintptr_t), target);
 
-                        while (*target != END_OF_MESSAGE) {
-                            ++writtenCount;
-                            ++target;
-                        };
+                        writtenCount += (target - oldTarget);
                         break;
                     case FORMATTER:
                         *target = FORMATTER;
