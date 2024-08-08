@@ -5,6 +5,8 @@
 #include <string>
 #include <chrono>
 
+#include <stdlib.h>
+
 #include <iostream>
 
 extern Wado::Thread::WdThreadLocalID TLcoreIndexID;
@@ -40,6 +42,107 @@ namespace Wado::DebugLog {
             bDebugLogInit = true;
         };
     }; 
+
+    static const char END_OF_MESSAGE = '\0';
+    static const char FORMATTER = '%';
+    static const char BINARY = 'b';
+    static const char DECIMAL = 'd';
+    static const char HEXADECIMAL = 'x';
+    static const char FLOATING_POINT = 'f';
+    static const char POINTER = 'p';
+    static const char WHITESPACE = ' ';
+    
+    static const size_t BYTE_COUNT = sizeof(int);
+
+    uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args) {
+        va_start(args, format);
+        uint64_t writtenCount = 0;
+        while (*format != END_OF_MESSAGE) {
+            if (*format == FORMATTER) {
+                ++format;
+                switch (*format) {
+                    case BINARY:
+                        *target = '0';
+                        ++target;
+                        *target = 'b';
+                        ++target;
+
+                        int i = va_arg(args, int);
+                        itoa(i, target, 2);
+
+                        
+                        while (target != END_OF_MESSAGE) {
+                            ++writtenCount;
+                            ++target;
+                        };
+
+                        break;
+                    case DECIMAL:
+                        int i = va_arg(args, int);
+                        itoa(i, target, 10);
+                        
+                        while (target != END_OF_MESSAGE) {
+                            ++writtenCount;
+                            ++target;
+                        };
+
+                        break;
+                    case HEXADECIMAL:
+                        *target = '0';
+                        ++target;
+                        *target = 'x';
+                        ++target;
+
+                        int i = va_arg(args, int);
+                        itoa(i, target, 16);
+
+                        
+                        while (target != END_OF_MESSAGE) {
+                            ++writtenCount;
+                            ++target;
+                        };
+
+                        break;
+                    case FLOATING_POINT:
+                        break;
+                    case POINTER:
+                        *target = '0';
+                        ++target;
+                        *target = 'p';
+                        ++target;
+
+                        uintptr_t i = va_arg(args, uintptr_t);
+                        itoa(i, target, 16);
+
+                        
+                        while (target != END_OF_MESSAGE) {
+                            ++writtenCount;
+                            ++target;
+                        };
+                        break;
+                    case FORMATTER:
+                        *target = FORMATTER;
+                        ++target;
+                        ++writtenCount;
+                        break;
+                    default:
+                        *target = WHITESPACE;
+                        ++target;
+                        ++writtenCount;
+                        break;
+                };
+            } else {
+                *target = *format;
+                writtenCount++;
+            };
+            ++format;
+        };
+
+        *target = END_OF_MESSAGE;
+
+        return writtenCount;
+    };
+
 
     void DebugLogPrivate(const FileSystem::WdFileHandle debugStream, const WdLogSeverity severity, const char* systemName, const char* data) {
         // TODO: this is very, very ugly. Might be easier to do with buffers directly

@@ -1,6 +1,8 @@
 #ifndef WADO_DEBUG_LOG_H
 #define WADO_DEBUG_LOG_H
 
+#include <cstdarg>
+
 namespace Wado::DebugLog { 
 
     enum WdLogSeverity {
@@ -17,6 +19,11 @@ namespace Wado::DebugLog {
     void DebugLogLocal(const WdLogSeverity severity, const char* systemName, const char* data);
 
     void DebugLogGlobal(const WdLogSeverity severity, const char* systemName, const char* data);
+
+    // Returns the number of characters written to target
+    // Caller must ensure that target is large enough to hold the formatted string
+    uint64_t DebugMessageFormatter(char *target, const char* format, std::va_list args);
+
 
     #ifndef NDEBUG
     #define DEBUG_LOCAL(Severity, SystemName, Message) DebugLogLocal(Severity, SystemName, Message);
