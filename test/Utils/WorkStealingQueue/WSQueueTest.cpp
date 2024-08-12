@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "WorkStealingQueue.h"
 
+#include <thread>
+#include <unordered_set>
+
 using namespace Wado::Queue;
 
 #define DEFAULT_SIZE 20
@@ -126,4 +129,64 @@ TEST(WorkStealingQueueTest, StealingFromEmptyQueueReturnsNothing) {
     ASSERT_TRUE(newQueue.isEmpty()) << "Expected new queue to be empty by default before adding anything";
     EXPECT_FALSE(newQueue.steal().has_value()) << "Expected steal to be empty";
     EXPECT_TRUE(newQueue.isEmpty()) << "Expected the steal to not modify size";
+};
+
+
+TEST(WorkStealingQueueTest, MultithreadedStealing) {
+    std::unordered_set<int> testSet;
+
+    for (int i = 0; i < DEFAULT_SIZE * 5; ++i) {
+        testSet.insert(i);
+    };
+    WorkStealingQueue<int, DEFAULT_SIZE * 5> testQueue = WorkStealingQueue<int, DEFAULT_SIZE * 5>();
+
+    std::unordered_set<int> firstSet;
+    std::unordered_set<int> secondSet;
+
+    auto f1 = [&firstSet, &testQueue]() {
+        for (int i = 0; i < DEFAULT_SIZE * 5; ++i) {
+            testQueue.enqueue(i);
+        };
+
+        while (!testQueue.isEmpty()) {
+            // Processing bit 
+            std::optional<int> elem = testQueue.dequeue();
+            if (elem.has_value()) {
+                firstSet.insert(elem.value());
+            };
+        };
+    };
+
+    auto f2 = [&secondSet, &testQueue]() {
+        while (!testQueue.isEmpty()) {
+            // Processing bit 
+            std::optional<int> elem = testQueue.steal();
+            if (elem.has_value()) {
+                secondSet.insert(elem.value());
+            };
+        };
+    };
+
+
+    std::thread firstThread(f1);
+    std::thread secondThread(f2);
+
+    firstThread.join();
+    secondThread.join();
+
+    std::cout << "First set:" << std::endl;
+    for (const int elem : firstSet) {
+        std::cout << elem << " ";
+    };
+    std::cout << std::endl;
+
+    std::cout << "Second set:" << std::endl;
+    for (const int elem : secondSet) {
+        std::cout << elem << " ";
+    };
+    std::cout << std::endl;
+
+    firstSet.insert(secondSet.begin(), secondSet.end());
+
+    ASSERT_EQ(firstSet, testSet) << "Expected all elements to remain";
 };
