@@ -18,4 +18,9 @@ namespace Wado::Atomics {
     void *CompareAndSwapPointer(void * volatile *destination, void *exchange, void *comperand) {
         return InterlockedCompareExchangePointer(destination, exchange, comperand);
     };
+
+    // TODO: not sure this is good 
+    uint64_t CompareAndSwap(uint64_t volatile *target, uint64_t exchange, uint64_t comperand) {
+        return InterlockedCompareExchange64(reinterpret_cast<LONG64 volatile *>(target), exchange, comperand);
+    };
 };
