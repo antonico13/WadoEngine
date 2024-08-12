@@ -135,12 +135,12 @@ namespace Wado::DebugLog {
 
         char stack[MAX_DECIMAL_DIGITS];
         size_t digits = 0;
-        while (number > 0) {
+        do {
             T quotient = number / 10;
             T remainder = number - quotient * 10;
             stack[digits++] = ZERO + remainder;
             number = quotient;
-        };
+        } while (number > 0); // do-while needed to handle 0 
 
         while (digits > 0) {
             *target = stack[digits - 1];

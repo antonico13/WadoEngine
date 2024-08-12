@@ -39,6 +39,7 @@ namespace Wado::FiberSystem {
     static size_t threadCount = 0;
     static volatile uint64_t close = 0;
 
+    // TODO: de-windows this 
     void InitWorkerFiber() {
         LPVOID lpvQueue; 
         lpvQueue = (LPVOID) HeapAlloc(GetProcessHeap(), 0, sizeof(Wado::Queue::ArrayQueue<void>));
@@ -53,7 +54,7 @@ namespace Wado::FiberSystem {
 
         // Convert worker thread to fiber 
         Wado::Fiber::WdFiberID currentFiberID = Wado::Fiber::WdStartFiber();
-        ////std::cout << "Worker fiber ID: " << currentFiberID << std::endl;
+        DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "The idle worker fiber ID is %x", currentFiberID);
         Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, currentFiberID);
     };
 
@@ -64,26 +65,31 @@ namespace Wado::FiberSystem {
         while (close == 0) {
             if (nextFiber != nullptr) {
                 Wado::Fiber::WdSwitchFiber(nextFiber->data);
+                DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Exited from fiber");
                 Wado::Fiber::WdFiberID previousFiberID = static_cast<Wado::Fiber::WdFiberID>(Wado::Thread::WdThreadLocalGetValue(TLpreviousFiberID));
                 if (previousFiberID != nullptr) {
+                    DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Fiber that I have exited from can be deleted");
                     Wado::Fiber::WdDeleteFiber(previousFiberID);
                     Wado::Thread::WdThreadLocalSetValue(TLpreviousFiberID, nullptr);
                 };
                 nextFiber = nullptr;
+            } else {
+                DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Ticked, found no task");
             };
 
             if (!localReadyQueue->isEmpty()) {
+                DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Might have found local ready queue task");
                 nextFiber = localReadyQueue->dequeue();
                 continue;
             };
 
             if (!FiberGlobalReadyQueue.isEmpty()) {
+                DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Might have found global ready queue task");
                 nextFiber = FiberGlobalReadyQueue.dequeue(); 
             }
         };
 
-        ////std::cout << "About to exit worker thread" << std::endl;
-        ////std::cout << "Exiting initial worker thread" << std::endl;
+        DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Received close signal, about to exit idle fiber thread");
         Wado::Queue::ArrayQueue<void> *threadLocalReadyQueue = static_cast<Wado::Queue::ArrayQueue<void> *>(Wado::Thread::WdThreadLocalGetValue(TLlocalReadyQueueID));
 
         threadLocalReadyQueue->~ArrayQueue();
@@ -100,8 +106,8 @@ namespace Wado::FiberSystem {
         InitWorkerFiber();
         Wado::Thread::WdThreadLocalSetValue(TLcoreIndexID, param);
         DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Became fiber");
-        Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, Wado::Fiber::WdGetCurrentFiber());
-        DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Idle fiber ID for this core: %x", Wado::Fiber::WdGetCurrentFiber());
+        // Wado::Thread::WdThreadLocalSetValue(TLidleFiberID, Wado::Fiber::WdGetCurrentFiber());
+        // DEBUG_LOCAL(DebugLog::WD_MESSAGE, "FiberSystem", "Idle fiber ID for this core: %x", Wado::Fiber::WdGetCurrentFiber());
         IdleFiberFunction(param);
 
         return 0;
@@ -125,6 +131,7 @@ namespace Wado::FiberSystem {
         };
 
         // Allocate TLS indices for thread local stuff 
+        // TODO: Should I abstract the thread local things even more?
         TLlocalReadyQueueID = Wado::Thread::WdThreadLocalAllocate();
         TLpreviousFiberID = Wado::Thread::WdThreadLocalAllocate();
         TLallocatorID = Wado::Thread::WdThreadLocalAllocate();
@@ -135,7 +142,6 @@ namespace Wado::FiberSystem {
         // Allocate memory for containers
 
         // TODO: need to de-windows this
-
         Wado::Thread::WdThreadHandle currrentThreadHandle = Wado::Thread::WdGetCurrentThreadHandle();
         threadHandles[0] = currrentThreadHandle;
 
@@ -217,7 +223,7 @@ namespace Wado::FiberSystem {
 
         DebugLog::DebugLogShutdown();
 
-        /*Wado::Fiber::WdFiberID currentIdleFiberID = Wado::Thread::WdThreadLocalGetValue(TLidleFiberID);
+        Wado::Fiber::WdFiberID currentIdleFiberID = Wado::Thread::WdThreadLocalGetValue(TLidleFiberID);
         
         Wado::Fiber::WdDeleteFiber(currentIdleFiberID);
 
@@ -238,7 +244,7 @@ namespace Wado::FiberSystem {
         Wado::Thread::WdThreadLocalFree(TLidleFiberID);
         Wado::Thread::WdThreadLocalFree(TLpreviousFiberID);
         Wado::Thread::WdThreadLocalFree(TLallocatorID);
-        Wado::Thread::WdThreadLocalFree(TLlocalReadyQueueID); */
+        Wado::Thread::WdThreadLocalFree(TLlocalReadyQueueID);
 
         // Non-natural exit with this I think?
         //DeleteFiber(GetCurrentFiber()); 

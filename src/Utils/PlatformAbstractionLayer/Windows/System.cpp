@@ -58,7 +58,7 @@ namespace Wado::System {
             ++seek;
         };
 
-        HeapFree(GetProcessHeap, 0, buffer);
+        HeapFree(GetProcessHeap(), 0, buffer);
 
         // This should make use of RVO given that the return slot can hold a vector 
         return coreInfos;
